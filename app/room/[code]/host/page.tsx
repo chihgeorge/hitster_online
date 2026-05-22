@@ -53,7 +53,7 @@ export default function HostPage() {
 
   function handleStartGame(e: React.FormEvent) {
     e.preventDefault();
-    if (!playlistUrl.trim()) { setError("Paste a YouTube playlist URL"); return; }
+    if (!playlistUrl.trim()) { setError("missing_url"); return; }
     setError("");
     setStarting(true);
     send({
@@ -156,6 +156,7 @@ export default function HostPage() {
               placements={state?.placements ?? {}}
               targetCardCount={state?.targetCardCount ?? 10}
               activePlayerId={state?.activePlayerId}
+              phase={phase}
             />
           </div>
         </div>
@@ -190,6 +191,7 @@ export default function HostPage() {
 
 function errorMessage(code: string): string {
   const messages: Record<string, string> = {
+    missing_url: "Paste a YouTube playlist URL",
     quota_exceeded: "YouTube API quota exceeded — try again after midnight PT",
     not_enough_songs: "Couldn't resolve enough song years from this playlist (need at least 2)",
     playlist_load_failed: "Couldn't load this playlist — check the URL and try again",
