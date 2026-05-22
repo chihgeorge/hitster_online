@@ -14,7 +14,8 @@ export default function LobbyPage() {
     host: process.env.NEXT_PUBLIC_PARTYKIT_HOST ?? "localhost:1999",
     room: params.code,
     onMessage(event: MessageEvent) {
-      const msg = JSON.parse(event.data as string) as ServerMessage;
+      let msg: ServerMessage;
+      try { msg = JSON.parse(event.data as string) as ServerMessage; } catch { return; }
       if (msg.type === "STATE") {
         setState(msg.state);
         if (msg.state.phase !== "lobby") {

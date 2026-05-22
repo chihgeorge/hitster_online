@@ -54,7 +54,8 @@ export default function PlayPage() {
       }
     },
     onMessage(event: MessageEvent) {
-      const msg = JSON.parse(event.data as string) as ServerMessage;
+      let msg: ServerMessage;
+      try { msg = JSON.parse(event.data as string) as ServerMessage; } catch { return; }
       switch (msg.type) {
         case "STATE":
           setState(msg.state);
