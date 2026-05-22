@@ -102,15 +102,8 @@ export default class HitsterRoom implements Party.Server {
     }
   }
 
-  onClose(conn: Party.Connection) {
-    // Mark player as disconnected; don't remove them so they can rejoin
-    for (const [playerId, player] of Object.entries(this.state.players)) {
-      // We can't easily map connection → playerId without a side map,
-      // so we just mark all players disconnected and let REJOIN re-establish.
-      // A proper implementation would maintain a conn-to-player map.
-      void playerId;
-      void player;
-    }
+  onClose(_conn: Party.Connection) {
+    // No connection→playerId map in v1; players reconnect via REJOIN with their stored playerId.
   }
 
   private handleJoin(conn: Party.Connection, playerId: string, rawName: string) {
@@ -170,8 +163,6 @@ export default class HitsterRoom implements Party.Server {
 
     this.state.placements[playerId] = position;
     this.sendTo(conn, { type: "PLACEMENT_ACK", playerId });
-
-    // Broadcast delta — only placement ack, not full state on every placement
     this.broadcastState();
   }
 

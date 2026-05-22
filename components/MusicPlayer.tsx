@@ -126,7 +126,8 @@ export default function MusicPlayer({ currentSong, phase, onReveal, onNextRound 
 // Extend window type for YouTube IFrame API
 declare global {
   interface Window {
-    YT: typeof YT;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    YT: any;
     onYouTubeIframeAPIReady: () => void;
   }
 }

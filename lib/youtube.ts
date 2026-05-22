@@ -90,7 +90,7 @@ export function parseArtistAndTrack(
   let track = match[2].trim();
 
   // Strip common suffixes like "(Official Video)", "[Lyrics]", "ft. X"
-  track = track.replace(/\s*[\[(](?:official|video|audio|lyric|lyrics|hd|4k|mv|feat|ft\.?)[^\])]*/gi, "").trim();
+  track = track.replace(/\s*[\[(](?:official|video|audio|lyric|lyrics|hd|4k|mv|feat|ft\.?)[^\])]*[\])]?/gi, "").trim();
 
   return { artist, track };
 }

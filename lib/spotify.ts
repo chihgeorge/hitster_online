@@ -85,8 +85,3 @@ async function searchSpotify(token: string, query: string): Promise<number | nul
   return isNaN(year) ? null : year;
 }
 
-/** Extracts just the 4-digit year from a Spotify release_date string. */
-export function extractYear(releaseDate: string): number | null {
-  const year = parseInt(releaseDate.slice(0, 4), 10);
-  return isNaN(year) ? null : year;
-}

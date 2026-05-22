@@ -31,6 +31,15 @@ export default function PlayPage() {
     playerIdRef.current = getOrCreatePlayerId();
   }, []);
 
+  // Reset placement UI whenever a new guessing round starts
+  useEffect(() => {
+    if (state?.phase === "guessing") {
+      setHasPlaced(false);
+      setTooLate(false);
+      setSelectedPosition(null);
+    }
+  }, [state?.phase]);
+
   const socket = usePartySocket({
     host: process.env.NEXT_PUBLIC_PARTYKIT_HOST ?? "localhost:1999",
     room: params.code,
@@ -49,12 +58,6 @@ export default function PlayPage() {
       switch (msg.type) {
         case "STATE":
           setState(msg.state);
-          // Reset placement state when a new round starts
-          if (msg.state.phase === "guessing" && state?.phase !== "guessing") {
-            setHasPlaced(false);
-            setTooLate(false);
-            setSelectedPosition(null);
-          }
           break;
         case "PLACEMENT_ACK":
           if (msg.playerId === playerIdRef.current) setHasPlaced(true);
