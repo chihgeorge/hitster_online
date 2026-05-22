@@ -40,9 +40,9 @@ export default function LobbyPage() {
           Players ({Object.keys(state?.players ?? {}).length})
         </h2>
         <ul className="flex flex-col gap-2">
-          {Object.values(state?.players ?? {}).map((player) => (
+          {Object.entries(state?.players ?? {}).map(([playerId, player]) => (
             <li
-              key={player.name}
+              key={playerId}
               className="flex items-center gap-3 rounded-xl bg-white/5 px-4 py-3"
             >
               <span className="h-2 w-2 rounded-full bg-green-400" />
