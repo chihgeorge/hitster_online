@@ -6,19 +6,20 @@ import type { Card, GamePhase } from "@/lib/game";
 interface Props {
   currentSong: Card | null;
   phase: GamePhase;
+  placementCount: number;
   onReveal: () => void;
   onNextRound: () => void;
 }
 
-export default function MusicPlayer({ currentSong, phase, onReveal, onNextRound }: Props) {
+export default function MusicPlayer({ currentSong, phase, placementCount, onReveal, onNextRound }: Props) {
   const playerRef = useRef<HTMLDivElement>(null);
   const [playerReady, setPlayerReady] = useState(false);
 
   useEffect(() => {
     if (!currentSong || typeof window === "undefined") return;
 
-    // Load YouTube IFrame API once
-    if (!window.YT) {
+    // Load YouTube IFrame API once — guard against duplicate injection on re-renders
+    if (!window.YT && !document.querySelector('script[src*="youtube.com/iframe_api"]')) {
       const tag = document.createElement("script");
       tag.src = "https://www.youtube.com/iframe_api";
       document.head.appendChild(tag);
@@ -64,50 +65,54 @@ export default function MusicPlayer({ currentSong, phase, onReveal, onNextRound 
   }
 
   return (
-    <div className="relative rounded-2xl overflow-hidden bg-black">
-      {/* YouTube IFrame target */}
-      <div ref={playerRef} className="w-full aspect-video" />
+    <div className="flex flex-col gap-4">
+      {/* Video + overlay — self-contained, overflow-hidden for rounded corners */}
+      <div className="relative rounded-2xl overflow-hidden bg-black">
+        {/* YouTube IFrame target */}
+        <div ref={playerRef} className="w-full aspect-video" />
 
-      {/* Overlay — covers video during guessing phase, reveals on reveal phase */}
-      {phase === "guessing" && (
-        <div
-          className="absolute inset-0 flex flex-col items-center justify-center bg-[#1a1a2e]/95 backdrop-blur-sm"
-          style={{ willChange: "opacity" }}
-        >
-          {/* CSS waveform — static keyframe animation, no JS RAF */}
-          <div className="flex items-end gap-1 h-16 mb-6" aria-label="Audio playing">
-            {[0.4, 0.7, 1, 0.6, 0.9, 0.5, 0.8, 0.3, 0.75, 0.55].map((h, i) => (
-              <div
-                key={i}
-                className="w-2 rounded-full bg-yellow-400 animate-[waveform_1.2s_ease-in-out_infinite_alternate]"
-                style={{
-                  height: `${h * 100}%`,
-                  animationDelay: `${i * 0.12}s`,
-                  willChange: "height",
-                }}
-              />
-            ))}
+        {/* Overlay — covers video during guessing phase */}
+        {phase === "guessing" && (
+          <div
+            className="absolute inset-0 flex flex-col items-center justify-center bg-[#1a1a2e]/95 backdrop-blur-sm"
+            style={{ willChange: "opacity" }}
+          >
+            {/* CSS waveform — static keyframe animation, no JS RAF */}
+            <div className="flex items-end gap-1 h-16 mb-6" aria-label="Audio playing">
+              {[0.4, 0.7, 1, 0.6, 0.9, 0.5, 0.8, 0.3, 0.75, 0.55].map((h, i) => (
+                <div
+                  key={i}
+                  className="w-2 rounded-full bg-yellow-400 animate-[waveform_1.2s_ease-in-out_infinite_alternate]"
+                  style={{
+                    height: `${h * 100}%`,
+                    animationDelay: `${i * 0.12}s`,
+                    willChange: "height",
+                  }}
+                />
+              ))}
+            </div>
+            <p className="text-gray-300 text-sm">Listening…</p>
           </div>
-          <p className="text-gray-300 text-sm">Listening…</p>
-        </div>
-      )}
+        )}
+      </div>
 
       {/* Reveal phase: show song info */}
       {phase === "reveal" && (
-        <div className="mt-3 px-2">
+        <div className="px-2">
           <p className="text-xl font-bold">{currentSong.title}</p>
           <p className="text-yellow-400 font-mono text-lg">{currentSong.year}</p>
         </div>
       )}
 
-      {/* Host controls */}
-      <div className="mt-4 flex gap-3">
+      {/* Host controls — outside the overflow-hidden container so overlay can't cover them */}
+      <div className="flex gap-3">
         {phase === "guessing" && (
           <button
             onClick={onReveal}
-            className="flex-1 rounded-xl bg-yellow-400 py-3 font-bold text-black hover:bg-yellow-300 transition-colors"
+            disabled={placementCount === 0}
+            className="flex-1 rounded-xl bg-yellow-400 py-3 font-bold text-black hover:bg-yellow-300 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
           >
-            Reveal →
+            {placementCount === 0 ? "Waiting for placements…" : `Reveal → (${placementCount} placed)`}
           </button>
         )}
         {phase === "reveal" && (

@@ -6,6 +6,8 @@ interface Props {
   timeline: Card[];
   currentSong: Card | null;
   phase: GamePhase;
+  isMyTurn: boolean;
+  activePlayerName: string | null;
   selectedPosition: number | null;
   onSelectPosition: (position: number) => void;
   onPlace: () => void;
@@ -17,13 +19,15 @@ export default function Timeline({
   timeline,
   currentSong,
   phase,
+  isMyTurn,
+  activePlayerName,
   selectedPosition,
   onSelectPosition,
   onPlace,
   hasPlaced,
   tooLate,
 }: Props) {
-  const canPlace = phase === "guessing" && !hasPlaced && !tooLate;
+  const canPlace = phase === "guessing" && isMyTurn && !hasPlaced && !tooLate;
 
   return (
     <div className="flex flex-col gap-1 pb-24">
@@ -54,8 +58,17 @@ export default function Timeline({
         <p className="text-xs text-gray-500 text-center py-2">Your timeline is empty — place this card anywhere</p>
       )}
 
+      {/* Spectator banner — shown when another player is guessing */}
+      {currentSong && phase === "guessing" && !isMyTurn && (
+        <div className="fixed bottom-0 left-0 right-0 p-4 bg-[#1a1a2e]/95 backdrop-blur border-t border-white/10">
+          <p className="text-center text-gray-400 text-sm">
+            <span className="text-yellow-400 font-semibold">{activePlayerName ?? "Another player"}</span> is guessing…
+          </p>
+        </div>
+      )}
+
       {/* Current song card at bottom */}
-      {currentSong && phase === "guessing" && (
+      {currentSong && phase === "guessing" && isMyTurn && (
         <div className="fixed bottom-0 left-0 right-0 p-4 bg-[#1a1a2e]/95 backdrop-blur border-t border-white/10">
           <div className="flex items-center gap-3 mb-3">
             <div className="flex-1 rounded-xl bg-yellow-400/10 border border-yellow-400/30 px-4 py-3">
@@ -64,7 +77,7 @@ export default function Timeline({
             </div>
           </div>
           {hasPlaced ? (
-            <p className="text-center text-green-400 font-medium">Placed ✓ — waiting for reveal</p>
+            <p className="text-center text-green-400 font-medium">Placed ✓ — host will reveal the year</p>
           ) : tooLate ? (
             <p className="text-center text-red-400 font-medium">Too late!</p>
           ) : selectedPosition !== null ? (

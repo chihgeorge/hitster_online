@@ -2,13 +2,11 @@ import type * as Party from "partykit/server";
 import {
   evaluateRound,
   checkWinner,
-  generateRoomCode,
   extractPlaylistId,
   type GameState,
   type ClientMessage,
   type ServerMessage,
   type Card,
-  type Player,
 } from "../lib/game";
 import {
   fetchPlaylistItems,
@@ -20,7 +18,6 @@ import {
 import { lookupReleaseYear } from "../lib/spotify";
 
 const DEFAULT_TARGET_CARD_COUNT = 10;
-const ROUND_TIMEOUT_MS = 90_000;
 const MAX_PLAYERS_SOFT = 8;
 
 // Player name constraints
@@ -34,7 +31,6 @@ function sanitizeName(name: string): string {
 
 export default class HitsterRoom implements Party.Server {
   state: GameState;
-  roundTimer: ReturnType<typeof setTimeout> | null = null;
 
   constructor(readonly room: Party.Room) {
     this.state = this.emptyState();
@@ -50,6 +46,7 @@ export default class HitsterRoom implements Party.Server {
       songs: [],
       currentSong: null,
       placements: {},
+      activePlayerId: null,
       hostId: "",
       winner: null,
     };
@@ -98,6 +95,9 @@ export default class HitsterRoom implements Party.Server {
         break;
       case "NEXT_ROUND":
         this.handleNextRound(sender, msg.hostId);
+        break;
+      case "RESET_GAME":
+        this.handleResetGame(sender, msg.hostId);
         break;
     }
   }
@@ -151,6 +151,7 @@ export default class HitsterRoom implements Party.Server {
       this.sendTo(conn, { type: "WRONG_PHASE" });
       return;
     }
+    if (playerId !== this.state.activePlayerId) return;
     if (!this.state.players[playerId]) return;
 
     // Validate position is within range of the player's timeline
@@ -197,6 +198,31 @@ export default class HitsterRoom implements Party.Server {
     this.state.playlistId = playlistId;
 
     this.broadcastState(); // show "loading..." to players
+
+    // Test seed: bypass API calls for deterministic E2E testing.
+    // Songs are in ascending year order (no shuffle) so placement positions are predictable.
+    if (playlistUrl === "hitster://test") {
+      this.state.targetCardCount = 3;
+      this.state.songs = Array.from({ length: 20 }, (_, i) => ({
+        id: `test-${i}`,
+        videoId: "dQw4w9WgXcQ",
+        title: `Test Song ${1960 + i * 3}`,
+        artist: "Test Artist",
+        year: 1960 + i * 3,
+        yearSource: "manual" as const,
+      } satisfies Card));
+      for (const [playerId, player] of Object.entries(this.state.players)) {
+        if (player.timeline.length === 0) {
+          const startingCard = this.pickStartingCard(playerId);
+          if (startingCard) {
+            player.timeline = [startingCard];
+            player.cardCount = 1;
+          }
+        }
+      }
+      this.startNextRound();
+      return;
+    }
 
     try {
       const tracks = await fetchPlaylistItems(playlistId);
@@ -292,7 +318,6 @@ export default class HitsterRoom implements Party.Server {
       return;
     }
 
-    this.clearRoundTimer();
     this.state.phase = "reveal";
 
     // Evaluate all placements inline (it's a synchronous event, not a phase)
@@ -343,6 +368,13 @@ export default class HitsterRoom implements Party.Server {
       return;
     }
 
+    // Rotate active player (round-robin over joined players)
+    const playerIds = Object.keys(this.state.players);
+    const currentIdx = this.state.activePlayerId
+      ? playerIds.indexOf(this.state.activePlayerId)
+      : -1;
+    this.state.activePlayerId = playerIds[(currentIdx + 1) % playerIds.length] ?? null;
+
     const nextSong = this.state.songs.shift()!;
     this.state.currentSong = nextSong;
     this.state.placements = {};
@@ -350,34 +382,31 @@ export default class HitsterRoom implements Party.Server {
     this.state.currentRound += 1;
 
     this.broadcastState();
-
-    // Auto-advance to reveal after 90s if host doesn't click Reveal
-    this.clearRoundTimer();
-    this.roundTimer = setTimeout(() => {
-      if (this.state.phase === "guessing") {
-        this.state.phase = "reveal";
-        if (this.state.currentSong) {
-          this.state.players = evaluateRound(
-            this.state.placements,
-            this.state.currentSong,
-            this.state.players
-          );
-        }
-        const winner = checkWinner(this.state.players, this.state.targetCardCount);
-        if (winner) {
-          this.state.phase = "ended";
-          this.state.winner = winner;
-        }
-        this.broadcastState();
-      }
-    }, ROUND_TIMEOUT_MS);
   }
 
-  private clearRoundTimer() {
-    if (this.roundTimer) {
-      clearTimeout(this.roundTimer);
-      this.roundTimer = null;
+  private handleResetGame(conn: Party.Connection, hostId: string) {
+    if (!this.isValidHostId(hostId)) {
+      this.sendTo(conn, { type: "ERROR", error: "unauthorized" });
+      return;
     }
+    if (this.state.phase !== "ended") {
+      this.sendTo(conn, { type: "ERROR", error: "wrong_phase" });
+      return;
+    }
+    // Keep the same players but reset game state to lobby
+    const players = this.state.players;
+    this.state = this.emptyState();
+    this.state.hostId = hostId;
+    // Reconnect all previously joined players (clear their timelines)
+    for (const [playerId, player] of Object.entries(players)) {
+      this.state.players[playerId] = {
+        name: player.name,
+        cardCount: 0,
+        timeline: [],
+        connected: player.connected,
+      };
+    }
+    this.broadcastState();
   }
 
   /** Picks and removes a starting card from the songs pool for a player. */

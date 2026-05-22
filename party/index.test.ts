@@ -148,6 +148,7 @@ describe("PLACE handler", () => {
     const r = new HitsterRoom(makeRoom() as any);
     r.state.players["p1"] = { name: "Alice", cardCount: 0, timeline: [], connected: true };
     r.state.phase = "guessing";
+    r.state.activePlayerId = "p1";
     r.state.currentSong = {
       id: "v1", videoId: "v1", title: "Song", artist: "Artist", year: 1985, yearSource: "description",
     };

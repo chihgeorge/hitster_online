@@ -29,6 +29,7 @@ export interface GameState {
   // playerId → 0-based insertion position on that player's own timeline.
   // 0 = before first card, 1 = between card[0] and card[1], etc.
   placements: Record<string, number>;
+  activePlayerId: string | null; // whose turn it is to guess this round
   hostId: string;
   winner: string | null; // playerId of winner once phase === 'ended'
 }
@@ -41,7 +42,8 @@ export type ClientMessage =
   | { type: "PLACE"; playerId: string; position: number }
   | { type: "START_GAME"; hostId: string; playlistUrl: string; targetCardCount?: number }
   | { type: "REVEAL"; hostId: string }
-  | { type: "NEXT_ROUND"; hostId: string };
+  | { type: "NEXT_ROUND"; hostId: string }
+  | { type: "RESET_GAME"; hostId: string };
 
 export type ServerMessage =
   | { type: "STATE"; state: GameState }
@@ -101,7 +103,7 @@ export function evaluateRound(
 
     if (correct) {
       const newTimeline = [...player.timeline];
-      newTimeline.splice(position, 0, revealedSong);
+      newTimeline.splice(position, 0, { ...revealedSong });
       updated[playerId] = {
         ...player,
         cardCount: player.cardCount + 1,

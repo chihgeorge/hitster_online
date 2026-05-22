@@ -81,6 +81,8 @@ export default function PlayPage() {
 
   const phase = state?.phase ?? "lobby";
   const myPlayer: Player | null = state?.players[playerIdRef.current] ?? null;
+  const isMyTurn = state?.activePlayerId === playerIdRef.current;
+  const activePlayer = state?.activePlayerId ? state.players[state.activePlayerId] : null;
 
   if (phase === "lobby") {
     return (
@@ -131,6 +133,8 @@ export default function PlayPage() {
         timeline={myPlayer?.timeline ?? []}
         currentSong={state?.currentSong ?? null}
         phase={phase}
+        isMyTurn={isMyTurn}
+        activePlayerName={activePlayer?.name ?? null}
         selectedPosition={selectedPosition}
         onSelectPosition={setSelectedPosition}
         onPlace={handlePlace}
