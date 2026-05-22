@@ -1,15 +1,16 @@
 "use client";
 
-import type { Player } from "@/lib/game";
+import type { GamePhase, Player } from "@/lib/game";
 
 interface Props {
   players: Record<string, Player>;
   placements: Record<string, number>;
   targetCardCount: number;
   activePlayerId?: string | null;
+  phase?: GamePhase;
 }
 
-export default function PlayerList({ players, placements, targetCardCount, activePlayerId }: Props) {
+export default function PlayerList({ players, placements, targetCardCount, activePlayerId, phase }: Props) {
   return (
     <div className="flex flex-col gap-2">
       {Object.entries(players).map(([playerId, player]) => {
@@ -25,7 +26,7 @@ export default function PlayerList({ players, placements, targetCardCount, activ
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-2">
                 <p className="font-medium truncate">{player.name}</p>
-                {isActive && (
+                {isActive && phase === "guessing" && (
                   <span className="text-xs text-yellow-400 font-semibold uppercase tracking-wide">
                     guessing
                   </span>
