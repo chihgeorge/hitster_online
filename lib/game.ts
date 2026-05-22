@@ -8,7 +8,7 @@ export interface Card {
   title: string;
   artist: string;
   year: number;
-  yearSource: "spotify" | "manual";
+  yearSource: "spotify" | "description" | "title" | "manual";
 }
 
 export interface Player {
