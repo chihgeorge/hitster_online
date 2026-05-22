@@ -5,6 +5,7 @@ export interface YouTubeTrack {
   videoId: string;
   title: string;
   description: string;
+  channelTitle: string;
 }
 
 const BASE = "https://www.googleapis.com/youtube/v3";
@@ -60,6 +61,7 @@ export async function fetchPlaylistItems(
           videoId,
           title: item.snippet.title,
           description: item.snippet.description ?? "",
+          channelTitle: item.snippet.videoOwnerChannelTitle ?? "",
         });
       }
     }
@@ -77,8 +79,11 @@ export async function fetchPlaylistItems(
 export function parseArtistAndTrack(
   title: string
 ): { artist: string; track: string } | null {
+  // Strip trailing year like "(1980)" or "[1980]" before splitting
+  const stripped = title.replace(/\s*[\[(]\d{4}[\])]\s*$/, "").trim();
+
   // Common YouTube Music format: "Artist - Track"
-  const match = title.match(/^(.+?)\s*[-–—]\s*(.+)$/);
+  const match = stripped.match(/^(.+?)\s*[-–—]\s*(.+)$/);
   if (!match) return null;
 
   let artist = match[1].trim();
@@ -88,4 +93,72 @@ export function parseArtistAndTrack(
   track = track.replace(/\s*[\[(](?:official|video|audio|lyric|lyrics|hd|4k|mv|feat|ft\.?)[^\])]*/gi, "").trim();
 
   return { artist, track };
+}
+
+/**
+ * Parses metadata from a YouTube Music description.
+ * YouTube Music descriptions contain structured lines like:
+ *   "Provided to YouTube by ..."
+ *   "Artist: Name"
+ *   "Released on: YYYY-MM-DD"
+ *   "℗ YYYY Label"
+ */
+export function parseYouTubeMusicDescription(description: string): {
+  artist?: string;
+  year?: number;
+} {
+  const result: { artist?: string; year?: number } = {};
+
+  const releasedMatch = description.match(/Released on:\s*(\d{4})/);
+  if (releasedMatch) result.year = parseInt(releasedMatch[1], 10);
+
+  if (!result.year) {
+    const copyrightMatch = description.match(/℗\s*(\d{4})/);
+    if (copyrightMatch) result.year = parseInt(copyrightMatch[1], 10);
+  }
+
+  const artistLineMatch = description.match(/^Artist:\s*(.+)$/m);
+  if (artistLineMatch) result.artist = artistLineMatch[1].trim();
+
+  if (!result.artist) {
+    // "Song · Artist" dot-separated format
+    const dotMatch = description.match(/^.+\s·\s(.+)$/m);
+    if (dotMatch) {
+      const parts = dotMatch[0].split("·").map((s) => s.trim());
+      if (parts.length >= 2) result.artist = parts.slice(1).join(", ");
+    }
+  }
+
+  return result;
+}
+
+/**
+ * Strips "Artist - Topic" suffix from YouTube auto-generated channel names.
+ * e.g. "Frank Mills - Topic" → "Frank Mills"
+ */
+export function channelToArtist(channelTitle: string): string {
+  return channelTitle.replace(/\s*-\s*Topic\s*$/i, "").trim();
+}
+
+/**
+ * Extracts a 4-digit release year from a video title.
+ * Matches patterns like "(1980)", "[1980]", or a bare year at the end.
+ * Returns null if no plausible year found.
+ */
+export function extractYearFromTitle(title: string): number | null {
+  // Prefer year in parens/brackets: "song name (1980)" or "song [1980]"
+  const bracketed = title.match(/[\[(]((?:19|20)\d{2})[\])]/);
+  if (bracketed) {
+    const year = parseInt(bracketed[1], 10);
+    if (year >= 1900 && year <= new Date().getFullYear() + 1) return year;
+  }
+
+  // Fall back to bare year at end of title: "song name - artist 1980"
+  const trailing = title.match(/\b((?:19|20)\d{2})\s*$/);
+  if (trailing) {
+    const year = parseInt(trailing[1], 10);
+    if (year >= 1900 && year <= new Date().getFullYear() + 1) return year;
+  }
+
+  return null;
 }

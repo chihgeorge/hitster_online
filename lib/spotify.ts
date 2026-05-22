@@ -36,6 +36,7 @@ async function getAccessToken(): Promise<string> {
 
 /**
  * Looks up the release year for a song using the Spotify search API.
+ * Tries artist+track query first; falls back to track-only for non-English titles.
  * Prefers singles/albums over compilations to get the original release year.
  * Returns null if no match is found.
  */
@@ -44,8 +45,13 @@ export async function lookupReleaseYear(
   track: string
 ): Promise<number | null> {
   const token = await getAccessToken();
+  return (
+    (await searchSpotify(token, `${track} artist:${artist}`)) ??
+    (await searchSpotify(token, track))
+  );
+}
 
-  const query = encodeURIComponent(`${track} artist:${artist}`);
+async function searchSpotify(token: string, query: string): Promise<number | null> {
   const params = new URLSearchParams({ q: query, type: "track", limit: "5" });
 
   const res = await fetch(`${SEARCH_URL}?${params}`, {

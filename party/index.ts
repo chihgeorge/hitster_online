@@ -10,7 +10,13 @@ import {
   type Card,
   type Player,
 } from "../lib/game";
-import { fetchPlaylistItems, parseArtistAndTrack } from "../lib/youtube";
+import {
+  fetchPlaylistItems,
+  parseArtistAndTrack,
+  parseYouTubeMusicDescription,
+  channelToArtist,
+  extractYearFromTitle,
+} from "../lib/youtube";
 import { lookupReleaseYear } from "../lib/spotify";
 
 const DEFAULT_TARGET_CARD_COUNT = 10;
@@ -211,19 +217,43 @@ export default class HitsterRoom implements Party.Server {
         const batch = tracks.slice(i, i + BATCH);
         const results = await Promise.allSettled(
           batch.map(async (track) => {
-            const parsed = parseArtistAndTrack(track.title);
-            if (!parsed) return null;
+            // Layer 1: YouTube Music structured description (most reliable)
+            const descMeta = parseYouTubeMusicDescription(track.description);
 
-            const year = await lookupReleaseYear(parsed.artist, parsed.track).catch(() => null);
-            if (!year) return null;
+            // Layer 2: year embedded directly in title like "song (1980)"
+            const titleYear = extractYearFromTitle(track.title);
+
+            // Layer 3: parse "Artist - Track" from title
+            const titleParsed = parseArtistAndTrack(track.title);
+
+            // Best artist guess: description > title parse > channel name
+            const artist =
+              descMeta.artist ??
+              titleParsed?.artist ??
+              channelToArtist(track.channelTitle);
+
+            const trackName = titleParsed?.track ?? track.title;
+
+            // Year resolution priority: description > title > Spotify API
+            let year: number | null = descMeta.year ?? titleYear ?? null;
+            let yearSource: Card["yearSource"] = descMeta.year
+              ? "description"
+              : titleYear
+              ? "title"
+              : "spotify";
+
+            if (!year) {
+              year = await lookupReleaseYear(artist, trackName).catch(() => null);
+              if (!year) return null;
+            }
 
             return {
               id: track.videoId,
               videoId: track.videoId,
               title: track.title,
-              artist: parsed.artist,
+              artist,
               year,
-              yearSource: "spotify" as const,
+              yearSource,
             } satisfies Card;
           })
         );
