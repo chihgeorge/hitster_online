@@ -12,8 +12,19 @@
 
 ## P2 — Ship before public launch
 
-- [ ] **P2** Full-round E2E test (host + player completing a game round)  
-  `e2e/game.spec.ts` covers landing and lobby. Still needed: multi-context test that opens host view in one browser context and player view in another, plays through a full guessing→reveal→next-round cycle, and asserts the correct score update.  
+- [ ] **P2** Strip future song years from broadcast state (security/fairness)  
+  `broadcastState()` sends the full `songs: Card[]` array including `year` for every remaining card. Players reading WebSocket messages can see all future songs. Fix: strip `year` from `songs` in the broadcast payload (keep year on `currentSong` for reveal).
+
+- [ ] **P2** hostId first-write-wins is vulnerable to takeover  
+  Any client sending `START_GAME` before the real host claims permanent host role. Fine for party game in private settings; needs a shared-secret mechanism or invite flow before public launch.
+
+- [ ] **P2** playerId comes from client message body, not server-side connection identity  
+  `handlePlace` trusts `msg.playerId`. A malicious client can send any playerId. Low impact with turn-based rules (only the active player's placement matters), but should bind playerId to connection on JOIN.
+
+
+
+- [x] **P2** Full-round E2E test (host + player completing a game round)  
+  Completed: `e2e/two-player-game.spec.ts` covers 3-round turn-based game with Alice + Bob, testing guessing, spectating, reveal, and win condition.  
   _Deferred from plan: foamy-crafting-bonbon.md_
 
 - [ ] **P2** Concurrent-placement integration test  

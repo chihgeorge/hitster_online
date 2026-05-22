@@ -72,6 +72,10 @@ export default function HostPage() {
     send({ type: "NEXT_ROUND", hostId: hostIdRef.current });
   }
 
+  function handleResetGame() {
+    send({ type: "RESET_GAME", hostId: hostIdRef.current });
+  }
+
   const phase = state?.phase ?? "lobby";
   const playerCount = Object.keys(state?.players ?? {}).length;
 
@@ -139,6 +143,7 @@ export default function HostPage() {
           <MusicPlayer
             currentSong={state?.currentSong ?? null}
             phase={phase}
+            placementCount={Object.keys(state?.placements ?? {}).length}
             onReveal={handleReveal}
             onNextRound={handleNextRound}
           />
@@ -150,6 +155,7 @@ export default function HostPage() {
               players={state?.players ?? {}}
               placements={state?.placements ?? {}}
               targetCardCount={state?.targetCardCount ?? 10}
+              activePlayerId={state?.activePlayerId}
             />
           </div>
         </div>
@@ -167,10 +173,11 @@ export default function HostPage() {
               players={state.players}
               placements={{}}
               targetCardCount={state.targetCardCount}
+              activePlayerId={null}
             />
           </div>
           <button
-            onClick={() => window.location.reload()}
+            onClick={handleResetGame}
             className="rounded-xl bg-white/10 px-8 py-3 font-semibold hover:bg-white/20 transition-colors"
           >
             Play again
