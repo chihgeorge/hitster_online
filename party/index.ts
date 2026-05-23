@@ -18,7 +18,10 @@ import {
 import { lookupReleaseYear } from "../lib/spotify";
 
 const DEFAULT_TARGET_CARD_COUNT = 10;
+const MAX_TARGET_CARD_COUNT = 20;
+const SPOTIFY_BATCH_SIZE = 10;
 const MAX_PLAYERS_SOFT = 8;
+const PLAYLIST_ID_PATTERN = /^[A-Za-z0-9_-]{5,64}$/;
 
 // Player name constraints
 const MAX_NAME_LENGTH = 20;
@@ -112,9 +115,6 @@ export default class HitsterRoom implements Party.Server {
       this.sendTo(conn, { type: "ERROR", error: "invalid_name" });
       return;
     }
-    if (this.state.phase !== "lobby") {
-      // Late join: added but skips current round
-    }
     if (Object.keys(this.state.players).length >= MAX_PLAYERS_SOFT) {
       this.sendTo(conn, { type: "ERROR", error: "room_full" });
       return;
@@ -190,8 +190,8 @@ export default class HitsterRoom implements Party.Server {
       return;
     }
 
-    if (targetCardCount) {
-      this.state.targetCardCount = Math.max(1, Math.min(targetCardCount, 20));
+    if (typeof targetCardCount === "number") {
+      this.state.targetCardCount = Math.max(1, Math.min(targetCardCount, MAX_TARGET_CARD_COUNT));
     }
 
     const playlistId = extractPlaylistId(playlistUrl);
@@ -224,12 +224,17 @@ export default class HitsterRoom implements Party.Server {
       return;
     }
 
+    if (!PLAYLIST_ID_PATTERN.test(playlistId)) {
+      this.sendTo(conn, { type: "ERROR", error: "playlist_load_failed" });
+      return;
+    }
+
     try {
       const tracks = await fetchPlaylistItems(playlistId);
       const songs: Card[] = [];
 
-      // Resolve release years in parallel (max 10 concurrent Spotify requests)
-      const BATCH = 10;
+      // Resolve release years in parallel batches
+      const BATCH = SPOTIFY_BATCH_SIZE;
       for (let i = 0; i < tracks.length; i += BATCH) {
         const batch = tracks.slice(i, i + BATCH);
         const results = await Promise.allSettled(
