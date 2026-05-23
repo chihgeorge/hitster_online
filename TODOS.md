@@ -10,6 +10,11 @@
   The guessing-phase overlay uses `bg-[#1a1a2e]/95 backdrop-blur-sm` — fully opaque. The plan specified a blurred thumbnail visible at ~10% opacity under the overlay to satisfy YouTube ToS. Verify whether ToS requires any visible portion of the video, and if so, add `<img src={thumbnail} className="absolute inset-0 opacity-10 object-cover" />` behind the overlay.  
   _Deferred from plan: foamy-crafting-bonbon.md_
 
+## Pre-launch security
+
+- [x] **CRITICAL** Rotate leaked API credentials  
+  YouTube API key + Spotify client ID/secret were committed to git history. Credentials have been rotated.
+
 ## P2 — Ship before public launch
 
 - [ ] **P2** Strip future song years from broadcast state (security/fairness)  
