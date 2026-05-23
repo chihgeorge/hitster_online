@@ -432,6 +432,130 @@ describe("NEXT_ROUND handler", () => {
   });
 });
 
+// ─── RESET_GAME ──────────────────────────────────────────────────────────────
+
+describe("RESET_GAME handler", () => {
+  async function endedRoom() {
+    vi.clearAllMocks();
+    vi.mocked(fetchPlaylistItems).mockResolvedValue([
+      fakeTrack("v1", 1980),
+      fakeTrack("v2", 1985),
+      fakeTrack("v3", 1990),
+    ]);
+    const room = new HitsterRoom(makeRoom() as any);
+    const conn = makeConn();
+    await send(room, conn, { type: "JOIN", playerId: "p1", name: "Alice" });
+    await send(room, conn, { type: "START_GAME", hostId: "host-uuid", playlistUrl: "PLtest" });
+    room.state.phase = "ended";
+    room.state.winner = "p1";
+    return { room, conn };
+  }
+
+  it("resets to lobby and preserves players", async () => {
+    const { room, conn } = await endedRoom();
+    await send(room, conn, { type: "RESET_GAME", hostId: "host-uuid" });
+    expect(room.state.phase).toBe("lobby");
+    expect(room.state.winner).toBeNull();
+    expect(room.state.players["p1"].name).toBe("Alice");
+    expect(room.state.players["p1"].cardCount).toBe(0);
+    expect(room.state.players["p1"].timeline).toHaveLength(0);
+  });
+
+  it("rejects RESET_GAME from non-host", async () => {
+    const { room } = await endedRoom();
+    const intruder = makeConn("intruder");
+    await send(room, intruder, { type: "RESET_GAME", hostId: "wrong" });
+    expect(lastSentTo(intruder)?.error).toBe("unauthorized");
+    expect(room.state.phase).toBe("ended");
+  });
+
+  it("rejects RESET_GAME when not in ended phase", async () => {
+    const room = new HitsterRoom(makeRoom() as any);
+    room.state.hostId = "host-uuid";
+    room.state.phase = "guessing";
+    const conn = makeConn();
+    await send(room, conn, { type: "RESET_GAME", hostId: "host-uuid" });
+    expect(lastSentTo(conn)?.error).toBe("wrong_phase");
+    expect(room.state.phase).toBe("guessing");
+  });
+});
+
+// ─── PLACE edge cases ─────────────────────────────────────────────────────────
+
+describe("PLACE edge cases", () => {
+  function roomInGuessing() {
+    const r = new HitsterRoom(makeRoom() as any);
+    r.state.players["p1"] = { name: "Alice", cardCount: 0, timeline: [], connected: true };
+    r.state.players["p2"] = { name: "Bob", cardCount: 0, timeline: [], connected: true };
+    r.state.phase = "guessing";
+    r.state.activePlayerId = "p1";
+    r.state.currentSong = {
+      id: "v1", videoId: "v1", title: "Song", artist: "Artist", year: 1985, yearSource: "description",
+    };
+    return r;
+  }
+
+  it("silently ignores PLACE from non-active player", async () => {
+    const room = roomInGuessing();
+    const conn = makeConn();
+    await send(room, conn, { type: "PLACE", playerId: "p2", position: 0 });
+    expect(room.state.placements["p2"]).toBeUndefined();
+    expect(lastSentTo(conn)).toBeNull();
+  });
+
+  it("rejects negative position with invalid_position error", async () => {
+    const room = roomInGuessing();
+    const conn = makeConn();
+    await send(room, conn, { type: "PLACE", playerId: "p1", position: -1 });
+    expect(lastSentTo(conn)?.error).toBe("invalid_position");
+  });
+});
+
+// ─── REVEAL edge cases ────────────────────────────────────────────────────────
+
+describe("REVEAL edge cases", () => {
+  it("rejects REVEAL when not in guessing phase", async () => {
+    const room = new HitsterRoom(makeRoom() as any);
+    room.state.hostId = "host-uuid";
+    room.state.phase = "reveal";
+    const conn = makeConn();
+    await send(room, conn, { type: "REVEAL", hostId: "host-uuid" });
+    expect(lastSentTo(conn)?.error).toBe("wrong_phase");
+  });
+});
+
+// ─── START_GAME boundary conditions ──────────────────────────────────────────
+
+describe("START_GAME targetCardCount clamping", () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it("clamps targetCardCount of 0 to 1", async () => {
+    vi.mocked(fetchPlaylistItems).mockResolvedValue([
+      fakeTrack("v1", 1980),
+      fakeTrack("v2", 1985),
+      fakeTrack("v3", 1990),
+    ]);
+    const room = new HitsterRoom(makeRoom() as any);
+    const conn = makeConn();
+    await send(room, conn, { type: "JOIN", playerId: "p1", name: "Alice" });
+    await send(room, conn, { type: "START_GAME", hostId: "host-uuid", playlistUrl: "PLtest", targetCardCount: 0 });
+    expect(room.state.targetCardCount).toBe(1);
+  });
+
+  it("clamps targetCardCount of 25 to 20", async () => {
+    vi.mocked(fetchPlaylistItems).mockResolvedValue([
+      fakeTrack("v1", 1980),
+      fakeTrack("v2", 1985),
+      fakeTrack("v3", 1990),
+    ]);
+    const room = new HitsterRoom(makeRoom() as any);
+    const conn = makeConn();
+    await send(room, conn, { type: "JOIN", playerId: "p1", name: "Alice" });
+    await send(room, conn, { type: "START_GAME", hostId: "host-uuid", playlistUrl: "PLtest", targetCardCount: 25 });
+    expect(room.state.targetCardCount).toBe(20);
+  });
+});
+
 // ─── Malformed JSON ───────────────────────────────────────────────────────────
 
 describe("malformed message handling", () => {
