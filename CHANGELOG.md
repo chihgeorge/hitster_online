@@ -12,16 +12,17 @@
 - **Player controller** (`app/room/[code]/play/page.tsx`, `components/Timeline.tsx`): vertical scrollable timeline with drop-zone buttons, `Place here →` CTA, phase-aware state reset on new rounds
 - **Landing page** (`app/page.tsx`): create room (host) / join by 4-letter code (player)
 - **Lobby page** (`app/room/[code]/lobby/page.tsx`): waiting room with live player list, auto-redirects when host starts
-- **Test suite** (89 tests, 88% coverage): `lib/game.test.ts`, `lib/youtube.test.ts`, `lib/spotify.test.ts`, `party/index.test.ts`
-- **Playwright E2E**: landing, lobby, and mobile Safari (iPhone 12) viewport smoke tests
+- **Test suite** (97 tests): `lib/game.test.ts`, `lib/youtube.test.ts`, `lib/spotify.test.ts`, `party/index.test.ts` — full coverage of game logic, API clients, and all server message handlers
+- **Playwright E2E**: two-player full-round game test (`e2e/two-player-game.spec.ts`), landing/lobby smoke tests, mobile Safari (iPhone 12) viewport
 - **PWA manifest** (`public/manifest.json`): icons, theme colour, no service worker (v1)
 
 ### Security
 - Player names sanitized server-side (max 20 chars, HTML special chars stripped)
 - Host identity stored as `crypto.randomUUID()` in localStorage — sufficient for party-game use
 - `env.example` uses placeholder values — never commit real credentials
+- Playlist ID validated against allowlist pattern before YouTube API call
+- `targetCardCount: 0` clamping bug fixed (`if (targetCardCount)` → `typeof targetCardCount === "number"`)
 
 ### Known limitations (TODOS.md)
 - YouTube overlay is fully opaque; blurred thumbnail under overlay (YouTube ToS) is deferred
-- No full-round E2E test (host + player completing a round)
 - Late-placement error key is `WRONG_PHASE` rather than `too_late` as originally planned
