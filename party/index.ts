@@ -284,7 +284,7 @@ export default class HitsterRoom implements Party.Server {
 
             const trackName = titleParsed?.track ?? track.title;
 
-            // Year resolution priority: description > title > Spotify > Google KG
+            // Year resolution priority: description > title > Spotify > iTunes > Google KG
             let year: number | null = descMeta.year ?? titleYear ?? null;
             let yearSource: Card["yearSource"] = descMeta.year
               ? "description"
@@ -299,7 +299,6 @@ export default class HitsterRoom implements Party.Server {
                   if (year) yearSource = "spotify";
                 } catch (err) {
                   if (err instanceof SpotifyRateLimitedError) spotifyRateLimited = true;
-                  // Other errors (missing credentials, network): year stays null
                 }
               }
               // iTunes Search API: free, no key, good international coverage

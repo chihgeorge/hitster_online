@@ -30,6 +30,43 @@ describe("parseArtistAndTrack", () => {
     expect(parseArtistAndTrack("Just A Title")).toBeNull();
   });
 
+  // C-pop / Chinese title formats
+  it("parses 《Track》 format: '于文文《體面》動態歌詞版'", () => {
+    const r = parseArtistAndTrack("于文文《體面》動態歌詞版  【前任3:再見前任 插曲】");
+    expect(r?.artist).toBe("于文文");
+    expect(r?.track).toBe("體面");
+  });
+
+  it("parses 【Track】 format: 'G.E.M.【光年之外 LIGHT YEARS AWAY 】MV'", () => {
+    const r = parseArtistAndTrack("G.E.M.【光年之外 LIGHT YEARS AWAY 】MV (電影《太空潛航者 Passengers》中文主題曲) [HD] 鄧紫棋");
+    expect(r?.artist).toBe("G.E.M.");
+    expect(r?.track).toContain("光年之外");
+  });
+
+  it("parses 【Track】 after featuring paren: '周杰倫 Jay Chou (特別演出: 派偉俊)【告白氣球 Love Confession】Official MV'", () => {
+    const r = parseArtistAndTrack("周杰倫 Jay Chou (特別演出: 派偉俊)【告白氣球 Love Confession】Official MV");
+    expect(r?.artist).toBe("周杰倫 Jay Chou");
+    expect(r?.track).toContain("告白氣球");
+  });
+
+  it("strips leading movie context and parses 《Track》: '【我的少女時代】Movie Theme Song - 田馥甄《小幸運》'", () => {
+    const r = parseArtistAndTrack("【我的少女時代 Our Times】Movie Theme Song - 田馥甄 Hebe Tien《小幸運 A Little Happiness》Official MV");
+    expect(r?.artist).toContain("田馥甄");
+    expect(r?.track).toContain("小幸運");
+  });
+
+  it("parses 【Track】 after dash: '高爾宣 OSN -【Without You】沒了妳'", () => {
+    const r = parseArtistAndTrack("高爾宣 OSN -【Without You】沒了妳｜Official MV");
+    expect(r?.artist).toBe("高爾宣 OSN");
+    expect(r?.track).toBe("Without You");
+  });
+
+  it("parses [ Track ] English bracket format: 'MP魔幻力量 [ 我還是愛著你 I still love you ]'", () => {
+    const r = parseArtistAndTrack("MP魔幻力量 [ 我還是愛著你 I still love you ] Official Music Video - 三立華劇");
+    expect(r?.artist).toBe("MP魔幻力量");
+    expect(r?.track).toContain("我還是愛著你");
+  });
+
   it("strips '(Official Video)' suffix from track", () => {
     const result = parseArtistAndTrack("Artist - Track (Official Video)");
     expect(result?.track).toBe("Track");

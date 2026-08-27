@@ -109,14 +109,16 @@ export default function Timeline({
 
 function TimelineCard({ card }: { card: Card }) {
   return (
-    <div className="flex items-center gap-3 rounded-xl bg-white/5 px-4 py-3 mx-1">
-      <div className="font-mono text-yellow-400 font-bold text-lg w-12 shrink-0 text-center">
+    <div className="flex flex-col items-center justify-center rounded-2xl bg-white/8 border border-white/10 py-5 px-5 mx-1 min-h-[96px] text-center gap-1">
+      <p className="font-mono text-yellow-400 font-bold text-3xl leading-none tracking-tight">
         {card.year}
-      </div>
-      <div className="min-w-0">
-        <p className="font-medium truncate text-sm">{card.title}</p>
-        <p className="text-xs text-gray-500 truncate">{card.artist}</p>
-      </div>
+      </p>
+      <p className="text-sm text-white/80 font-medium leading-tight w-full truncate">
+        {card.artist}
+      </p>
+      <p className="text-xs text-gray-500 leading-tight w-full truncate">
+        {card.title}
+      </p>
     </div>
   );
 }
