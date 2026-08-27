@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import type { SpotifyRateLimitedError as SpotifyRateLimitedErrorType } from "./spotify";
 
 // Stub global fetch before any module import so the module captures the stub.
 const mockFetch = vi.fn();
@@ -38,6 +39,7 @@ function errorRes(status: number) {
 
 describe("lookupReleaseYear", () => {
   let lookupReleaseYear: (artist: string, track: string) => Promise<number | null>;
+  let SpotifyRateLimitedError: typeof SpotifyRateLimitedErrorType;
 
   beforeEach(async () => {
     vi.resetModules();
@@ -46,6 +48,7 @@ describe("lookupReleaseYear", () => {
     process.env.SPOTIFY_CLIENT_SECRET = "csecret";
     const mod = await import("./spotify");
     lookupReleaseYear = mod.lookupReleaseYear;
+    SpotifyRateLimitedError = mod.SpotifyRateLimitedError;
   });
 
   afterEach(() => {
@@ -98,11 +101,10 @@ describe("lookupReleaseYear", () => {
     expect(mockFetch).toHaveBeenCalledTimes(3);
   });
 
-  it("returns null when both searches return no items", async () => {
+  it("returns null when all searches return no items", async () => {
     mockFetch
       .mockImplementationOnce(() => tokenRes())
-      .mockImplementationOnce(() => searchRes([]))
-      .mockImplementationOnce(() => searchRes([]));
+      .mockImplementation(() => searchRes([])); // all search attempts return empty
 
     expect(await lookupReleaseYear("Artist", "Track")).toBeNull();
   });
@@ -110,18 +112,35 @@ describe("lookupReleaseYear", () => {
   it("returns null when search responds with non-ok status (not 429)", async () => {
     mockFetch
       .mockImplementationOnce(() => tokenRes())
-      .mockImplementationOnce(() => errorRes(500))
-      .mockImplementationOnce(() => errorRes(500));
+      .mockImplementation(() => errorRes(500)); // all search attempts return 500
 
     expect(await lookupReleaseYear("Artist", "Track")).toBeNull();
   });
 
-  it("throws RATE_LIMITED when search responds with 429", async () => {
+  it("returns null when search responds with 429 and retry responds with non-429 error", async () => {
     mockFetch
       .mockImplementationOnce(() => tokenRes())
-      .mockImplementationOnce(() => errorRes(429));
+      // first attempt → 429 with Retry-After: 0
+      .mockImplementationOnce(() =>
+        Promise.resolve({ ok: false, status: 429, headers: { get: () => "0" }, json: () => Promise.resolve({}) })
+      )
+      // retry → non-ok 500 (not another 429) → returns null, keeps trying strategies
+      .mockImplementation(() => errorRes(500));
 
-    await expect(lookupReleaseYear("Artist", "Track")).rejects.toThrow("RATE_LIMITED");
+    expect(await lookupReleaseYear("Artist", "Track")).toBeNull();
+  });
+
+  it("throws SpotifyRateLimitedError when search responds with 429 and retry is also 429", async () => {
+    const rate429 = () =>
+      Promise.resolve({ ok: false, status: 429, headers: { get: () => "0" }, json: () => Promise.resolve({}) });
+    mockFetch
+      .mockImplementationOnce(() => tokenRes())
+      // first attempt → 429
+      .mockImplementationOnce(rate429)
+      // retry → also 429
+      .mockImplementationOnce(rate429);
+
+    await expect(lookupReleaseYear("Artist", "Track")).rejects.toThrow(SpotifyRateLimitedError);
   });
 
   it("throws when SPOTIFY_CLIENT_ID is not set", async () => {
@@ -137,14 +156,14 @@ describe("lookupReleaseYear", () => {
   it("returns null when release_date year portion is non-numeric", async () => {
     mockFetch
       .mockImplementationOnce(() => tokenRes())
-      // first search: returns an item but release_date is non-numeric → searchSpotify returns null
+      // first search: returns an item but release_date is non-numeric → null
       .mockImplementationOnce(() =>
         searchRes([{ album_type: "album", release_date: "unknown" }])
       )
-      // fallback search: no items → null
-      .mockImplementationOnce(() => searchRes([]));
+      // all remaining searches: no items → null
+      .mockImplementation(() => searchRes([]));
 
-    // parseInt("unkn", 10) → NaN → null from both paths
+    // parseInt("unkn", 10) → NaN → null from all paths
     expect(await lookupReleaseYear("Artist", "Track")).toBeNull();
   });
 

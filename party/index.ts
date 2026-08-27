@@ -6,6 +6,7 @@ import {
   type GameState,
   type ClientMessage,
   type ServerMessage,
+  type SongDiagnostic,
   type Card,
 } from "../lib/game";
 import {
@@ -15,11 +16,12 @@ import {
   channelToArtist,
   extractYearFromTitle,
 } from "../lib/youtube";
-import { lookupReleaseYear } from "../lib/spotify";
+import { lookupReleaseYear, SpotifyRateLimitedError } from "../lib/spotify";
+import { lookupYearFromKnowledgeGraph } from "../lib/googlekg";
 
 const DEFAULT_TARGET_CARD_COUNT = 10;
 const MAX_TARGET_CARD_COUNT = 20;
-const SPOTIFY_BATCH_SIZE = 10;
+const SPOTIFY_BATCH_SIZE = 3;
 const MAX_PLAYERS_SOFT = 8;
 const PLAYLIST_ID_PATTERN = /^[A-Za-z0-9_-]{5,64}$/;
 
@@ -230,13 +232,35 @@ export default class HitsterRoom implements Party.Server {
     }
 
     try {
-      const tracks = await fetchPlaylistItems(playlistId);
-      const songs: Card[] = [];
+      // Production: PartyKit stores secrets with pkvar- prefix in Cloudflare env
+      // Local dev: miniflare exposes them under the unprefixed name via process.env
+      const youtubeKey =
+        (this.room.env?.["pkvar-YOUTUBE_API_KEY"] as string | undefined) ??
+        (this.room.env?.YOUTUBE_API_KEY as string | undefined) ??
+        process.env.YOUTUBE_API_KEY;
+      const spotifyClientId =
+        (this.room.env?.["pkvar-SPOTIFY_CLIENT_ID"] as string | undefined) ??
+        (this.room.env?.SPOTIFY_CLIENT_ID as string | undefined) ??
+        process.env.SPOTIFY_CLIENT_ID;
+      const spotifyClientSecret =
+        (this.room.env?.["pkvar-SPOTIFY_CLIENT_SECRET"] as string | undefined) ??
+        (this.room.env?.SPOTIFY_CLIENT_SECRET as string | undefined) ??
+        process.env.SPOTIFY_CLIENT_SECRET;
 
-      // Resolve release years in parallel batches
+      const tracks = await fetchPlaylistItems(playlistId, youtubeKey);
+      const songs: Card[] = [];
+      const diagnostics: SongDiagnostic[] = [];
+
+      // Once Spotify 429s on both initial request and retry, skip it for all remaining songs.
+      let spotifyRateLimited = false;
+
+      // Resolve release years in parallel batches — small batch size avoids Spotify 429s
       const BATCH = SPOTIFY_BATCH_SIZE;
       for (let i = 0; i < tracks.length; i += BATCH) {
+        if (i > 0) await new Promise((r) => setTimeout(r, 400)); // rate-limit breathing room
         const batch = tracks.slice(i, i + BATCH);
+        // Snapshot flag so all songs in the same batch see the same value
+        const batchSpotifyRateLimited = spotifyRateLimited;
         const results = await Promise.allSettled(
           batch.map(async (track) => {
             // Layer 1: YouTube Music structured description (most reliable)
@@ -256,7 +280,7 @@ export default class HitsterRoom implements Party.Server {
 
             const trackName = titleParsed?.track ?? track.title;
 
-            // Year resolution priority: description > title > Spotify API
+            // Year resolution priority: description > title > Spotify > Google KG
             let year: number | null = descMeta.year ?? titleYear ?? null;
             let yearSource: Card["yearSource"] = descMeta.year
               ? "description"
@@ -265,27 +289,44 @@ export default class HitsterRoom implements Party.Server {
               : "spotify";
 
             if (!year) {
-              year = await lookupReleaseYear(artist, trackName).catch(() => null);
-              if (!year) return null;
+              if (!batchSpotifyRateLimited) {
+                try {
+                  year = await lookupReleaseYear(artist, trackName, spotifyClientId, spotifyClientSecret);
+                  if (year) yearSource = "spotify";
+                } catch (err) {
+                  if (err instanceof SpotifyRateLimitedError) spotifyRateLimited = true;
+                  // Other errors (missing credentials, network): year stays null
+                }
+              }
+              if (!year && youtubeKey) {
+                year = await lookupYearFromKnowledgeGraph(artist, trackName, youtubeKey).catch(() => null);
+                if (year) yearSource = "google";
+              }
             }
 
-            return {
+            return { track, artist, year, yearSource };
+          })
+        );
+
+        for (const result of results) {
+          if (result.status !== "fulfilled") continue;
+          const { track, artist, year, yearSource } = result.value;
+          diagnostics.push({ title: track.title, artist, year, yearSource: year ? yearSource : null });
+          if (year) {
+            songs.push({
               id: track.videoId,
               videoId: track.videoId,
               title: track.title,
               artist,
               year,
               yearSource,
-            } satisfies Card;
-          })
-        );
-
-        for (const result of results) {
-          if (result.status === "fulfilled" && result.value) {
-            songs.push(result.value);
+            } satisfies Card);
           }
         }
       }
+
+      // Always send diagnostic so the host can see which songs resolved
+      this.sendTo(conn, { type: "DIAGNOSTIC", songs: diagnostics });
 
       if (songs.length < 2) {
         this.sendTo(conn, { type: "ERROR", error: "not_enough_songs" });
@@ -309,7 +350,23 @@ export default class HitsterRoom implements Party.Server {
       this.startNextRound();
     } catch (err) {
       const msg = err instanceof Error ? err.message : "unknown_error";
-      this.sendTo(conn, { type: "ERROR", error: msg === "QUOTA_EXCEEDED" ? "quota_exceeded" : "playlist_load_failed" });
+      let errorCode: string;
+      if (msg === "QUOTA_EXCEEDED") {
+        errorCode = "quota_exceeded";
+      } else if (msg.includes("API_KEY") || msg.includes("not set")) {
+        errorCode = "api_key_missing";
+      } else if (msg.includes("403")) {
+        errorCode = "playlist_forbidden";
+      } else if (msg.includes("404")) {
+        errorCode = "playlist_not_found";
+      } else if (msg.includes("YouTube API error")) {
+        errorCode = `youtube_error:${msg.match(/\d{3}/)?.[0] ?? "unknown"}`;
+      } else if (msg.includes("Spotify")) {
+        errorCode = "spotify_error";
+      } else {
+        errorCode = "playlist_load_failed";
+      }
+      this.sendTo(conn, { type: "ERROR", error: errorCode });
     }
   }
 
@@ -380,7 +437,17 @@ export default class HitsterRoom implements Party.Server {
       : -1;
     this.state.activePlayerId = playerIds[(currentIdx + 1) % playerIds.length] ?? null;
 
-    const nextSong = this.state.songs.shift()!;
+    // Prefer a song whose year doesn't collide with the active player's timeline.
+    const activeTimeline = this.state.activePlayerId
+      ? (this.state.players[this.state.activePlayerId]?.timeline ?? [])
+      : [];
+    const usedYears = new Set(activeTimeline.map((c) => c.year));
+    const preferredIdx =
+      usedYears.size > 0
+        ? this.state.songs.findIndex((s) => !usedYears.has(s.year))
+        : 0;
+    const songIdx = preferredIdx !== -1 ? preferredIdx : 0;
+    const [nextSong] = this.state.songs.splice(songIdx, 1);
     this.state.currentSong = nextSong;
     this.state.placements = {};
     this.state.phase = "guessing";
