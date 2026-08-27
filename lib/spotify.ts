@@ -93,8 +93,10 @@ async function searchSpotify(token: string, query: string): Promise<number | nul
   });
 
   if (res.status === 429) {
-    const wait = parseInt(res.headers.get("Retry-After") ?? "2", 10) * 1000;
-    await new Promise((r) => setTimeout(r, wait));
+    // Cap the Retry-After wait at 3 s. If Spotify is heavily throttled a longer
+    // wait won't help — we'll detect the persistent 429 and bail the whole session.
+    const retryAfterSecs = Math.min(parseInt(res.headers.get("Retry-After") ?? "2", 10), 3);
+    await new Promise((r) => setTimeout(r, retryAfterSecs * 1000));
     res = await fetch(`${SEARCH_URL}?${params}`, {
       headers: { Authorization: `Bearer ${token}` },
     });
