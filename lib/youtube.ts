@@ -15,9 +15,10 @@ const BASE = "https://www.googleapis.com/youtube/v3";
  * Handles pagination automatically (up to 200 items).
  */
 export async function fetchPlaylistItems(
-  playlistId: string
+  playlistId: string,
+  apiKey?: string
 ): Promise<YouTubeTrack[]> {
-  const key = process.env.YOUTUBE_API_KEY;
+  const key = apiKey ?? process.env.YOUTUBE_API_KEY;
   if (!key) throw new Error("YOUTUBE_API_KEY is not set");
 
   const tracks: YouTubeTrack[] = [];
@@ -79,20 +80,89 @@ export async function fetchPlaylistItems(
 export function parseArtistAndTrack(
   title: string
 ): { artist: string; track: string } | null {
-  // Strip trailing year like "(1980)" or "[1980]" before splitting
-  const stripped = title.replace(/\s*[\[(]\d{4}[\])]\s*$/, "").trim();
+  // Strip trailing year like "(1980)" or "[1980]"
+  const s = title.replace(/\s*[\[(]\d{4}[\])]\s*$/, "").trim();
 
-  // Common YouTube Music format: "Artist - Track"
-  const match = stripped.match(/^(.+?)\s*[-–—]\s*(.+)$/);
-  if (!match) return null;
+  // 1. Non-leading 【Track】 — artist precedes the bracket.
+  //    Only used when 【 appears BEFORE any 《 (otherwise 《》 is the song title
+  //    and 【】 is a trailing movie/show context marker).
+  //    "G.E.M.【光年之外 LIGHT YEARS AWAY】MV" → artist=G.E.M., track=光年之外…
+  //    "周杰倫 Jay Chou (特別演出…)【告白氣球 Love Confession】Official MV"
+  //    "高爾宣 OSN -【Without You】沒了妳"
+  const fullBracketStart = s.indexOf("【");
+  const chevronCheck = s.indexOf("《");
+  if (fullBracketStart > 0 && (chevronCheck === -1 || chevronCheck > fullBracketStart)) {
+    const fullBracketEnd = s.indexOf("】", fullBracketStart);
+    if (fullBracketEnd !== -1) {
+      const track = s.slice(fullBracketStart + 1, fullBracketEnd).trim();
+      const artistRaw = s
+        .slice(0, fullBracketStart)
+        .replace(/\s*[-–—]\s*$/, "") // strip trailing dash connector
+        .trim();
+      const artist = cleanArtistName(artistRaw);
+      if (artist && track) return { artist, track: cleanTrackSuffixes(track) };
+    }
+  }
 
-  let artist = match[1].trim();
-  let track = match[2].trim();
+  // 2. Leading 【movie/show context】 — strip it and reparse the remainder
+  //    "【我的少女時代 Our Times】Movie Theme Song - 田馥甄 Hebe Tien《小幸運》Official MV"
+  if (s.startsWith("【")) {
+    const contextEnd = s.indexOf("】");
+    if (contextEnd !== -1) {
+      const rest = s
+        .slice(contextEnd + 1)
+        .replace(/^[^《【]*[-–—]\s*/, "") // strip "Movie Theme Song - " connectors
+        .trim();
+      if (rest) return parseArtistAndTrack(rest);
+    }
+  }
 
-  // Strip common suffixes like "(Official Video)", "[Lyrics]", "ft. X"
-  track = track.replace(/\s*[\[(](?:official|video|audio|lyric|lyrics|hd|4k|mv|feat|ft\.?)[^\])]*[\])]?/gi, "").trim();
+  // 3. 《Track》 — artist precedes the bracket
+  //    "于文文《體面》動態歌詞版" → artist=于文文, track=體面
+  //    "Eric周興哲《你，好不好？ How Have You Been?》Official Music Video"
+  const chevronStart = s.indexOf("《");
+  if (chevronStart !== -1) {
+    const chevronEnd = s.indexOf("》", chevronStart);
+    if (chevronEnd !== -1) {
+      const track = s.slice(chevronStart + 1, chevronEnd).trim();
+      const artistRaw = s.slice(0, chevronStart).trim();
+      const artist = cleanArtistName(artistRaw);
+      if (artist && track) return { artist, track: cleanTrackSuffixes(track) };
+    }
+  }
 
-  return { artist, track };
+  // 4. Artist [ Track ] with spaced English brackets
+  //    "MP魔幻力量 [ 我還是愛著你 I still love you ] Official Music Video"
+  const spaceBracket = s.match(/^(.*?)\s+\[\s+(.+?)\s+\]/);
+  if (spaceBracket) {
+    const artist = cleanArtistName(spaceBracket[1]);
+    const track = cleanTrackSuffixes(spaceBracket[2]);
+    if (artist && track) return { artist, track };
+  }
+
+  // 5. Standard "Artist - Track" dash format
+  const dashMatch = s.match(/^(.+?)\s*[-–—]\s*(.+)$/);
+  if (dashMatch) {
+    const artist = cleanArtistName(dashMatch[1]);
+    const track = cleanTrackSuffixes(dashMatch[2]);
+    if (artist && track) return { artist, track };
+  }
+
+  return null;
+}
+
+function cleanArtistName(raw: string): string {
+  return raw
+    .replace(/\s*[\(（][^)）]*[\)）]\s*$/g, "") // strip trailing (featuring info)
+    .replace(/\s*（[^）]*）\s*$/g, "")
+    .replace(/\s+(?:Ft\.|Feat\.|ft\.|feat\.|X|x)\s+.*$/i, "") // strip "X feat. Y" → "X"
+    .trim();
+}
+
+function cleanTrackSuffixes(raw: string): string {
+  return raw
+    .replace(/\s*[\[(](?:official|video|audio|lyric|lyrics|hd|4k|mv|feat|ft\.?)[^\])]*[\])]?/gi, "")
+    .trim();
 }
 
 /**
