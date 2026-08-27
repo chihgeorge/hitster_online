@@ -326,6 +326,7 @@ function DiagnosticTable({ songs }: { songs: SongDiagnostic[] }) {
                   {s.yearSource === "description" && <span className="text-green-400">YouTube</span>}
                   {s.yearSource === "title" && <span className="text-blue-400">title</span>}
                   {s.yearSource === "spotify" && <span className="text-purple-400">Spotify</span>}
+                  {s.yearSource === "itunes" && <span className="text-pink-400">iTunes</span>}
                   {s.yearSource === "google" && <span className="text-sky-400">Google</span>}
                   {s.yearSource === null && <span className="text-red-400">not found</span>}
                 </td>

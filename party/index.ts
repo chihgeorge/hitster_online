@@ -17,6 +17,7 @@ import {
   extractYearFromTitle,
 } from "../lib/youtube";
 import { lookupReleaseYear, SpotifyRateLimitedError } from "../lib/spotify";
+import { lookupYearFromItunes } from "../lib/itunes";
 import { lookupYearFromKnowledgeGraph, KnowledgeGraphBlockedError } from "../lib/googlekg";
 
 const DEFAULT_TARGET_CARD_COUNT = 10;
@@ -300,6 +301,11 @@ export default class HitsterRoom implements Party.Server {
                   if (err instanceof SpotifyRateLimitedError) spotifyRateLimited = true;
                   // Other errors (missing credentials, network): year stays null
                 }
+              }
+              // iTunes Search API: free, no key, good international coverage
+              if (!year) {
+                year = await lookupYearFromItunes(artist, trackName).catch(() => null);
+                if (year) yearSource = "itunes";
               }
               if (!year && youtubeKey && !batchKgBlocked) {
                 try {
