@@ -124,7 +124,19 @@ export default function HostPage() {
           </div>
           <div className="text-center flex flex-col gap-1">
             <p className="text-xl font-semibold text-white">Creating game…</p>
-            <p className="text-sm text-gray-400">Fetching playlist and looking up release years</p>
+            {diagnostic ? (
+              <p className="text-sm text-gray-400">
+                Resolved{" "}
+                <span className="text-yellow-400 font-semibold">
+                  {diagnostic.filter((s) => s.year !== null).length}
+                </span>
+                {" "}of{" "}
+                <span className="font-semibold">{diagnostic.length}</span>
+                {" "}songs so far
+              </p>
+            ) : (
+              <p className="text-sm text-gray-400">Fetching playlist and looking up release years</p>
+            )}
           </div>
           {diagnostic && (
             <div className="w-full max-w-2xl">

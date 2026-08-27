@@ -17,11 +17,11 @@ import {
   extractYearFromTitle,
 } from "../lib/youtube";
 import { lookupReleaseYear, SpotifyRateLimitedError } from "../lib/spotify";
-import { lookupYearFromKnowledgeGraph } from "../lib/googlekg";
+import { lookupYearFromKnowledgeGraph, KnowledgeGraphBlockedError } from "../lib/googlekg";
 
 const DEFAULT_TARGET_CARD_COUNT = 10;
 const MAX_TARGET_CARD_COUNT = 20;
-const SPOTIFY_BATCH_SIZE = 3;
+const SPOTIFY_BATCH_SIZE = 5;
 const MAX_PLAYERS_SOFT = 8;
 const PLAYLIST_ID_PATTERN = /^[A-Za-z0-9_-]{5,64}$/;
 
@@ -251,16 +251,19 @@ export default class HitsterRoom implements Party.Server {
       const songs: Card[] = [];
       const diagnostics: SongDiagnostic[] = [];
 
-      // Once Spotify 429s on both initial request and retry, skip it for all remaining songs.
+      // Once Spotify 429s persistently or KG returns 403, skip that source for all remaining songs.
       let spotifyRateLimited = false;
+      let kgBlocked = false;
 
-      // Resolve release years in parallel batches — small batch size avoids Spotify 429s
+      // Resolve release years in parallel batches. Rate-limit detection lets us be more aggressive:
+      // if a source is blocked we bail immediately rather than waiting per-song.
       const BATCH = SPOTIFY_BATCH_SIZE;
       for (let i = 0; i < tracks.length; i += BATCH) {
-        if (i > 0) await new Promise((r) => setTimeout(r, 400)); // rate-limit breathing room
+        if (i > 0) await new Promise((r) => setTimeout(r, 100)); // brief pause between batches
         const batch = tracks.slice(i, i + BATCH);
-        // Snapshot flag so all songs in the same batch see the same value
+        // Snapshot flags so all songs in the same batch see the same value
         const batchSpotifyRateLimited = spotifyRateLimited;
+        const batchKgBlocked = kgBlocked;
         const results = await Promise.allSettled(
           batch.map(async (track) => {
             // Layer 1: YouTube Music structured description (most reliable)
@@ -298,9 +301,13 @@ export default class HitsterRoom implements Party.Server {
                   // Other errors (missing credentials, network): year stays null
                 }
               }
-              if (!year && youtubeKey) {
-                year = await lookupYearFromKnowledgeGraph(artist, trackName, youtubeKey).catch(() => null);
-                if (year) yearSource = "google";
+              if (!year && youtubeKey && !batchKgBlocked) {
+                try {
+                  year = await lookupYearFromKnowledgeGraph(artist, trackName, youtubeKey);
+                  if (year) yearSource = "google";
+                } catch (err) {
+                  if (err instanceof KnowledgeGraphBlockedError) kgBlocked = true;
+                }
               }
             }
 
@@ -323,10 +330,10 @@ export default class HitsterRoom implements Party.Server {
             } satisfies Card);
           }
         }
-      }
 
-      // Always send diagnostic so the host can see which songs resolved
-      this.sendTo(conn, { type: "DIAGNOSTIC", songs: diagnostics });
+        // Send intermediate diagnostic after each batch so the host sees progress live
+        this.sendTo(conn, { type: "DIAGNOSTIC", songs: [...diagnostics] });
+      }
 
       if (songs.length < 2) {
         this.sendTo(conn, { type: "ERROR", error: "not_enough_songs" });
