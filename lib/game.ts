@@ -8,7 +8,7 @@ export interface Card {
   title: string;
   artist: string;
   year: number;
-  yearSource: "spotify" | "description" | "title" | "manual";
+  yearSource: "spotify" | "description" | "title" | "google" | "manual";
 }
 
 export interface Player {
@@ -45,10 +45,23 @@ export type ClientMessage =
   | { type: "NEXT_ROUND"; hostId: string }
   | { type: "RESET_GAME"; hostId: string };
 
+export type SongDiagnostic = {
+  title: string;
+  artist: string;
+  year: number | null;
+  yearSource: "description" | "title" | "spotify" | "google" | null;
+};
+
+export type DiagnosticStatus = {
+  spotifyRateLimited: boolean;
+  kgBlocked: boolean;
+};
+
 export type ServerMessage =
   | { type: "STATE"; state: GameState }
   | { type: "PLACEMENT_ACK"; playerId: string }
   | { type: "ERROR"; error: string }
+  | { type: "DIAGNOSTIC"; songs: SongDiagnostic[]; status: DiagnosticStatus }
   | { type: "TOO_LATE" }
   | { type: "WRONG_PHASE" };
 

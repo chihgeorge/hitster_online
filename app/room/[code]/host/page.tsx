@@ -5,7 +5,7 @@ import { useParams } from "next/navigation";
 import usePartySocket from "partysocket/react";
 import MusicPlayer from "@/components/MusicPlayer";
 import PlayerList from "@/components/PlayerList";
-import type { GameState, ServerMessage, ClientMessage, SongDiagnostic } from "@/lib/game";
+import type { GameState, ServerMessage, ClientMessage, SongDiagnostic, DiagnosticStatus } from "@/lib/game";
 
 function getOrCreateHostId(): string {
   const key = "hitster_host_id";
@@ -25,6 +25,7 @@ export default function HostPage() {
   const [error, setError] = useState("");
   const [starting, setStarting] = useState(false);
   const [diagnostic, setDiagnostic] = useState<SongDiagnostic[] | null>(null);
+  const [diagnosticStatus, setDiagnosticStatus] = useState<DiagnosticStatus | null>(null);
   const [showDiagnostic, setShowDiagnostic] = useState(false);
   const hostIdRef = useRef<string>("");
   const startingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -57,6 +58,7 @@ export default function HostPage() {
       }
       if (msg.type === "DIAGNOSTIC") {
         setDiagnostic(msg.songs);
+        setDiagnosticStatus(msg.status);
       }
     },
   });
@@ -70,6 +72,7 @@ export default function HostPage() {
     if (!playlistUrl.trim()) { setError("missing_url"); return; }
     setError("");
     setDiagnostic(null);
+    setDiagnosticStatus(null);
     setShowDiagnostic(false);
     setStarting(true);
     startingTimerRef.current = setTimeout(() => {
@@ -138,6 +141,28 @@ export default function HostPage() {
               <p className="text-sm text-gray-400">Fetching playlist and looking up release years</p>
             )}
           </div>
+          {diagnosticStatus && (diagnosticStatus.spotifyRateLimited || diagnosticStatus.kgBlocked) && (
+            <div className="w-full max-w-2xl flex flex-col gap-2">
+              {diagnosticStatus.spotifyRateLimited && (
+                <div className="flex items-start gap-3 rounded-xl border border-yellow-500/30 bg-yellow-500/10 px-4 py-3">
+                  <span className="text-yellow-400 text-lg leading-none mt-0.5">⚠</span>
+                  <div>
+                    <p className="text-yellow-400 text-sm font-semibold">Spotify rate-limited</p>
+                    <p className="text-yellow-300/70 text-xs mt-0.5">Year lookup was skipped for most songs. Try again in a minute.</p>
+                  </div>
+                </div>
+              )}
+              {diagnosticStatus.kgBlocked && (
+                <div className="flex items-start gap-3 rounded-xl border border-orange-500/30 bg-orange-500/10 px-4 py-3">
+                  <span className="text-orange-400 text-lg leading-none mt-0.5">⚠</span>
+                  <div>
+                    <p className="text-orange-400 text-sm font-semibold">Google Knowledge Graph not enabled</p>
+                    <p className="text-orange-300/70 text-xs mt-0.5">Enable the Knowledge Graph Search API in Google Cloud Console (same project as YouTube).</p>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
           {diagnostic && (
             <div className="w-full max-w-2xl">
               <DiagnosticTable songs={diagnostic} />

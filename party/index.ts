@@ -332,7 +332,11 @@ export default class HitsterRoom implements Party.Server {
         }
 
         // Send intermediate diagnostic after each batch so the host sees progress live
-        this.sendTo(conn, { type: "DIAGNOSTIC", songs: [...diagnostics] });
+        this.sendTo(conn, {
+          type: "DIAGNOSTIC",
+          songs: [...diagnostics],
+          status: { spotifyRateLimited, kgBlocked },
+        });
       }
 
       if (songs.length < 2) {
