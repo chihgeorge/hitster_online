@@ -36,6 +36,15 @@
   The party server's `handlePlace` doesn't race, but a test with two `PLACE` messages arriving within the same tick would confirm `placements[playerId]` is set correctly and `PLACEMENT_ACK` is sent to both.  
   _Deferred from plan: foamy-crafting-bonbon.md_
 
+- [ ] **P2** Strip `year` from `currentSong` during guessing phase in broadcast  
+  `broadcastState()` sends the full `Card` for `currentSong`, including `year`. Players watching WebSocket traffic can read the answer before placing. Fix: omit `year` from `currentSong` in the STATE broadcast during `"guessing"` phase; restore it on `"reveal"`.
+
+- [ ] **P2** Concurrent `LOAD_PLAYLIST` causes non-deterministic `pendingPlaylist` state  
+  Two rapid `LOAD_PLAYLIST` requests from the same host run concurrently; whichever resolves last wins and may produce a mixed result. Fix: assign a sequence number per load; at every write to `pendingPlaylist`, guard with a sequence check, or cancel the previous in-flight load.
+
+- [ ] **P2** Validate `playerId` format to prevent prototype-pollution-adjacent keys  
+  `handleJoin` stores `playerId` directly as an object key with no format check. Restrict to UUID format (`/^[0-9a-f]{8}-[0-9a-f]{4}-...-[0-9a-f]{12}$/i`) and reject on mismatch.
+
 ## P3 — Nice to have
 
 - [ ] **P3** `docs/wireframes/hitster-v1.png`  
