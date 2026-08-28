@@ -19,20 +19,21 @@ export async function lookupYearFromItunes(
   track: string
 ): Promise<number | null> {
   const variants = artistNameVariants(artist);
-  // CJK content: try Taiwan store first, then US as fallback.
-  // US-first order is wrong for C-pop — the US store returns older unrelated songs
-  // with the same title, polluting the year vote with false positives.
+  // CJK content: try Taiwan store first (better Mandarin/Cantonese pop coverage),
+  // then US store as fallback. Run all variant searches in parallel per store so
+  // we don't serialize 12 sequential fetch calls (~3.6 s) into one song slot.
   const countries: (string | undefined)[] = CJK_RE.test(artist + track)
     ? ["TW", undefined]
     : [undefined];
 
   for (const country of countries) {
-    for (const artistVariant of variants) {
-      const result =
-        (await searchItunes(`${track} ${artistVariant}`, artistVariant, country)) ??
-        (await searchItunes(track, artistVariant, country));
-      if (result) return result;
-    }
+    const searches = variants.flatMap((v) => [
+      searchItunes(`${track} ${v}`, v, country).catch(() => null),
+      searchItunes(track, v, country).catch(() => null),
+    ]);
+    const results = await Promise.all(searches);
+    const found = results.find((r) => r !== null) ?? null;
+    if (found !== null) return found;
   }
 
   return null;

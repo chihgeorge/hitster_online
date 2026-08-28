@@ -15,6 +15,7 @@ import {
   parseYouTubeMusicDescription,
   channelToArtist,
   extractYearFromTitle,
+  extractCjkTrackName,
 } from "../lib/youtube";
 import { lookupReleaseYear, SpotifyRateLimitedError } from "../lib/spotify";
 import { lookupYearFromItunes } from "../lib/itunes";
@@ -282,7 +283,11 @@ export default class HitsterRoom implements Party.Server {
               titleParsed?.artist ??
               channelToArtist(track.channelTitle);
 
-            const trackName = titleParsed?.track ?? track.title;
+            // When the parser can't detect "Artist - Track" structure, fall back to
+            // the first CJK run as the track name (common for C-pop titles like
+            // "光年之外 G.E.M. Official MV"). Using the full title as the search query
+            // almost always returns zero iTunes results.
+            const trackName = titleParsed?.track ?? extractCjkTrackName(track.title) ?? track.title;
 
             // Year resolution priority: description > title > Spotify > iTunes > Google KG
             let year: number | null = descMeta.year ?? titleYear ?? null;

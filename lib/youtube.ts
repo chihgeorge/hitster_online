@@ -203,6 +203,18 @@ export function parseYouTubeMusicDescription(description: string): {
 }
 
 /**
+ * Extracts the first continuous run of ≥2 CJK characters from a title.
+ * Used as a fallback track name when parseArtistAndTrack returns null for
+ * C-pop YouTube titles like "光年之外 G.E.M. 鄧紫棋 (LIGHT YEARS AWAY) Official MV"
+ * where the song name is the leading CJK phrase.
+ * Returns null if no CJK run of ≥2 chars exists.
+ */
+export function extractCjkTrackName(title: string): string | null {
+  const m = title.match(/[⺀-鿿豈-﫿가-힯]{2,}/);
+  return m ? m[0] : null;
+}
+
+/**
  * Strips "Artist - Topic" suffix from YouTube auto-generated channel names.
  * e.g. "Frank Mills - Topic" → "Frank Mills"
  */

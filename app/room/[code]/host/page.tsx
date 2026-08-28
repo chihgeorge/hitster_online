@@ -28,19 +28,10 @@ export default function HostPage() {
   const [diagnosticStatus, setDiagnosticStatus] = useState<DiagnosticStatus | null>(null);
   const [showDiagnostic, setShowDiagnostic] = useState(false);
   const hostIdRef = useRef<string>("");
-  const startingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     hostIdRef.current = getOrCreateHostId();
   }, []);
-
-  function stopStarting() {
-    if (startingTimerRef.current) {
-      clearTimeout(startingTimerRef.current);
-      startingTimerRef.current = null;
-    }
-    setStarting(false);
-  }
 
   const socket = usePartySocket({
     host: process.env.NEXT_PUBLIC_PARTYKIT_HOST ?? "localhost:1999",
@@ -50,11 +41,11 @@ export default function HostPage() {
       try { msg = JSON.parse(event.data as string) as ServerMessage; } catch { return; }
       if (msg.type === "STATE") {
         setState(msg.state);
-        if (msg.state.phase !== "lobby") stopStarting();
+        if (msg.state.phase !== "lobby") setStarting(false);
       }
       if (msg.type === "ERROR") {
         setError(msg.error);
-        stopStarting();
+        setStarting(false);
       }
       if (msg.type === "DIAGNOSTIC") {
         setDiagnostic(msg.songs);
@@ -75,11 +66,9 @@ export default function HostPage() {
     setDiagnosticStatus(null);
     setShowDiagnostic(false);
     setStarting(true);
-    startingTimerRef.current = setTimeout(() => {
-      startingTimerRef.current = null;
-      setStarting(false);
-      setError("game_creation_timeout");
-    }, 90_000);
+    // No client-side timeout — the server sends ERROR: not_enough_songs when it
+    // can't resolve enough years. A client timeout races with the server and can
+    // show a false "timed out" error while the server is still working.
     send({
       type: "START_GAME",
       hostId: hostIdRef.current,
@@ -361,11 +350,6 @@ function errorInfo(code: string): { message: string; detail?: string; hint?: str
     message: "YouTube API quota exceeded",
     detail: "The daily quota for the YouTube Data API has been used up.",
     hint: "Try again after midnight Pacific Time when the quota resets.",
-  };
-  if (code === "game_creation_timeout") return {
-    message: "Game creation timed out",
-    detail: "The server took over 90 seconds to process the playlist.",
-    hint: "Spotify may be temporarily rate-limited. Try again in a minute or two.",
   };
   if (code === "not_enough_songs") return {
     message: "Not enough songs with known release years",
