@@ -17,21 +17,43 @@ function getOrCreateHostId(): string {
   return id;
 }
 
+type LoadStatus = "idle" | "loading" | "ready" | "error";
+
 export default function HostPage() {
   const params = useParams<{ code: string }>();
   const [state, setState] = useState<GameState | null>(null);
   const [playlistUrl, setPlaylistUrl] = useState("");
   const [targetCount, setTargetCount] = useState(10);
   const [error, setError] = useState("");
+  const [loadStatus, setLoadStatus] = useState<LoadStatus>("idle");
+  const [readySongCount, setReadySongCount] = useState(0);
   const [starting, setStarting] = useState(false);
   const [diagnostic, setDiagnostic] = useState<SongDiagnostic[] | null>(null);
   const [diagnosticStatus, setDiagnosticStatus] = useState<DiagnosticStatus | null>(null);
   const [showDiagnostic, setShowDiagnostic] = useState(false);
+  const [showContinuePrompt, setShowContinuePrompt] = useState(false);
   const hostIdRef = useRef<string>("");
+  const loadedUrlRef = useRef<string>("");
+  const nextPromptAtRef = useRef<number>(0);
+  const pendingStartAfterAbortRef = useRef<boolean>(false);
 
   useEffect(() => {
     hostIdRef.current = getOrCreateHostId();
   }, []);
+
+  // 5-minute checkpoint timer: show prompt if loading takes too long.
+  useEffect(() => {
+    if (loadStatus !== "loading") {
+      setShowContinuePrompt(false);
+      return;
+    }
+    const interval = setInterval(() => {
+      if (Date.now() >= nextPromptAtRef.current) {
+        setShowContinuePrompt(true);
+      }
+    }, 15_000);
+    return () => clearInterval(interval);
+  }, [loadStatus]);
 
   const socket = usePartySocket({
     host: process.env.NEXT_PUBLIC_PARTYKIT_HOST ?? "localhost:1999",
@@ -42,6 +64,13 @@ export default function HostPage() {
       if (msg.type === "STATE") {
         setState(msg.state);
         if (msg.state.phase !== "lobby") setStarting(false);
+        // When game resets back to lobby, clear load state for fresh setup.
+        if (msg.state.phase === "lobby" && state?.phase !== "lobby") {
+          setLoadStatus("idle");
+          setDiagnostic(null);
+          setDiagnosticStatus(null);
+          setPlaylistUrl("");
+        }
       }
       if (msg.type === "ERROR") {
         setError(msg.error);
@@ -51,6 +80,25 @@ export default function HostPage() {
         setDiagnostic(msg.songs);
         setDiagnosticStatus(msg.status);
       }
+      if (msg.type === "PLAYLIST_READY") {
+        setReadySongCount(msg.songCount);
+        setLoadStatus("ready");
+        setShowContinuePrompt(false);
+        if (pendingStartAfterAbortRef.current) {
+          pendingStartAfterAbortRef.current = false;
+          setStarting(true);
+          socket.send(JSON.stringify({
+            type: "START_GAME" as const,
+            hostId: hostIdRef.current,
+            playlistUrl: loadedUrlRef.current,
+            targetCardCount: targetCount,
+          }));
+        }
+      }
+      if (msg.type === "PLAYLIST_LOAD_ERROR") {
+        setError(msg.error);
+        setLoadStatus("error");
+      }
     },
   });
 
@@ -58,21 +106,28 @@ export default function HostPage() {
     socket.send(JSON.stringify(msg));
   }
 
-  function handleStartGame(e: React.FormEvent) {
-    e.preventDefault();
-    if (!playlistUrl.trim()) { setError("missing_url"); return; }
+  function handleLoadPlaylist() {
+    const url = playlistUrl.trim();
+    if (!url) { setError("missing_url"); return; }
     setError("");
     setDiagnostic(null);
     setDiagnosticStatus(null);
-    setShowDiagnostic(false);
+    setLoadStatus("loading");
+    setShowContinuePrompt(false);
+    pendingStartAfterAbortRef.current = false;
+    loadedUrlRef.current = url;
+    nextPromptAtRef.current = Date.now() + 5 * 60 * 1000;
+    send({ type: "LOAD_PLAYLIST", hostId: hostIdRef.current, playlistUrl: url });
+  }
+
+  function handleStartGame(e: React.FormEvent) {
+    e.preventDefault();
+    setError("");
     setStarting(true);
-    // No client-side timeout — the server sends ERROR: not_enough_songs when it
-    // can't resolve enough years. A client timeout races with the server and can
-    // show a false "timed out" error while the server is still working.
     send({
       type: "START_GAME",
       hostId: hostIdRef.current,
-      playlistUrl: playlistUrl.trim(),
+      playlistUrl: loadedUrlRef.current,
       targetCardCount: targetCount,
     });
   }
@@ -107,95 +162,182 @@ export default function HostPage() {
         </div>
       </div>
 
-      {/* Creating game loading screen */}
+      {/* Starting spinner (after Start Game is clicked) */}
       {phase === "lobby" && starting && (
-        <div className="flex flex-col items-center justify-center gap-6 py-16">
-          <div className="relative w-16 h-16">
+        <div className="flex flex-col items-center justify-center gap-4 py-16">
+          <div className="relative w-14 h-14">
             <div className="absolute inset-0 rounded-full border-4 border-white/10" />
             <div className="absolute inset-0 rounded-full border-4 border-yellow-400 border-t-transparent animate-spin" />
           </div>
-          <div className="text-center flex flex-col gap-1">
-            <p className="text-xl font-semibold text-white">Creating game…</p>
-            {diagnostic ? (
-              <p className="text-sm text-gray-400">
-                Resolved{" "}
-                <span className="text-yellow-400 font-semibold">
-                  {diagnostic.filter((s) => s.year !== null).length}
-                </span>
-                {" "}of{" "}
-                <span className="font-semibold">{diagnostic.length}</span>
-                {" "}songs so far
-              </p>
-            ) : (
-              <p className="text-sm text-gray-400">Fetching playlist and looking up release years</p>
-            )}
-          </div>
-          {diagnosticStatus && (diagnosticStatus.spotifyRateLimited || diagnosticStatus.kgBlocked) && (
-            <div className="w-full max-w-2xl flex flex-col gap-2">
-              {diagnosticStatus.spotifyRateLimited && (
-                <div className="flex items-start gap-3 rounded-xl border border-yellow-500/30 bg-yellow-500/10 px-4 py-3">
-                  <span className="text-yellow-400 text-lg leading-none mt-0.5">⚠</span>
-                  <div>
-                    <p className="text-yellow-400 text-sm font-semibold">Spotify rate-limited</p>
-                    <p className="text-yellow-300/70 text-xs mt-0.5">Year lookup was skipped for most songs. Try again in a minute.</p>
-                  </div>
-                </div>
-              )}
-              {diagnosticStatus.kgBlocked && (
-                <div className="flex items-start gap-3 rounded-xl border border-orange-500/30 bg-orange-500/10 px-4 py-3">
-                  <span className="text-orange-400 text-lg leading-none mt-0.5">⚠</span>
-                  <div>
-                    <p className="text-orange-400 text-sm font-semibold">Google Knowledge Graph not enabled</p>
-                    <p className="text-orange-300/70 text-xs mt-0.5">Enable the Knowledge Graph Search API in Google Cloud Console (same project as YouTube).</p>
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
-          {diagnostic && (
-            <div className="w-full max-w-2xl">
-              <DiagnosticTable songs={diagnostic} />
-            </div>
-          )}
+          <p className="text-lg font-semibold text-white">Starting game…</p>
         </div>
       )}
 
       {/* Lobby setup */}
       {phase === "lobby" && !starting && (
-        <form onSubmit={handleStartGame} className="flex flex-col gap-4 bg-white/5 rounded-2xl p-6">
+        <form onSubmit={handleStartGame} className="flex flex-col gap-5 bg-white/5 rounded-2xl p-6">
           <h2 className="font-semibold text-lg">Set up the game</h2>
+
+          {/* URL input + Load button */}
           <div>
             <label className="text-sm text-gray-400 mb-1 block">YouTube playlist URL</label>
-            <input
-              type="url"
-              placeholder="https://www.youtube.com/playlist?list=..."
-              value={playlistUrl}
-              onChange={(e) => { setPlaylistUrl(e.target.value); setError(""); }}
-              className="w-full rounded-xl bg-white/10 px-4 py-3 text-white placeholder-gray-500 outline-none focus:ring-2 focus:ring-yellow-400"
-            />
+            <div className="flex gap-2">
+              <input
+                type="url"
+                placeholder="https://www.youtube.com/playlist?list=..."
+                value={playlistUrl}
+                onChange={(e) => {
+                  setPlaylistUrl(e.target.value);
+                  setError("");
+                  // Reset load state if URL changes after a load
+                  if (loadStatus !== "idle") {
+                    setLoadStatus("idle");
+                    setDiagnostic(null);
+                    setDiagnosticStatus(null);
+                  }
+                }}
+                className="flex-1 rounded-xl bg-white/10 px-4 py-3 text-white placeholder-gray-500 outline-none focus:ring-2 focus:ring-yellow-400"
+              />
+              <button
+                type="button"
+                onClick={handleLoadPlaylist}
+                disabled={!playlistUrl.trim() || loadStatus === "loading"}
+                className="shrink-0 rounded-xl bg-white/10 px-5 py-3 font-semibold text-white hover:bg-white/20 transition-colors disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-2"
+              >
+                {loadStatus === "loading" ? (
+                  <>
+                    <span className="inline-block w-4 h-4 rounded-full border-2 border-white/30 border-t-white animate-spin" />
+                    Loading…
+                  </>
+                ) : "Load"}
+              </button>
+            </div>
           </div>
-          <div>
-            <label className="text-sm text-gray-400 mb-1 block">
-              Cards to win: <span className="text-yellow-400 font-bold">{targetCount}</span>
-            </label>
-            <input
-              type="range"
-              min={5}
-              max={20}
-              value={targetCount}
-              onChange={(e) => setTargetCount(Number(e.target.value))}
-              className="w-full"
-            />
-          </div>
-          {error && <ErrorBanner code={error} />}
-          {diagnostic && <DiagnosticTable songs={diagnostic} />}
-          <button
-            type="submit"
-            disabled={playerCount === 0}
-            className="rounded-xl bg-yellow-400 py-3 font-bold text-black hover:bg-yellow-300 transition-colors disabled:opacity-50"
-          >
-            Start Game
-          </button>
+
+          {/* Loading progress */}
+          {loadStatus === "loading" && (
+            <div className="flex flex-col gap-3">
+              <div className="rounded-xl border border-white/10 bg-white/5 px-4 py-3 flex flex-col gap-2">
+                <div className="flex items-center justify-between text-sm">
+                  <span className="text-gray-300 font-medium">Looking up release years…</span>
+                  {diagnostic && (
+                    <span className="text-gray-500">
+                      <span className="text-yellow-400 font-semibold">{diagnostic.filter((s) => s.year !== null).length}</span>
+                      {" / "}{diagnostic.length} resolved
+                    </span>
+                  )}
+                </div>
+                {diagnostic && (
+                  <div className="w-full bg-white/10 rounded-full h-1.5 overflow-hidden">
+                    <div
+                      className="h-full bg-yellow-400 rounded-full transition-all duration-500"
+                      style={{ width: `${Math.round((diagnostic.filter((s) => s.year !== null).length / Math.max(diagnostic.length, 1)) * 100)}%` }}
+                    />
+                  </div>
+                )}
+              </div>
+              {showContinuePrompt && (() => {
+                const resolvedCount = diagnostic?.filter((s) => s.year !== null).length ?? 0;
+                return (
+                  <div className="rounded-xl border border-yellow-400/40 bg-yellow-400/10 px-4 py-4 flex flex-col gap-3">
+                    <p className="text-yellow-300 text-sm font-semibold">Still searching for years…</p>
+                    <p className="text-gray-300 text-xs">
+                      Found <span className="text-yellow-400 font-semibold">{resolvedCount}</span> songs so far. Keep searching for more, or play now with what's been found?
+                    </p>
+                    <div className="flex gap-2">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setShowContinuePrompt(false);
+                          nextPromptAtRef.current = Date.now() + 5 * 60 * 1000;
+                        }}
+                        className="flex-1 rounded-lg bg-white/10 py-2 text-sm font-medium text-white hover:bg-white/20 transition-colors"
+                      >
+                        Keep searching
+                      </button>
+                      <button
+                        type="button"
+                        disabled={resolvedCount < 2}
+                        onClick={() => {
+                          setShowContinuePrompt(false);
+                          pendingStartAfterAbortRef.current = true;
+                          send({ type: "ABORT_LOAD", hostId: hostIdRef.current });
+                        }}
+                        className="flex-1 rounded-lg bg-yellow-400 py-2 text-sm font-bold text-black hover:bg-yellow-300 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                      >
+                        Play now ({resolvedCount})
+                      </button>
+                    </div>
+                  </div>
+                );
+              })()}
+            </div>
+          )}
+
+          {/* Ready state */}
+          {loadStatus === "ready" && (
+            <div className="rounded-xl border border-green-500/30 bg-green-500/10 px-4 py-3 flex flex-col gap-3">
+              <div className="flex items-center gap-2">
+                <span className="text-green-400 text-lg">✓</span>
+                <p className="text-green-400 font-semibold text-sm">
+                  Playlist loaded — {readySongCount} songs with known years
+                </p>
+              </div>
+              {diagnosticStatus && (diagnosticStatus.spotifyRateLimited || diagnosticStatus.kgBlocked) && (
+                <div className="flex flex-col gap-2">
+                  {diagnosticStatus.spotifyRateLimited && (
+                    <div className="flex items-start gap-2 text-xs text-yellow-300/80">
+                      <span className="text-yellow-400 mt-0.5">⚠</span>
+                      <span>Spotify rate-limited — some years may be missing. Try again in a minute for better coverage.</span>
+                    </div>
+                  )}
+                  {diagnosticStatus.kgBlocked && (
+                    <div className="flex items-start gap-2 text-xs text-orange-300/80">
+                      <span className="text-orange-400 mt-0.5">⚠</span>
+                      <span>Google Knowledge Graph not enabled — enable it in Google Cloud Console for better coverage.</span>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Error from load */}
+          {loadStatus === "error" && error && (
+            <div className="flex flex-col gap-2">
+              <ErrorBanner code={error} />
+              <p className="text-xs text-gray-500">Fix the URL above and click <strong className="text-white">Load</strong> again.</p>
+            </div>
+          )}
+
+          {/* Card count slider — only shown after URL is loaded or idle */}
+          {loadStatus !== "loading" && (
+            <div>
+              <label className="text-sm text-gray-400 mb-1 block">
+                Cards to win: <span className="text-yellow-400 font-bold">{targetCount}</span>
+              </label>
+              <input
+                type="range"
+                min={5}
+                max={20}
+                value={targetCount}
+                onChange={(e) => setTargetCount(Number(e.target.value))}
+                className="w-full"
+              />
+            </div>
+          )}
+
+          {/* Start Game — only enabled when playlist is ready and players are in */}
+          {loadStatus === "ready" && (
+            <button
+              type="submit"
+              disabled={playerCount === 0}
+              className="rounded-xl bg-yellow-400 py-3 font-bold text-black hover:bg-yellow-300 transition-colors disabled:opacity-50"
+            >
+              Start Game
+            </button>
+          )}
+
           {playerCount === 0 && (
             <p className="text-xs text-gray-500 text-center">
               Share code <span className="font-mono text-yellow-400">{params.code}</span> — waiting for players to join
@@ -280,22 +422,24 @@ export default function HostPage() {
   );
 }
 
-function DiagnosticTable({ songs }: { songs: SongDiagnostic[] }) {
+function DiagnosticTable({ songs, compact, hideYears }: { songs: SongDiagnostic[]; compact?: boolean; hideYears?: boolean }) {
   const resolved = songs.filter((s) => s.year !== null).length;
   const total = songs.length;
   return (
     <div className="flex flex-col gap-2">
-      <p className="text-xs text-gray-400">
-        Resolved <span className="text-yellow-400 font-semibold">{resolved}</span> of{" "}
-        <span className="font-semibold">{total}</span> songs
-      </p>
+      {!compact && (
+        <p className="text-xs text-gray-400">
+          Resolved <span className="text-yellow-400 font-semibold">{resolved}</span> of{" "}
+          <span className="font-semibold">{total}</span> songs
+        </p>
+      )}
       <div className="overflow-x-auto rounded-xl border border-white/10">
         <table className="w-full text-xs">
           <thead>
             <tr className="text-left text-gray-500 border-b border-white/10">
               <th className="px-3 py-2 font-medium">Title</th>
               <th className="px-3 py-2 font-medium">Artist</th>
-              <th className="px-3 py-2 font-medium">Year</th>
+              {!hideYears && <th className="px-3 py-2 font-medium">Year</th>}
               <th className="px-3 py-2 font-medium">Source</th>
             </tr>
           </thead>
@@ -308,16 +452,19 @@ function DiagnosticTable({ songs }: { songs: SongDiagnostic[] }) {
                 <td className="px-3 py-2 max-w-[120px] truncate text-white/60" title={s.artist}>
                   {s.artist}
                 </td>
-                <td className="px-3 py-2 font-mono text-yellow-400">
-                  {s.year ?? "—"}
-                </td>
+                {!hideYears && (
+                  <td className="px-3 py-2 font-mono text-yellow-400">
+                    {s.year ?? "—"}
+                  </td>
+                )}
                 <td className="px-3 py-2">
                   {s.yearSource === "description" && <span className="text-green-400">YouTube</span>}
                   {s.yearSource === "title" && <span className="text-blue-400">title</span>}
+                  {s.yearSource === "ytmusic" && <span className="text-red-400">YT Music</span>}
                   {s.yearSource === "spotify" && <span className="text-purple-400">Spotify</span>}
                   {s.yearSource === "itunes" && <span className="text-pink-400">iTunes</span>}
                   {s.yearSource === "google" && <span className="text-sky-400">Google</span>}
-                  {s.yearSource === null && <span className="text-red-400">not found</span>}
+                  {s.yearSource === null && <span className="text-gray-500">not found</span>}
                 </td>
               </tr>
             ))}

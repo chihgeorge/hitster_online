@@ -62,12 +62,18 @@ function normalizeForSpotify(title: string): string {
  * Prefers singles/albums over compilations to get the original release year.
  * Returns null if no match is found.
  */
+export interface SpotifyTrackResult {
+  year: number;
+  title: string;
+  artist: string;
+}
+
 export async function lookupReleaseYear(
   artist: string,
   track: string,
   clientId?: string,
   clientSecret?: string
-): Promise<number | null> {
+): Promise<SpotifyTrackResult | null> {
   const token = await getAccessToken(clientId, clientSecret);
   const normalizedTrack = normalizeForSpotify(track);
 
@@ -85,7 +91,7 @@ export async function lookupReleaseYear(
   );
 }
 
-async function searchSpotify(token: string, query: string): Promise<number | null> {
+async function searchSpotify(token: string, query: string): Promise<SpotifyTrackResult | null> {
   const params = new URLSearchParams({ q: query, type: "track", limit: "10" });
 
   let res = await fetch(`${SEARCH_URL}?${params}`, {
@@ -108,6 +114,8 @@ async function searchSpotify(token: string, query: string): Promise<number | nul
   const data = (await res.json()) as {
     tracks: {
       items: {
+        name: string;
+        artists: { name: string }[];
         album: {
           release_date: string;
           album_type: string;
@@ -126,11 +134,17 @@ async function searchSpotify(token: string, query: string): Promise<number | nul
   );
   const candidates = nonCompilation.length > 0 ? nonCompilation : items;
 
-  let earliest: number | null = null;
+  let earliest: { year: number; item: (typeof items)[0] } | null = null;
   for (const item of candidates) {
     const y = parseInt(item.album.release_date.slice(0, 4), 10);
-    if (!isNaN(y) && (earliest === null || y < earliest)) earliest = y;
+    if (!isNaN(y) && (earliest === null || y < earliest.year)) earliest = { year: y, item };
   }
-  return earliest;
+  if (!earliest) return null;
+
+  return {
+    year: earliest.year,
+    title: earliest.item.name,
+    artist: earliest.item.artists.map((a) => a.name).join(", "),
+  };
 }
 

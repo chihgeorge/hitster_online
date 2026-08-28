@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import type { SpotifyRateLimitedError as SpotifyRateLimitedErrorType } from "./spotify";
+import type { SpotifyRateLimitedError as SpotifyRateLimitedErrorType, SpotifyTrackResult } from "./spotify";
 
 // Stub global fetch before any module import so the module captures the stub.
 const mockFetch = vi.fn();
@@ -15,14 +15,18 @@ function tokenRes() {
   });
 }
 
-function searchRes(items: { album_type: string; release_date: string }[]) {
+function searchRes(items: { album_type: string; release_date: string; name?: string; artists?: { name: string }[] }[]) {
   return Promise.resolve({
     ok: true,
     status: 200,
     json: () =>
       Promise.resolve({
         tracks: {
-          items: items.map((i) => ({ album: i })),
+          items: items.map((i) => ({
+            name: i.name ?? "Test Track",
+            artists: i.artists ?? [{ name: "Test Artist" }],
+            album: { album_type: i.album_type, release_date: i.release_date },
+          })),
         },
       }),
   });
@@ -38,7 +42,7 @@ function errorRes(status: number) {
 // `cachedToken` state is reset — otherwise token caching bleeds between tests.
 
 describe("lookupReleaseYear", () => {
-  let lookupReleaseYear: (artist: string, track: string) => Promise<number | null>;
+  let lookupReleaseYear: (artist: string, track: string) => Promise<SpotifyTrackResult | null>;
   let SpotifyRateLimitedError: typeof SpotifyRateLimitedErrorType;
 
   beforeEach(async () => {
@@ -62,7 +66,7 @@ describe("lookupReleaseYear", () => {
         searchRes([{ album_type: "album", release_date: "1985-06-01" }])
       );
 
-    expect(await lookupReleaseYear("Frank Mills", "Music Box Dancer")).toBe(1985);
+    expect((await lookupReleaseYear("Frank Mills", "Music Box Dancer"))?.year).toBe(1985);
     expect(mockFetch).toHaveBeenCalledTimes(2);
   });
 
@@ -76,7 +80,7 @@ describe("lookupReleaseYear", () => {
         ])
       );
 
-    expect(await lookupReleaseYear("Artist", "Track")).toBe(1985);
+    expect((await lookupReleaseYear("Artist", "Track"))?.year).toBe(1985);
   });
 
   it("falls back to first item when all are compilations", async () => {
@@ -86,7 +90,7 @@ describe("lookupReleaseYear", () => {
         searchRes([{ album_type: "compilation", release_date: "2000-01-01" }])
       );
 
-    expect(await lookupReleaseYear("Artist", "Track")).toBe(2000);
+    expect((await lookupReleaseYear("Artist", "Track"))?.year).toBe(2000);
   });
 
   it("falls back to track-only search when artist+track returns no items", async () => {
@@ -97,7 +101,7 @@ describe("lookupReleaseYear", () => {
         searchRes([{ album_type: "single", release_date: "1990-03-15" }])
       );
 
-    expect(await lookupReleaseYear("Artist", "Track")).toBe(1990);
+    expect((await lookupReleaseYear("Artist", "Track"))?.year).toBe(1990);
     expect(mockFetch).toHaveBeenCalledTimes(3);
   });
 
@@ -129,6 +133,7 @@ describe("lookupReleaseYear", () => {
 
     expect(await lookupReleaseYear("Artist", "Track")).toBeNull();
   });
+
 
   it("throws SpotifyRateLimitedError when search responds with 429 and retry is also 429", async () => {
     const rate429 = () =>
@@ -165,6 +170,7 @@ describe("lookupReleaseYear", () => {
 
     // parseInt("unkn", 10) → NaN → null from all paths
     expect(await lookupReleaseYear("Artist", "Track")).toBeNull();
+
   });
 
   it("handles release_date with only year (YYYY format)", async () => {
@@ -174,6 +180,6 @@ describe("lookupReleaseYear", () => {
         searchRes([{ album_type: "album", release_date: "1975" }])
       );
 
-    expect(await lookupReleaseYear("Artist", "Track")).toBe(1975);
+    expect((await lookupReleaseYear("Artist", "Track"))?.year).toBe(1975);
   });
 });

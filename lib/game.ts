@@ -8,7 +8,7 @@ export interface Card {
   title: string;
   artist: string;
   year: number;
-  yearSource: "spotify" | "description" | "title" | "google" | "itunes" | "manual";
+  yearSource: "spotify" | "description" | "title" | "google" | "itunes" | "ytmusic" | "manual";
 }
 
 export interface Player {
@@ -40,6 +40,8 @@ export type ClientMessage =
   | { type: "JOIN"; name: string; playerId: string }
   | { type: "REJOIN"; playerId: string; name: string }
   | { type: "PLACE"; playerId: string; position: number }
+  | { type: "LOAD_PLAYLIST"; hostId: string; playlistUrl: string }
+  | { type: "ABORT_LOAD"; hostId: string }
   | { type: "START_GAME"; hostId: string; playlistUrl: string; targetCardCount?: number }
   | { type: "REVEAL"; hostId: string }
   | { type: "NEXT_ROUND"; hostId: string }
@@ -49,7 +51,7 @@ export type SongDiagnostic = {
   title: string;
   artist: string;
   year: number | null;
-  yearSource: "description" | "title" | "spotify" | "google" | "itunes" | null;
+  yearSource: "description" | "title" | "ytmusic" | "spotify" | "google" | "itunes" | null;
 };
 
 export type DiagnosticStatus = {
@@ -62,6 +64,8 @@ export type ServerMessage =
   | { type: "PLACEMENT_ACK"; playerId: string }
   | { type: "ERROR"; error: string }
   | { type: "DIAGNOSTIC"; songs: SongDiagnostic[]; status: DiagnosticStatus }
+  | { type: "PLAYLIST_READY"; songCount: number }
+  | { type: "PLAYLIST_LOAD_ERROR"; error: string }
   | { type: "TOO_LATE" }
   | { type: "WRONG_PHASE" };
 

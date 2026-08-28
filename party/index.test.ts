@@ -280,8 +280,11 @@ describe("START_GAME handler", () => {
       { videoId: "v1", title: "Untitled Song", description: "no year here", channelTitle: "Artist" },
       { videoId: "v2", title: "Another Song", description: "no year here", channelTitle: "Artist" },
     ]);
-    vi.mocked(lookupReleaseYear).mockResolvedValue(1980);
+    vi.mocked(lookupReleaseYear).mockResolvedValue({ year: 1980, title: "Untitled Song", artist: "Artist" });
 
+    // Provide fake Spotify credentials so the Spotify pass is triggered.
+    process.env.SPOTIFY_CLIENT_ID = "test-cid";
+    process.env.SPOTIFY_CLIENT_SECRET = "test-csec";
     const room = new HitsterRoom(makeRoom() as any);
     const conn = makeConn();
     await send(room, conn, {
@@ -292,6 +295,9 @@ describe("START_GAME handler", () => {
 
     expect(lookupReleaseYear).toHaveBeenCalled();
     expect(room.state.phase).toBe("guessing");
+
+    delete process.env.SPOTIFY_CLIENT_ID;
+    delete process.env.SPOTIFY_CLIENT_SECRET;
   });
 
   it("handles quota exceeded error from YouTube API", async () => {
@@ -508,6 +514,14 @@ describe("PLACE edge cases", () => {
     const conn = makeConn();
     await send(room, conn, { type: "PLACE", playerId: "p1", position: -1 });
     expect(lastSentTo(conn)?.error).toBe("invalid_position");
+  });
+
+  it("rejects float position to prevent cheat bypass", async () => {
+    const room = roomInGuessing();
+    const conn = makeConn();
+    await send(room, conn, { type: "PLACE", playerId: "p1", position: 0.5 });
+    expect(lastSentTo(conn)?.error).toBe("invalid_position");
+    expect(room.state.placements["p1"]).toBeUndefined();
   });
 });
 
