@@ -4,21 +4,37 @@
 
 const SEARCH_URL = "https://itunes.apple.com/search";
 
+const CJK_RE = /[一-鿿぀-ヿ가-힯㐀-䶿豈-﫿]/;
+
 /**
  * Looks up the release year for a song via the iTunes Search API.
  * Tries multiple artist name variants (full, Latin-only, CJK-only) to handle
  * mixed-script names like "田馥甄 Hebe Tien" where iTunes may store just one script.
+ * For CJK content, queries the Taiwan store (country=TW) first — it has much
+ * better Mandarin/Cantonese pop coverage than the default US store, which often
+ * returns wrong older songs with the same title.
  */
 export async function lookupYearFromItunes(
   artist: string,
   track: string
 ): Promise<number | null> {
-  for (const artistVariant of artistNameVariants(artist)) {
-    const result =
-      (await searchItunes(`${track} ${artistVariant}`, artistVariant)) ??
-      (await searchItunes(track, artistVariant));
-    if (result) return result;
+  const variants = artistNameVariants(artist);
+  // CJK content: try Taiwan store first, then US as fallback.
+  // US-first order is wrong for C-pop — the US store returns older unrelated songs
+  // with the same title, polluting the year vote with false positives.
+  const countries: (string | undefined)[] = CJK_RE.test(artist + track)
+    ? ["TW", undefined]
+    : [undefined];
+
+  for (const country of countries) {
+    for (const artistVariant of variants) {
+      const result =
+        (await searchItunes(`${track} ${artistVariant}`, artistVariant, country)) ??
+        (await searchItunes(track, artistVariant, country));
+      if (result) return result;
+    }
   }
+
   return null;
 }
 
@@ -45,12 +61,14 @@ function artistNameVariants(name: string): string[] {
   return [...new Set(variants)];
 }
 
-async function searchItunes(query: string, artistHint: string): Promise<number | null> {
-  const params = new URLSearchParams({
+async function searchItunes(query: string, artistHint: string, country?: string): Promise<number | null> {
+  const paramsObj: Record<string, string> = {
     term: query,
     entity: "musicTrack",
     limit: "25",
-  });
+  };
+  if (country) paramsObj.country = country;
+  const params = new URLSearchParams(paramsObj);
 
   let res: Response;
   try {
@@ -109,5 +127,9 @@ async function searchItunes(query: string, artistHint: string): Promise<number |
   // over-correcting toward a later re-release edition.
   const sortedYears = [...votes.keys()].sort((a, b) => a - b);
   const confirmedEarliest = sortedYears.find((y) => (votes.get(y) ?? 0) >= 2);
-  return confirmedEarliest ?? sortedYears[0];
+  // When we got an artist match, a single-vote year is trustworthy (it's that
+  // exact artist's song). Without an artist match we're working with noisy
+  // unfiltered results — require ≥2 votes to avoid wrong years from unrelated
+  // songs that share the same title (common with short CJK track names).
+  return confirmedEarliest ?? (artistMatched.length > 0 ? sortedYears[0] : null);
 }
