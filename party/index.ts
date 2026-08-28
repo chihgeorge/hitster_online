@@ -253,71 +253,97 @@ export default class HitsterRoom implements Party.Server {
       const songs: Card[] = [];
       const diagnostics: SongDiagnostic[] = [];
 
-      // Once Spotify 429s persistently or KG returns 403, skip that source for all remaining songs.
-      let spotifyRateLimited = false;
+      // KG 403 flag — skip KG for all remaining songs once blocked.
       let kgBlocked = false;
 
-      // Resolve release years in parallel batches. Rate-limit detection lets us be more aggressive:
-      // if a source is blocked we bail immediately rather than waiting per-song.
+      // Pre-compute per-track metadata (sync, no API calls).
+      type TrackMeta = {
+        artist: string;
+        trackName: string;
+        descYear: number | null;
+        titleYear: number | null;
+      };
+      const metas: TrackMeta[] = tracks.map((track) => {
+        const descMeta = parseYouTubeMusicDescription(track.description);
+        const titleYear = extractYearFromTitle(track.title);
+        const titleParsed = parseArtistAndTrack(track.title);
+        const artist =
+          descMeta.artist ??
+          titleParsed?.artist ??
+          channelToArtist(track.channelTitle);
+        const trackName =
+          titleParsed?.track ??
+          extractCjkTrackName(track.title) ??
+          track.title;
+        return { artist, trackName, descYear: descMeta.year ?? null, titleYear: titleYear ?? null };
+      });
+
+      // ── Pass 1: Spotify (sequential, 200 ms between calls) ──────────────────
+      // Running Spotify in parallel bursts up to 25 simultaneous API calls and
+      // reliably triggers 429s. Sequential calls at ~5/s stay well within limits.
+      let spotifyRateLimited = false;
+      const spotifyYears = new Map<number, number>(); // track index → year
+      if (spotifyClientId && spotifyClientSecret) {
+        for (let i = 0; i < tracks.length; i++) {
+          const { descYear, titleYear, artist, trackName } = metas[i];
+          if (descYear ?? titleYear) continue; // already resolved — skip Spotify
+          if (spotifyRateLimited) break;
+          try {
+            const y = await lookupReleaseYear(artist, trackName, spotifyClientId, spotifyClientSecret);
+            if (y) spotifyYears.set(i, y);
+          } catch (err) {
+            if (err instanceof SpotifyRateLimitedError) spotifyRateLimited = true;
+          }
+          // 200 ms breathing room between Spotify calls (~5 req/s)
+          if (i < tracks.length - 1) await new Promise((r) => setTimeout(r, 200));
+        }
+      }
+
+      // Send initial diagnostic after Spotify pass so host sees Spotify results.
+      this.sendTo(conn, {
+        type: "DIAGNOSTIC",
+        songs: tracks.map((t, i) => {
+          const { descYear, titleYear, artist } = metas[i];
+          const year = descYear ?? titleYear ?? spotifyYears.get(i) ?? null;
+          const yearSource = descYear ? "description" : titleYear ? "title" : year ? "spotify" : null;
+          return { title: t.title, artist, year, yearSource };
+        }),
+        status: { spotifyRateLimited, kgBlocked },
+      });
+
+      // ── Pass 2: iTunes + KG in parallel batches ──────────────────────────────
+      // Songs already resolved via description / title / Spotify are skipped.
+      // iTunes calls are parallelised internally so each batch is fast (~0.3 s).
       const BATCH = SPOTIFY_BATCH_SIZE;
       for (let i = 0; i < tracks.length; i += BATCH) {
-        if (i > 0) await new Promise((r) => setTimeout(r, 100)); // brief pause between batches
         const batch = tracks.slice(i, i + BATCH);
-        // Snapshot flags so all songs in the same batch see the same value
-        const batchSpotifyRateLimited = spotifyRateLimited;
         const batchKgBlocked = kgBlocked;
         const results = await Promise.allSettled(
-          batch.map(async (track) => {
-            // Layer 1: YouTube Music structured description (most reliable)
-            const descMeta = parseYouTubeMusicDescription(track.description);
+          batch.map(async (track, j) => {
+            const idx = i + j;
+            const { descYear, titleYear, artist, trackName } = metas[idx];
+            const spotifyYear = spotifyYears.get(idx) ?? null;
 
-            // Layer 2: year embedded directly in title like "song (1980)"
-            const titleYear = extractYearFromTitle(track.title);
-
-            // Layer 3: parse "Artist - Track" from title
-            const titleParsed = parseArtistAndTrack(track.title);
-
-            // Best artist guess: description > title parse > channel name
-            const artist =
-              descMeta.artist ??
-              titleParsed?.artist ??
-              channelToArtist(track.channelTitle);
-
-            // When the parser can't detect "Artist - Track" structure, fall back to
-            // the first CJK run as the track name (common for C-pop titles like
-            // "光年之外 G.E.M. Official MV"). Using the full title as the search query
-            // almost always returns zero iTunes results.
-            const trackName = titleParsed?.track ?? extractCjkTrackName(track.title) ?? track.title;
-
-            // Year resolution priority: description > title > Spotify > iTunes > Google KG
-            let year: number | null = descMeta.year ?? titleYear ?? null;
-            let yearSource: Card["yearSource"] = descMeta.year
+            // Year resolution priority: description > title > Spotify > iTunes > KG
+            let year: number | null = descYear ?? titleYear ?? spotifyYear;
+            let yearSource: Card["yearSource"] = descYear
               ? "description"
               : titleYear
               ? "title"
-              : "spotify";
+              : spotifyYear
+              ? "spotify"
+              : "itunes";
 
             if (!year) {
-              if (!batchSpotifyRateLimited) {
-                try {
-                  year = await lookupReleaseYear(artist, trackName, spotifyClientId, spotifyClientSecret);
-                  if (year) yearSource = "spotify";
-                } catch (err) {
-                  if (err instanceof SpotifyRateLimitedError) spotifyRateLimited = true;
-                }
-              }
-              // iTunes Search API: free, no key, good international coverage
-              if (!year) {
-                year = await lookupYearFromItunes(artist, trackName).catch(() => null);
-                if (year) yearSource = "itunes";
-              }
-              if (!year && youtubeKey && !batchKgBlocked) {
-                try {
-                  year = await lookupYearFromKnowledgeGraph(artist, trackName, youtubeKey);
-                  if (year) yearSource = "google";
-                } catch (err) {
-                  if (err instanceof KnowledgeGraphBlockedError) kgBlocked = true;
-                }
+              year = await lookupYearFromItunes(artist, trackName).catch(() => null);
+              if (year) yearSource = "itunes";
+            }
+            if (!year && youtubeKey && !batchKgBlocked) {
+              try {
+                year = await lookupYearFromKnowledgeGraph(artist, trackName, youtubeKey);
+                if (year) yearSource = "google";
+              } catch (err) {
+                if (err instanceof KnowledgeGraphBlockedError) kgBlocked = true;
               }
             }
 
@@ -341,7 +367,6 @@ export default class HitsterRoom implements Party.Server {
           }
         }
 
-        // Send intermediate diagnostic after each batch so the host sees progress live
         this.sendTo(conn, {
           type: "DIAGNOSTIC",
           songs: [...diagnostics],
