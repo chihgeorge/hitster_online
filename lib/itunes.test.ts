@@ -32,4 +32,22 @@ describe("lookupYearFromItunes — real API", () => {
     expect(year).toBeGreaterThanOrEqual(2000);
     expect(year).toBeLessThanOrEqual(2006);
   }, 10_000);
+
+  // C-pop songs that may only exist in the Taiwan store (country=TW fallback).
+  // These returned null from the US store alone (wrong songs with the same title).
+  // iTunes regional catalog dates vary — we check a range rather than an exact year.
+  it('"體面" by 于文文 — Taiwan store fallback resolves a year', async () => {
+    const year = await lookupYearFromItunes("于文文", "體面");
+    expect(year).not.toBeNull();
+    // Original release 2017; TW store may show a later re-release edition
+    expect(year!).toBeGreaterThanOrEqual(2017);
+    expect(year!).toBeLessThanOrEqual(2023);
+  }, 15_000);
+
+  it('"光年之外" by G.E.M. — CJK track + known artist via TW store', async () => {
+    const year = await lookupYearFromItunes("G.E.M.", "光年之外");
+    expect(year).not.toBeNull();
+    expect(year!).toBeGreaterThanOrEqual(2016);
+    expect(year!).toBeLessThanOrEqual(2020);
+  }, 15_000);
 });
