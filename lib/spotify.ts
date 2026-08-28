@@ -93,15 +93,13 @@ async function searchSpotify(token: string, query: string): Promise<number | nul
   });
 
   if (res.status === 429) {
-    // Cap the Retry-After wait at 3 s. If Spotify is heavily throttled a longer
-    // wait won't help — we'll detect the persistent 429 and bail the whole session.
-    const retryAfterSecs = Math.min(parseInt(res.headers.get("Retry-After") ?? "2", 10), 3);
+    // Honor Spotify's Retry-After header up to 30 s. Capping at 3 s was too
+    // aggressive — the retry would still hit the limiter and bail the session.
+    const retryAfterSecs = Math.min(parseInt(res.headers.get("Retry-After") ?? "5", 10), 30);
     await new Promise((r) => setTimeout(r, retryAfterSecs * 1000));
     res = await fetch(`${SEARCH_URL}?${params}`, {
       headers: { Authorization: `Bearer ${token}` },
     });
-    // Retry is still rate-limited — Spotify has banned this app temporarily.
-    // Throw so callers can skip all further Spotify lookups for this session.
     if (res.status === 429) throw new SpotifyRateLimitedError();
   }
 
