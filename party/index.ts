@@ -17,9 +17,10 @@ import {
   extractYearFromTitle,
   extractCjkTrackName,
 } from "../lib/youtube";
-import { lookupReleaseYear, SpotifyRateLimitedError } from "../lib/spotify";
-import { lookupYearFromItunes } from "../lib/itunes";
+import { lookupReleaseYear, SpotifyRateLimitedError, type SpotifyTrackResult } from "../lib/spotify";
+import { lookupYearFromItunes, type ItunesTrackResult } from "../lib/itunes";
 import { lookupYearFromKnowledgeGraph, KnowledgeGraphBlockedError } from "../lib/googlekg";
+import { lookupYearFromYTMusic } from "../lib/ytmusic";
 
 const DEFAULT_TARGET_CARD_COUNT = 10;
 const MAX_TARGET_CARD_COUNT = 20;
@@ -36,8 +37,18 @@ function sanitizeName(name: string): string {
     .slice(0, MAX_NAME_LENGTH);
 }
 
+type PendingPlaylist = {
+  playlistId: string;
+  songs: Card[];
+  diagnostics: SongDiagnostic[];
+  spotifyRateLimited: boolean;
+  kgBlocked: boolean;
+};
+
 export default class HitsterRoom implements Party.Server {
   state: GameState;
+  private pendingPlaylist: PendingPlaylist | null = null;
+  private abortLoad = false;
 
   constructor(readonly room: Party.Room) {
     this.state = this.emptyState();
@@ -64,7 +75,9 @@ export default class HitsterRoom implements Party.Server {
   }
 
   private broadcastState() {
-    this.broadcast({ type: "STATE", state: this.state });
+    // Strip hostId from broadcast — it's a shared secret; clients use their local copy
+    const { hostId: _h, ...publicState } = this.state;
+    this.broadcast({ type: "STATE", state: { ...publicState, hostId: "" } });
   }
 
   private sendTo(conn: Party.Connection, msg: ServerMessage) {
@@ -93,6 +106,12 @@ export default class HitsterRoom implements Party.Server {
         break;
       case "PLACE":
         this.handlePlace(sender, msg.playerId, msg.position);
+        break;
+      case "LOAD_PLAYLIST":
+        await this.handleLoadPlaylist(sender, msg.hostId, msg.playlistUrl);
+        break;
+      case "ABORT_LOAD":
+        if (this.isValidHostId(msg.hostId)) this.abortLoad = true;
         break;
       case "START_GAME":
         await this.handleStartGame(sender, msg.hostId, msg.playlistUrl, msg.targetCardCount);
@@ -158,10 +177,10 @@ export default class HitsterRoom implements Party.Server {
     if (playerId !== this.state.activePlayerId) return;
     if (!this.state.players[playerId]) return;
 
-    // Validate position is within range of the player's timeline
+    // Validate position is a non-negative integer within range of the player's timeline
     const player = this.state.players[playerId];
     const maxPosition = player.timeline.length; // can insert after last card
-    if (position < 0 || position > maxPosition) {
+    if (!Number.isInteger(position) || position < 0 || position > maxPosition) {
       this.sendTo(conn, { type: "ERROR", error: "invalid_position" });
       return;
     }
@@ -175,6 +194,275 @@ export default class HitsterRoom implements Party.Server {
     return this.state.hostId !== "" && hostId === this.state.hostId;
   }
 
+  private resolveEnv() {
+    return {
+      youtubeKey:
+        (this.room.env?.["pkvar-YOUTUBE_API_KEY"] as string | undefined) ??
+        (this.room.env?.YOUTUBE_API_KEY as string | undefined) ??
+        process.env.YOUTUBE_API_KEY,
+      spotifyClientId:
+        (this.room.env?.["pkvar-SPOTIFY_CLIENT_ID"] as string | undefined) ??
+        (this.room.env?.SPOTIFY_CLIENT_ID as string | undefined) ??
+        process.env.SPOTIFY_CLIENT_ID,
+      spotifyClientSecret:
+        (this.room.env?.["pkvar-SPOTIFY_CLIENT_SECRET"] as string | undefined) ??
+        (this.room.env?.SPOTIFY_CLIENT_SECRET as string | undefined) ??
+        process.env.SPOTIFY_CLIENT_SECRET,
+    };
+  }
+
+  private parseErrorCode(err: unknown): string {
+    const msg = err instanceof Error ? err.message : "unknown_error";
+    if (msg === "QUOTA_EXCEEDED") return "quota_exceeded";
+    if (msg.includes("API_KEY") || msg.includes("not set")) return "api_key_missing";
+    if (msg.includes("403")) return "playlist_forbidden";
+    if (msg.includes("404")) return "playlist_not_found";
+    if (msg.includes("YouTube API error")) return `youtube_error:${msg.match(/\d{3}/)?.[0] ?? "unknown"}`;
+    if (msg.includes("Spotify")) return "spotify_error";
+    return "playlist_load_failed";
+  }
+
+  private async handleLoadPlaylist(conn: Party.Connection, hostId: string, playlistUrl: string) {
+    if (this.state.phase !== "lobby") {
+      this.sendTo(conn, { type: "PLAYLIST_LOAD_ERROR", error: "wrong_phase" });
+      return;
+    }
+    if (this.state.hostId === "") {
+      this.state.hostId = hostId;
+    } else if (!this.isValidHostId(hostId)) {
+      this.sendTo(conn, { type: "PLAYLIST_LOAD_ERROR", error: "unauthorized" });
+      return;
+    }
+
+    const playlistId = extractPlaylistId(playlistUrl);
+
+    // Test seeds: signal ready immediately.
+    if (playlistUrl === "hitster://test" || playlistUrl === "hitster://cpop-test") {
+      this.pendingPlaylist = { playlistId, songs: [], diagnostics: [], spotifyRateLimited: false, kgBlocked: false };
+      this.sendTo(conn, { type: "PLAYLIST_READY", songCount: 20 });
+      return;
+    }
+
+    if (!PLAYLIST_ID_PATTERN.test(playlistId)) {
+      this.sendTo(conn, { type: "PLAYLIST_LOAD_ERROR", error: "playlist_load_failed" });
+      return;
+    }
+
+    // Reset abort flag and clear any previous cached result.
+    this.abortLoad = false;
+    this.pendingPlaylist = null;
+
+    // Helper: build a partial playlist snapshot from whatever year sources have resolved so far.
+    const buildSnapshot = (spotifyRateLimited: boolean, kgBlocked: boolean) => {
+      const songs: Card[] = [];
+      const diagnostics: SongDiagnostic[] = [];
+      for (let i = 0; i < tracks.length; i++) {
+        const { descYear, titleYear, artist } = metas[i];
+        const ytmYear = ytmYears.get(i) ?? null;
+        const spotify = spotifyResults.get(i) ?? null;
+        const spotifyYear = spotify?.year ?? null;
+        const year = descYear ?? titleYear ?? ytmYear ?? spotifyYear ?? null;
+        const src: Card["yearSource"] = descYear ? "description" : titleYear ? "title" : ytmYear ? "ytmusic" : "spotify";
+        const cleanTitle = spotify?.title ?? tracks[i].title;
+        const cleanArtist = spotify?.artist ?? artist;
+        diagnostics.push({ title: cleanTitle, artist: cleanArtist, year, yearSource: year ? src : null });
+        if (year) songs.push({ id: tracks[i].videoId, videoId: tracks[i].videoId, title: cleanTitle, artist: cleanArtist, year, yearSource: src });
+      }
+      return { songs, diagnostics, spotifyRateLimited, kgBlocked };
+    };
+
+    // Declare outside try so buildSnapshot can close over them.
+    let tracks: Awaited<ReturnType<typeof fetchPlaylistItems>> = [];
+    type TrackMeta = { artist: string; trackName: string; descYear: number | null; titleYear: number | null };
+    let metas: TrackMeta[] = [];
+    const ytmYears = new Map<number, number>();
+    const spotifyResults = new Map<number, SpotifyTrackResult>();
+
+    try {
+      const { youtubeKey, spotifyClientId, spotifyClientSecret } = this.resolveEnv();
+
+      tracks = await fetchPlaylistItems(playlistId, youtubeKey);
+      let kgBlocked = false;
+
+      metas = tracks.map((track) => {
+        const descMeta = parseYouTubeMusicDescription(track.description);
+        const titleYear = extractYearFromTitle(track.title);
+        const titleParsed = parseArtistAndTrack(track.title);
+        const artist = descMeta.artist ?? titleParsed?.artist ?? channelToArtist(track.channelTitle);
+        const trackName = titleParsed?.track ?? extractCjkTrackName(track.title) ?? track.title;
+        return { artist, trackName, descYear: descMeta.year ?? null, titleYear: titleYear ?? null };
+      });
+
+      // Send initial status so host sees the song list immediately.
+      this.sendTo(conn, {
+        type: "DIAGNOSTIC",
+        songs: tracks.map((t, i) => ({ title: t.title, artist: metas[i].artist, year: null, yearSource: null })),
+        status: { spotifyRateLimited: false, kgBlocked: false },
+      });
+
+      // ── Pass 1: YouTube Music ────────────────────────────────────────────────
+      const YTM_BATCH = 5;
+      for (let i = 0; i < tracks.length; i += YTM_BATCH) {
+        if (this.abortLoad) break;
+        const batch = Array.from({ length: Math.min(YTM_BATCH, tracks.length - i) }, (_, j) => i + j);
+        await Promise.all(
+          batch.map(async (idx) => {
+            const { descYear, titleYear, artist, trackName } = metas[idx];
+            if (descYear ?? titleYear) return;
+            const y = await lookupYearFromYTMusic(artist, trackName).catch(() => null);
+            if (y) ytmYears.set(idx, y);
+          })
+        );
+        // Push YTM progress after each batch.
+        this.sendTo(conn, {
+          type: "DIAGNOSTIC",
+          songs: tracks.map((t, i) => {
+            const { descYear, titleYear, artist } = metas[i];
+            const ytmYear = ytmYears.get(i) ?? null;
+            const year = descYear ?? titleYear ?? ytmYear ?? null;
+            const yearSource = descYear ? "description" : titleYear ? "title" : ytmYear ? "ytmusic" : null;
+            return { title: t.title, artist, year, yearSource };
+          }),
+          status: { spotifyRateLimited: false, kgBlocked },
+        });
+        // Cache partial results so an abort between batches has something to use.
+        this.pendingPlaylist = { playlistId, ...buildSnapshot(false, kgBlocked) };
+      }
+
+      // Abort checkpoint after YTM pass.
+      if (this.abortLoad) {
+        const snap = buildSnapshot(false, kgBlocked);
+        this.pendingPlaylist = { playlistId, ...snap };
+        this.sendTo(conn, snap.songs.length >= 2
+          ? { type: "PLAYLIST_READY", songCount: snap.songs.length }
+          : { type: "PLAYLIST_LOAD_ERROR", error: "not_enough_songs" });
+        return;
+      }
+
+      // ── Pass 2: Spotify ──────────────────────────────────────────────────────
+      let spotifyRateLimited = false;
+      if (spotifyClientId && spotifyClientSecret) {
+        for (let i = 0; i < tracks.length; i++) {
+          if (this.abortLoad) break;
+          const { descYear, titleYear, artist, trackName } = metas[i];
+          if (descYear ?? titleYear ?? ytmYears.get(i)) continue;
+          if (spotifyRateLimited) break;
+          try {
+            const result = await lookupReleaseYear(artist, trackName, spotifyClientId, spotifyClientSecret);
+            if (result) spotifyResults.set(i, result);
+          } catch (err) {
+            if (err instanceof SpotifyRateLimitedError) spotifyRateLimited = true;
+          }
+          if (i < tracks.length - 1) await new Promise((r) => setTimeout(r, 200));
+        }
+        this.sendTo(conn, {
+          type: "DIAGNOSTIC",
+          songs: tracks.map((t, i) => {
+            const { descYear, titleYear, artist } = metas[i];
+            const ytmYear = ytmYears.get(i) ?? null;
+            const spotify = spotifyResults.get(i) ?? null;
+            const spotifyYear = spotify?.year ?? null;
+            const year = descYear ?? titleYear ?? ytmYear ?? spotifyYear ?? null;
+            const yearSource = descYear ? "description" : titleYear ? "title" : ytmYear ? "ytmusic" : spotifyYear ? "spotify" : null;
+            return { title: spotify?.title ?? t.title, artist: spotify?.artist ?? artist, year, yearSource };
+          }),
+          status: { spotifyRateLimited, kgBlocked },
+        });
+        // Update cached snapshot after Spotify pass.
+        this.pendingPlaylist = { playlistId, ...buildSnapshot(spotifyRateLimited, kgBlocked) };
+      }
+
+      // Abort checkpoint after Spotify pass.
+      if (this.abortLoad) {
+        const snap = buildSnapshot(spotifyRateLimited, kgBlocked);
+        this.pendingPlaylist = { playlistId, ...snap };
+        this.sendTo(conn, snap.songs.length >= 2
+          ? { type: "PLAYLIST_READY", songCount: snap.songs.length }
+          : { type: "PLAYLIST_LOAD_ERROR", error: "not_enough_songs" });
+        return;
+      }
+
+      // ── Pass 3: iTunes + KG ──────────────────────────────────────────────────
+      const BATCH = SPOTIFY_BATCH_SIZE;
+      const songs: Card[] = [];
+      const diagnostics: SongDiagnostic[] = [];
+      for (let i = 0; i < tracks.length; i += BATCH) {
+        if (this.abortLoad) break;
+        const batch = tracks.slice(i, i + BATCH);
+        const batchKgBlocked = kgBlocked;
+        const results = await Promise.allSettled(
+          batch.map(async (track, j) => {
+            const idx = i + j;
+            const { descYear, titleYear, artist, trackName } = metas[idx];
+            const ytmYear = ytmYears.get(idx) ?? null;
+            const spotify = spotifyResults.get(idx) ?? null;
+            const spotifyYear = spotify?.year ?? null;
+            let year: number | null = descYear ?? titleYear ?? ytmYear ?? spotifyYear;
+            let yearSource: Card["yearSource"] = descYear ? "description" : titleYear ? "title" : ytmYear ? "ytmusic" : spotifyYear ? "spotify" : "itunes";
+            let cleanTitle = spotify?.title ?? track.title;
+            let cleanArtist = spotify?.artist ?? artist;
+            let itunesResult: ItunesTrackResult | null = null;
+            if (!year) {
+              itunesResult = await lookupYearFromItunes(artist, trackName).catch(() => null);
+              if (itunesResult) {
+                year = itunesResult.year;
+                yearSource = "itunes";
+                cleanTitle = itunesResult.title;
+                cleanArtist = itunesResult.artist;
+              }
+            }
+            if (!year && youtubeKey && !batchKgBlocked) {
+              try {
+                year = await lookupYearFromKnowledgeGraph(artist, trackName, youtubeKey);
+                if (year) yearSource = "google";
+              } catch (err) {
+                if (err instanceof KnowledgeGraphBlockedError) kgBlocked = true;
+              }
+            }
+            return { track, cleanTitle, cleanArtist, year, yearSource };
+          })
+        );
+
+        for (const result of results) {
+          if (result.status !== "fulfilled") continue;
+          const { track, cleanTitle, cleanArtist, year, yearSource } = result.value;
+          diagnostics.push({ title: cleanTitle, artist: cleanArtist, year, yearSource: year ? yearSource : null });
+          if (year) {
+            songs.push({ id: track.videoId, videoId: track.videoId, title: cleanTitle, artist: cleanArtist, year, yearSource } satisfies Card);
+          }
+        }
+
+        this.sendTo(conn, {
+          type: "DIAGNOSTIC",
+          songs: [...diagnostics],
+          status: { spotifyRateLimited, kgBlocked },
+        });
+        // Keep partial cached result current throughout this pass.
+        this.pendingPlaylist = { playlistId, songs: [...songs], diagnostics: [...diagnostics], spotifyRateLimited, kgBlocked };
+      }
+
+      // Abort checkpoint after iTunes/KG pass (or mid-pass).
+      if (this.abortLoad) {
+        const count = songs.length;
+        this.sendTo(conn, count >= 2
+          ? { type: "PLAYLIST_READY", songCount: count }
+          : { type: "PLAYLIST_LOAD_ERROR", error: "not_enough_songs" });
+        return;
+      }
+
+      this.pendingPlaylist = { playlistId, songs, diagnostics, spotifyRateLimited, kgBlocked };
+
+      if (songs.length < 2) {
+        this.sendTo(conn, { type: "PLAYLIST_LOAD_ERROR", error: "not_enough_songs" });
+        return;
+      }
+
+      this.sendTo(conn, { type: "PLAYLIST_READY", songCount: songs.length });
+    } catch (err) {
+      this.sendTo(conn, { type: "PLAYLIST_LOAD_ERROR", error: this.parseErrorCode(err) });
+    }
+  }
+
   private async handleStartGame(
     conn: Party.Connection,
     hostId: string,
@@ -185,235 +473,176 @@ export default class HitsterRoom implements Party.Server {
       this.sendTo(conn, { type: "ERROR", error: "wrong_phase" });
       return;
     }
-
-    // First START_GAME message from the host establishes hostId
     if (this.state.hostId === "") {
       this.state.hostId = hostId;
     } else if (!this.isValidHostId(hostId)) {
       this.sendTo(conn, { type: "ERROR", error: "unauthorized" });
       return;
     }
-
     if (typeof targetCardCount === "number") {
       this.state.targetCardCount = Math.max(1, Math.min(targetCardCount, MAX_TARGET_CARD_COUNT));
     }
 
     const playlistId = extractPlaylistId(playlistUrl);
     this.state.playlistId = playlistId;
+    this.broadcastState();
 
-    this.broadcastState(); // show "loading..." to players
-
-    // Test seed: bypass API calls for deterministic E2E testing.
-    // Songs are in ascending year order (no shuffle) so placement positions are predictable.
-    if (playlistUrl === "hitster://test") {
+    // ── Test seeds ───────────────────────────────────────────────────────────
+    if (playlistUrl === "hitster://cpop-test") {
       this.state.targetCardCount = 3;
-      this.state.songs = Array.from({ length: 20 }, (_, i) => ({
-        id: `test-${i}`,
-        videoId: "dQw4w9WgXcQ",
-        title: `Test Song ${1960 + i * 3}`,
-        artist: "Test Artist",
-        year: 1960 + i * 3,
-        yearSource: "manual" as const,
-      } satisfies Card));
-      for (const [playerId, player] of Object.entries(this.state.players)) {
-        if (player.timeline.length === 0) {
-          const startingCard = this.pickStartingCard(playerId);
-          if (startingCard) {
-            player.timeline = [startingCard];
-            player.cardCount = 1;
-          }
-        }
-      }
-      this.startNextRound();
+      const cpopSongs: Card[] = [
+        { id: "cpop-0", videoId: "KqjgLbKZ1h0", title: "那些年", artist: "胡夏", year: 2012, yearSource: "ytmusic" },
+        { id: "cpop-1", videoId: "vsBf_0gDxSM", title: "可惜沒如果", artist: "林俊傑 JJ Lin", year: 2014, yearSource: "ytmusic" },
+        { id: "cpop-2", videoId: "_sQSXwdtxlY", title: "小幸運", artist: "田馥甄 Hebe Tien", year: 2015, yearSource: "ytmusic" },
+        { id: "cpop-3", videoId: "bu7nU9Mhpyo", title: "告白氣球", artist: "周杰倫 Jay Chou", year: 2016, yearSource: "ytmusic" },
+        { id: "cpop-4", videoId: "T4SimnaiktU", title: "光年之外", artist: "G.E.M. 鄧紫棋", year: 2016, yearSource: "ytmusic" },
+        { id: "cpop-5", videoId: "wSBXfzgqHtE", title: "你，好不好？", artist: "周興哲 Eric Chou", year: 2016, yearSource: "ytmusic" },
+        { id: "cpop-6", videoId: "sg_WE0ToJjM", title: "體面", artist: "于文文", year: 2017, yearSource: "ytmusic" },
+        { id: "cpop-7", videoId: "Dnj5Tcpev0Q", title: "年少有為", artist: "李榮浩 Ronghao Li", year: 2018, yearSource: "ytmusic" },
+      ];
+      this.state.songs = cpopSongs;
+      this.broadcast({ type: "DIAGNOSTIC", songs: cpopSongs.map((s) => ({ title: s.title, artist: s.artist, year: s.year, yearSource: "ytmusic" as const })), status: { spotifyRateLimited: false, kgBlocked: false } });
+      this.dealStartingCardsAndStart();
       return;
     }
 
+    if (playlistUrl === "hitster://test") {
+      this.state.targetCardCount = 3;
+      this.state.songs = Array.from({ length: 20 }, (_, i) => ({
+        id: `test-${i}`, videoId: "dQw4w9WgXcQ", title: `Test Song ${1960 + i * 3}`,
+        artist: "Test Artist", year: 1960 + i * 3, yearSource: "manual" as const,
+      } satisfies Card));
+      this.dealStartingCardsAndStart();
+      return;
+    }
+
+    // ── Use cached playlist (loaded via LOAD_PLAYLIST) ───────────────────────
+    const pending = this.pendingPlaylist;
+    if (pending && pending.playlistId === playlistId) {
+      if (pending.songs.length < 2) {
+        this.sendTo(conn, { type: "ERROR", error: "not_enough_songs" });
+        return;
+      }
+      this.state.songs = [...pending.songs].sort(() => Math.random() - 0.5);
+      this.broadcast({ type: "DIAGNOSTIC", songs: pending.diagnostics, status: { spotifyRateLimited: pending.spotifyRateLimited, kgBlocked: pending.kgBlocked } });
+      this.pendingPlaylist = null;
+      this.dealStartingCardsAndStart();
+      return;
+    }
+
+    // ── Fallback: load on the fly (LOAD_PLAYLIST wasn't called first) ────────
     if (!PLAYLIST_ID_PATTERN.test(playlistId)) {
       this.sendTo(conn, { type: "ERROR", error: "playlist_load_failed" });
       return;
     }
-
     try {
-      // Production: PartyKit stores secrets with pkvar- prefix in Cloudflare env
-      // Local dev: miniflare exposes them under the unprefixed name via process.env
-      const youtubeKey =
-        (this.room.env?.["pkvar-YOUTUBE_API_KEY"] as string | undefined) ??
-        (this.room.env?.YOUTUBE_API_KEY as string | undefined) ??
-        process.env.YOUTUBE_API_KEY;
-      const spotifyClientId =
-        (this.room.env?.["pkvar-SPOTIFY_CLIENT_ID"] as string | undefined) ??
-        (this.room.env?.SPOTIFY_CLIENT_ID as string | undefined) ??
-        process.env.SPOTIFY_CLIENT_ID;
-      const spotifyClientSecret =
-        (this.room.env?.["pkvar-SPOTIFY_CLIENT_SECRET"] as string | undefined) ??
-        (this.room.env?.SPOTIFY_CLIENT_SECRET as string | undefined) ??
-        process.env.SPOTIFY_CLIENT_SECRET;
-
+      const { youtubeKey, spotifyClientId, spotifyClientSecret } = this.resolveEnv();
       const tracks = await fetchPlaylistItems(playlistId, youtubeKey);
       const songs: Card[] = [];
       const diagnostics: SongDiagnostic[] = [];
-
-      // KG 403 flag — skip KG for all remaining songs once blocked.
       let kgBlocked = false;
-
-      // Pre-compute per-track metadata (sync, no API calls).
-      type TrackMeta = {
-        artist: string;
-        trackName: string;
-        descYear: number | null;
-        titleYear: number | null;
-      };
+      type TrackMeta = { artist: string; trackName: string; descYear: number | null; titleYear: number | null };
       const metas: TrackMeta[] = tracks.map((track) => {
         const descMeta = parseYouTubeMusicDescription(track.description);
         const titleYear = extractYearFromTitle(track.title);
         const titleParsed = parseArtistAndTrack(track.title);
-        const artist =
-          descMeta.artist ??
-          titleParsed?.artist ??
-          channelToArtist(track.channelTitle);
-        const trackName =
-          titleParsed?.track ??
-          extractCjkTrackName(track.title) ??
-          track.title;
+        const artist = descMeta.artist ?? titleParsed?.artist ?? channelToArtist(track.channelTitle);
+        const trackName = titleParsed?.track ?? extractCjkTrackName(track.title) ?? track.title;
         return { artist, trackName, descYear: descMeta.year ?? null, titleYear: titleYear ?? null };
       });
-
-      // ── Pass 1: Spotify (sequential, 200 ms between calls) ──────────────────
-      // Running Spotify in parallel bursts up to 25 simultaneous API calls and
-      // reliably triggers 429s. Sequential calls at ~5/s stay well within limits.
+      const YTM_BATCH = 5;
+      const ytmYears = new Map<number, number>();
+      for (let i = 0; i < tracks.length; i += YTM_BATCH) {
+        const batch = Array.from({ length: Math.min(YTM_BATCH, tracks.length - i) }, (_, j) => i + j);
+        await Promise.all(batch.map(async (idx) => {
+          const { descYear, titleYear, artist, trackName } = metas[idx];
+          if (descYear ?? titleYear) return;
+          const y = await lookupYearFromYTMusic(artist, trackName).catch(() => null);
+          if (y) ytmYears.set(idx, y);
+        }));
+      }
       let spotifyRateLimited = false;
-      const spotifyYears = new Map<number, number>(); // track index → year
+      const spotifyResultsFallback = new Map<number, SpotifyTrackResult>();
       if (spotifyClientId && spotifyClientSecret) {
         for (let i = 0; i < tracks.length; i++) {
           const { descYear, titleYear, artist, trackName } = metas[i];
-          if (descYear ?? titleYear) continue; // already resolved — skip Spotify
+          if (descYear ?? titleYear ?? ytmYears.get(i)) continue;
           if (spotifyRateLimited) break;
           try {
-            const y = await lookupReleaseYear(artist, trackName, spotifyClientId, spotifyClientSecret);
-            if (y) spotifyYears.set(i, y);
+            const result = await lookupReleaseYear(artist, trackName, spotifyClientId, spotifyClientSecret);
+            if (result) spotifyResultsFallback.set(i, result);
           } catch (err) {
             if (err instanceof SpotifyRateLimitedError) spotifyRateLimited = true;
           }
-          // 200 ms breathing room between Spotify calls (~5 req/s)
           if (i < tracks.length - 1) await new Promise((r) => setTimeout(r, 200));
         }
       }
-
-      // Send initial diagnostic after Spotify pass so host sees Spotify results.
       this.sendTo(conn, {
         type: "DIAGNOSTIC",
         songs: tracks.map((t, i) => {
           const { descYear, titleYear, artist } = metas[i];
-          const year = descYear ?? titleYear ?? spotifyYears.get(i) ?? null;
-          const yearSource = descYear ? "description" : titleYear ? "title" : year ? "spotify" : null;
-          return { title: t.title, artist, year, yearSource };
+          const ytmYear = ytmYears.get(i) ?? null;
+          const spotify = spotifyResultsFallback.get(i) ?? null;
+          const spotifyYear = spotify?.year ?? null;
+          const year = descYear ?? titleYear ?? ytmYear ?? spotifyYear ?? null;
+          const yearSource = descYear ? "description" : titleYear ? "title" : ytmYear ? "ytmusic" : year ? "spotify" : null;
+          return { title: spotify?.title ?? t.title, artist: spotify?.artist ?? artist, year, yearSource };
         }),
         status: { spotifyRateLimited, kgBlocked },
       });
-
-      // ── Pass 2: iTunes + KG in parallel batches ──────────────────────────────
-      // Songs already resolved via description / title / Spotify are skipped.
-      // iTunes calls are parallelised internally so each batch is fast (~0.3 s).
       const BATCH = SPOTIFY_BATCH_SIZE;
       for (let i = 0; i < tracks.length; i += BATCH) {
         const batch = tracks.slice(i, i + BATCH);
         const batchKgBlocked = kgBlocked;
-        const results = await Promise.allSettled(
-          batch.map(async (track, j) => {
-            const idx = i + j;
-            const { descYear, titleYear, artist, trackName } = metas[idx];
-            const spotifyYear = spotifyYears.get(idx) ?? null;
-
-            // Year resolution priority: description > title > Spotify > iTunes > KG
-            let year: number | null = descYear ?? titleYear ?? spotifyYear;
-            let yearSource: Card["yearSource"] = descYear
-              ? "description"
-              : titleYear
-              ? "title"
-              : spotifyYear
-              ? "spotify"
-              : "itunes";
-
-            if (!year) {
-              year = await lookupYearFromItunes(artist, trackName).catch(() => null);
-              if (year) yearSource = "itunes";
+        const results = await Promise.allSettled(batch.map(async (track, j) => {
+          const idx = i + j;
+          const { descYear, titleYear, artist, trackName } = metas[idx];
+          const ytmYear = ytmYears.get(idx) ?? null;
+          const spotify = spotifyResultsFallback.get(idx) ?? null;
+          const spotifyYear = spotify?.year ?? null;
+          let year: number | null = descYear ?? titleYear ?? ytmYear ?? spotifyYear;
+          let yearSource: Card["yearSource"] = descYear ? "description" : titleYear ? "title" : ytmYear ? "ytmusic" : spotifyYear ? "spotify" : "itunes";
+          let cleanTitle = spotify?.title ?? track.title;
+          let cleanArtist = spotify?.artist ?? artist;
+          if (!year) {
+            const itunesResult = await lookupYearFromItunes(artist, trackName).catch(() => null);
+            if (itunesResult) {
+              year = itunesResult.year;
+              yearSource = "itunes";
+              cleanTitle = itunesResult.title;
+              cleanArtist = itunesResult.artist;
             }
-            if (!year && youtubeKey && !batchKgBlocked) {
-              try {
-                year = await lookupYearFromKnowledgeGraph(artist, trackName, youtubeKey);
-                if (year) yearSource = "google";
-              } catch (err) {
-                if (err instanceof KnowledgeGraphBlockedError) kgBlocked = true;
-              }
-            }
-
-            return { track, artist, year, yearSource };
-          })
-        );
-
+          }
+          if (!year && youtubeKey && !batchKgBlocked) {
+            try { year = await lookupYearFromKnowledgeGraph(artist, trackName, youtubeKey); if (year) yearSource = "google"; }
+            catch (err) { if (err instanceof KnowledgeGraphBlockedError) kgBlocked = true; }
+          }
+          return { track, cleanTitle, cleanArtist, year, yearSource };
+        }));
         for (const result of results) {
           if (result.status !== "fulfilled") continue;
-          const { track, artist, year, yearSource } = result.value;
-          diagnostics.push({ title: track.title, artist, year, yearSource: year ? yearSource : null });
-          if (year) {
-            songs.push({
-              id: track.videoId,
-              videoId: track.videoId,
-              title: track.title,
-              artist,
-              year,
-              yearSource,
-            } satisfies Card);
-          }
+          const { track, cleanTitle, cleanArtist, year, yearSource } = result.value;
+          diagnostics.push({ title: cleanTitle, artist: cleanArtist, year, yearSource: year ? yearSource : null });
+          if (year) songs.push({ id: track.videoId, videoId: track.videoId, title: cleanTitle, artist: cleanArtist, year, yearSource } satisfies Card);
         }
-
-        this.sendTo(conn, {
-          type: "DIAGNOSTIC",
-          songs: [...diagnostics],
-          status: { spotifyRateLimited, kgBlocked },
-        });
+        this.sendTo(conn, { type: "DIAGNOSTIC", songs: [...diagnostics], status: { spotifyRateLimited, kgBlocked } });
       }
-
-      if (songs.length < 2) {
-        this.sendTo(conn, { type: "ERROR", error: "not_enough_songs" });
-        return;
-      }
-
-      // Shuffle songs
+      if (songs.length < 2) { this.sendTo(conn, { type: "ERROR", error: "not_enough_songs" }); return; }
       this.state.songs = songs.sort(() => Math.random() - 0.5);
-
-      // Deal starting cards (one per player, year visible)
-      for (const [playerId, player] of Object.entries(this.state.players)) {
-        if (player.timeline.length === 0) {
-          const startingCard = this.pickStartingCard(playerId);
-          if (startingCard) {
-            player.timeline = [startingCard];
-            player.cardCount = 1;
-          }
-        }
-      }
-
-      this.startNextRound();
+      this.dealStartingCardsAndStart();
     } catch (err) {
-      const msg = err instanceof Error ? err.message : "unknown_error";
-      let errorCode: string;
-      if (msg === "QUOTA_EXCEEDED") {
-        errorCode = "quota_exceeded";
-      } else if (msg.includes("API_KEY") || msg.includes("not set")) {
-        errorCode = "api_key_missing";
-      } else if (msg.includes("403")) {
-        errorCode = "playlist_forbidden";
-      } else if (msg.includes("404")) {
-        errorCode = "playlist_not_found";
-      } else if (msg.includes("YouTube API error")) {
-        errorCode = `youtube_error:${msg.match(/\d{3}/)?.[0] ?? "unknown"}`;
-      } else if (msg.includes("Spotify")) {
-        errorCode = "spotify_error";
-      } else {
-        errorCode = "playlist_load_failed";
-      }
-      this.sendTo(conn, { type: "ERROR", error: errorCode });
+      this.sendTo(conn, { type: "ERROR", error: this.parseErrorCode(err) });
     }
+  }
+
+  private dealStartingCardsAndStart() {
+    for (const [playerId, player] of Object.entries(this.state.players)) {
+      if (player.timeline.length === 0) {
+        const startingCard = this.pickStartingCard(playerId);
+        if (startingCard) { player.timeline = [startingCard]; player.cardCount = 1; }
+      }
+    }
+    this.startNextRound();
   }
 
   private handleReveal(conn: Party.Connection, hostId: string) {

@@ -179,12 +179,19 @@ export function parseYouTubeMusicDescription(description: string): {
 } {
   const result: { artist?: string; year?: number } = {};
 
+  const MAX_YEAR = new Date().getFullYear() + 1;
   const releasedMatch = description.match(/Released on:\s*(\d{4})/);
-  if (releasedMatch) result.year = parseInt(releasedMatch[1], 10);
+  if (releasedMatch) {
+    const y = parseInt(releasedMatch[1], 10);
+    if (y >= 1900 && y <= MAX_YEAR) result.year = y;
+  }
 
   if (!result.year) {
     const copyrightMatch = description.match(/℗\s*(\d{4})/);
-    if (copyrightMatch) result.year = parseInt(copyrightMatch[1], 10);
+    if (copyrightMatch) {
+      const y = parseInt(copyrightMatch[1], 10);
+      if (y >= 1900 && y <= MAX_YEAR) result.year = y;
+    }
   }
 
   const artistLineMatch = description.match(/^Artist:\s*(.+)$/m);

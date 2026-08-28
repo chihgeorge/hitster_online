@@ -14,10 +14,16 @@ const CJK_RE = /[一-鿿぀-ヿ가-힯㐀-䶿豈-﫿]/;
  * better Mandarin/Cantonese pop coverage than the default US store, which often
  * returns wrong older songs with the same title.
  */
+export interface ItunesTrackResult {
+  year: number;
+  title: string;
+  artist: string;
+}
+
 export async function lookupYearFromItunes(
   artist: string,
   track: string
-): Promise<number | null> {
+): Promise<ItunesTrackResult | null> {
   const variants = artistNameVariants(artist);
   // CJK content: try Taiwan store first (better Mandarin/Cantonese pop coverage),
   // then US store as fallback. Run all variant searches in parallel per store so
@@ -38,6 +44,8 @@ export async function lookupYearFromItunes(
 
   return null;
 }
+
+
 
 /**
  * Returns search variants for an artist name.
@@ -62,7 +70,7 @@ function artistNameVariants(name: string): string[] {
   return [...new Set(variants)];
 }
 
-async function searchItunes(query: string, artistHint: string, country?: string): Promise<number | null> {
+async function searchItunes(query: string, artistHint: string, country?: string): Promise<ItunesTrackResult | null> {
   const paramsObj: Record<string, string> = {
     term: query,
     entity: "musicTrack",
@@ -84,6 +92,7 @@ async function searchItunes(query: string, artistHint: string, country?: string)
     results: {
       wrapperType?: string;
       kind?: string;
+      trackName?: string;
       artistName?: string;
       releaseDate?: string;
     }[];
@@ -115,11 +124,15 @@ async function searchItunes(query: string, artistHint: string, country?: string)
     : [];
   const candidates = artistMatched.length > 0 ? artistMatched : tracks;
 
-  // Count occurrences of each release year across candidates.
+  // Count occurrences of each release year across candidates; track a representative item per year.
   const votes = new Map<number, number>();
+  const repItem = new Map<number, (typeof tracks)[0]>();
   for (const item of candidates) {
     const y = parseInt((item.releaseDate ?? "").slice(0, 4), 10);
-    if (!isNaN(y) && y >= 1900) votes.set(y, (votes.get(y) ?? 0) + 1);
+    if (!isNaN(y) && y >= 1900 && y <= new Date().getFullYear() + 1) {
+      votes.set(y, (votes.get(y) ?? 0) + 1);
+      if (!repItem.has(y)) repItem.set(y, item);
+    }
   }
   if (votes.size === 0) return null;
 
@@ -132,5 +145,13 @@ async function searchItunes(query: string, artistHint: string, country?: string)
   // exact artist's song). Without an artist match we're working with noisy
   // unfiltered results — require ≥2 votes to avoid wrong years from unrelated
   // songs that share the same title (common with short CJK track names).
-  return confirmedEarliest ?? (artistMatched.length > 0 ? sortedYears[0] : null);
+  const chosenYear = confirmedEarliest ?? (artistMatched.length > 0 ? sortedYears[0] : null);
+  if (chosenYear === null) return null;
+
+  const rep = repItem.get(chosenYear);
+  return {
+    year: chosenYear,
+    title: rep?.trackName ?? query,
+    artist: rep?.artistName ?? artistHint,
+  };
 }
