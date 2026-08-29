@@ -25,6 +25,7 @@ export default function PlayPage() {
   const [selectedPosition, setSelectedPosition] = useState<number | null>(null);
   const [hasPlaced, setHasPlaced] = useState(false);
   const [tooLate, setTooLate] = useState(false);
+  const [showCodeWarning, setShowCodeWarning] = useState(false);
   const playerIdRef = useRef<string>("");
 
   useEffect(() => {
@@ -39,6 +40,13 @@ export default function PlayPage() {
       setSelectedPosition(null);
     }
   }, [state?.phase]);
+
+  // Show "check your room code" warning after 90s still in lobby
+  useEffect(() => {
+    if (state !== null && state.phase !== "lobby") return;
+    const timer = setTimeout(() => setShowCodeWarning(true), 90_000);
+    return () => clearTimeout(timer);
+  }, [state]);
 
   const socket = usePartySocket({
     host: process.env.NEXT_PUBLIC_PARTYKIT_HOST ?? "localhost:1999",
@@ -94,6 +102,11 @@ export default function PlayPage() {
         <p className="text-sm text-gray-600">
           Room <span className="font-mono text-yellow-400">{params.code}</span> · {playerName}
         </p>
+        {showCodeWarning && (
+          <p className="mt-2 rounded-lg border border-yellow-600 bg-yellow-900/30 px-4 py-3 text-sm text-yellow-300">
+            Still waiting after 90 seconds — double-check your room code.
+          </p>
+        )}
       </main>
     );
   }
