@@ -1,6 +1,6 @@
 # Changelog
 
-## [0.1.0] — 2026-08-28
+## [0.1.0.0] — 2026-08-28
 
 ### Added
 - Initial scaffold for HITSTER! Online — fan-made web version of the HITSTER! board game
