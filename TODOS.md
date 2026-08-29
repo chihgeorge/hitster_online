@@ -45,6 +45,9 @@
 - [ ] **P2** Validate `playerId` format to prevent prototype-pollution-adjacent keys  
   `handleJoin` stores `playerId` directly as an object key with no format check. Restrict to UUID format (`/^[0-9a-f]{8}-[0-9a-f]{4}-...-[0-9a-f]{12}$/i`) and reject on mismatch.
 
+- [x] **P2** Invalid room code silently creates orphaned waiting room  
+  Fixed by /qa on feat/initial-scaffold, 2026-08-28 — commit ed7449a. Shows yellow warning banner after 90s: "Still waiting after 90 seconds — double-check your room code."
+
 ## P3 — Nice to have
 
 - [ ] **P3** `docs/wireframes/hitster-v1.png`  
