@@ -171,11 +171,11 @@ describe("PLACE handler", () => {
     expect(lastSentTo(conn)?.error).toBe("invalid_position");
   });
 
-  it("sends WRONG_PHASE when not in guessing phase", async () => {
+  it("sends TOO_LATE when not in guessing phase", async () => {
     const room = new HitsterRoom(makeRoom() as any);
     const conn = makeConn();
     await send(room, conn, { type: "PLACE", playerId: "p1", position: 0 });
-    expect(lastSentTo(conn)?.type).toBe("WRONG_PHASE");
+    expect(lastSentTo(conn)?.type).toBe("TOO_LATE");
   });
 });
 
