@@ -83,8 +83,7 @@ export type ServerMessage =
   | { type: "PLAYLIST_READY"; songCount: number; songs: EditableSong[] }
   | { type: "PLAYLIST_LOAD_ERROR"; error: string }
   | { type: "PLAYLIST_SAVED"; playlistId: string }
-  | { type: "TOO_LATE" }
-  | { type: "WRONG_PHASE" };
+  | { type: "TOO_LATE" };
 
 // --- Placement evaluation (core game logic) ---
 

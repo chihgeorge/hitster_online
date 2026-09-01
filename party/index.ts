@@ -176,7 +176,7 @@ export default class HitsterRoom implements Party.Server {
 
   private handlePlace(conn: Party.Connection, playerId: string, position: number) {
     if (this.state.phase !== "guessing") {
-      this.sendTo(conn, { type: "WRONG_PHASE" });
+      this.sendTo(conn, { type: "TOO_LATE" });
       return;
     }
     if (playerId !== this.state.activePlayerId) return;
