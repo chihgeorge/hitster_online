@@ -2,6 +2,12 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import HitsterRoom from "./index";
 
+// Valid UUID-format player IDs used throughout tests
+const P1 = "00000000-0000-0000-0000-000000000001";
+const P2 = "00000000-0000-0000-0000-000000000002";
+const P8 = "00000000-0000-0000-0000-000000000008";
+const STRANGER = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee";
+
 // ─── Mock PartyKit dependencies ──────────────────────────────────────────────
 
 function makeConn(id = "conn-1") {
@@ -82,40 +88,40 @@ describe("JOIN handler", () => {
   it("adds player and broadcasts state", async () => {
     const room = new HitsterRoom(makeRoom() as any);
     const conn = makeConn();
-    await send(room, conn, { type: "JOIN", playerId: "p1", name: "Alice" });
-    expect(room.state.players["p1"].name).toBe("Alice");
+    await send(room, conn, { type: "JOIN", playerId: P1, name: "Alice" });
+    expect(room.state.players[P1].name).toBe("Alice");
     expect(lastBroadcast(room)?.type).toBe("STATE");
   });
 
   it("sanitizes name: strips HTML special characters", async () => {
     const room = new HitsterRoom(makeRoom() as any);
     const conn = makeConn();
-    await send(room, conn, { type: "JOIN", playerId: "p1", name: "  <Alice>  " });
-    expect(room.state.players["p1"].name).toBe("Alice");
+    await send(room, conn, { type: "JOIN", playerId: P1, name: "  <Alice>  " });
+    expect(room.state.players[P1].name).toBe("Alice");
   });
 
   it("rejects empty name after sanitization", async () => {
     const room = new HitsterRoom(makeRoom() as any);
     const conn = makeConn();
-    await send(room, conn, { type: "JOIN", playerId: "p1", name: "<<<" });
+    await send(room, conn, { type: "JOIN", playerId: P1, name: "<<<" });
     expect(lastSentTo(conn)?.error).toBe("invalid_name");
-    expect(room.state.players["p1"]).toBeUndefined();
+    expect(room.state.players[P1]).toBeUndefined();
   });
 
   it("truncates name at 20 characters", async () => {
     const room = new HitsterRoom(makeRoom() as any);
     const conn = makeConn();
-    await send(room, conn, { type: "JOIN", playerId: "p1", name: "A".repeat(30) });
-    expect(room.state.players["p1"].name).toHaveLength(20);
+    await send(room, conn, { type: "JOIN", playerId: P1, name: "A".repeat(30) });
+    expect(room.state.players[P1].name).toHaveLength(20);
   });
 
   it("rejects new player when room is full (8 players)", async () => {
     const room = new HitsterRoom(makeRoom() as any);
     for (let i = 0; i < 8; i++) {
-      await send(room, makeConn(`c${i}`), { type: "JOIN", playerId: `p${i}`, name: `P${i}` });
+      await send(room, makeConn(`c${i}`), { type: "JOIN", playerId: `00000000-0000-0000-0000-00000000000${i}`, name: `P${i}` });
     }
     const late = makeConn("c8");
-    await send(room, late, { type: "JOIN", playerId: "p8", name: "Late" });
+    await send(room, late, { type: "JOIN", playerId: P8, name: "Late" });
     expect(lastSentTo(late)?.error).toBe("room_full");
   });
 });
@@ -125,20 +131,20 @@ describe("JOIN handler", () => {
 describe("REJOIN handler", () => {
   it("marks known player connected and sends state", async () => {
     const room = new HitsterRoom(makeRoom() as any);
-    await send(room, makeConn(), { type: "JOIN", playerId: "p1", name: "Alice" });
-    room.state.players["p1"].connected = false;
+    await send(room, makeConn(), { type: "JOIN", playerId: P1, name: "Alice" });
+    room.state.players[P1].connected = false;
 
     const conn2 = makeConn("c2");
-    await send(room, conn2, { type: "REJOIN", playerId: "p1", name: "Alice" });
-    expect(room.state.players["p1"].connected).toBe(true);
+    await send(room, conn2, { type: "REJOIN", playerId: P1, name: "Alice" });
+    expect(room.state.players[P1].connected).toBe(true);
     expect(lastSentTo(conn2)?.type).toBe("STATE");
   });
 
   it("treats unknown playerId as new JOIN", async () => {
     const room = new HitsterRoom(makeRoom() as any);
     const conn = makeConn();
-    await send(room, conn, { type: "REJOIN", playerId: "stranger", name: "Bob" });
-    expect(room.state.players["stranger"]?.name).toBe("Bob");
+    await send(room, conn, { type: "REJOIN", playerId: STRANGER, name: "Bob" });
+    expect(room.state.players[STRANGER]?.name).toBe("Bob");
   });
 });
 
@@ -147,9 +153,9 @@ describe("REJOIN handler", () => {
 describe("PLACE handler", () => {
   function roomInGuessing() {
     const r = new HitsterRoom(makeRoom() as any);
-    r.state.players["p1"] = { name: "Alice", cardCount: 0, timeline: [], connected: true };
+    r.state.players[P1] = { name: "Alice", cardCount: 0, timeline: [], connected: true };
     r.state.phase = "guessing";
-    r.state.activePlayerId = "p1";
+    r.state.activePlayerId = P1;
     r.state.currentSong = {
       id: "v1", videoId: "v1", title: "Song", artist: "Artist", year: 1985, yearSource: "description",
     };
@@ -159,22 +165,22 @@ describe("PLACE handler", () => {
   it("records placement and sends PLACEMENT_ACK", async () => {
     const room = roomInGuessing();
     const conn = makeConn();
-    await send(room, conn, { type: "PLACE", playerId: "p1", position: 0 });
-    expect(room.state.placements["p1"]).toBe(0);
+    await send(room, conn, { type: "PLACE", playerId: P1, position: 0 });
+    expect(room.state.placements[P1]).toBe(0);
     expect(lastSentTo(conn)?.type).toBe("PLACEMENT_ACK");
   });
 
   it("rejects position outside timeline bounds", async () => {
     const room = roomInGuessing();
     const conn = makeConn();
-    await send(room, conn, { type: "PLACE", playerId: "p1", position: 5 });
+    await send(room, conn, { type: "PLACE", playerId: P1, position: 5 });
     expect(lastSentTo(conn)?.error).toBe("invalid_position");
   });
 
   it("sends TOO_LATE when not in guessing phase", async () => {
     const room = new HitsterRoom(makeRoom() as any);
     const conn = makeConn();
-    await send(room, conn, { type: "PLACE", playerId: "p1", position: 0 });
+    await send(room, conn, { type: "PLACE", playerId: P1, position: 0 });
     expect(lastSentTo(conn)?.type).toBe("TOO_LATE");
   });
 });
@@ -193,7 +199,7 @@ describe("START_GAME handler", () => {
 
     const room = new HitsterRoom(makeRoom() as any);
     const conn = makeConn();
-    await send(room, conn, { type: "JOIN", playerId: "p1", name: "Alice" });
+    await send(room, conn, { type: "JOIN", playerId: P1, name: "Alice" });
     await send(room, conn, {
       type: "START_GAME",
       hostId: "host-uuid",
@@ -329,7 +335,7 @@ describe("REVEAL handler", () => {
 
     const room = new HitsterRoom(makeRoom() as any);
     const conn = makeConn();
-    await send(room, conn, { type: "JOIN", playerId: "p1", name: "Alice" });
+    await send(room, conn, { type: "JOIN", playerId: P1, name: "Alice" });
     await send(room, conn, { type: "START_GAME", hostId: "host-uuid", playlistUrl: "PLtest" });
     return { room, conn };
   }
@@ -343,12 +349,12 @@ describe("REVEAL handler", () => {
   it("evaluates placements on reveal", async () => {
     const { room, conn } = await startedRoom();
     // p1 has 1 starting card; placing at position 0 or 1 is within bounds
-    await send(room, conn, { type: "PLACE", playerId: "p1", position: 0 });
-    const cardsBefore = room.state.players["p1"].cardCount;
+    await send(room, conn, { type: "PLACE", playerId: P1, position: 0 });
+    const cardsBefore = room.state.players[P1].cardCount;
     await send(room, conn, { type: "REVEAL", hostId: "host-uuid" });
     // cardCount may have changed (correct or incorrect) — just verify no crash
-    expect(typeof room.state.players["p1"].cardCount).toBe("number");
-    expect(room.state.players["p1"].cardCount).toBeGreaterThanOrEqual(cardsBefore);
+    expect(typeof room.state.players[P1].cardCount).toBe("number");
+    expect(room.state.players[P1].cardCount).toBeGreaterThanOrEqual(cardsBefore);
   });
 
   it("rejects REVEAL from non-host", async () => {
@@ -361,20 +367,20 @@ describe("REVEAL handler", () => {
 
   it("transitions to ended when a player wins", async () => {
     const { room, conn } = await startedRoom();
-    room.state.players["p1"].cardCount = 9;
+    room.state.players[P1].cardCount = 9;
     room.state.targetCardCount = 10;
 
     // Make an unconditionally correct placement: set up song year to fit before player's timeline
     const songYear = room.state.currentSong!.year;
-    const timeline = room.state.players["p1"].timeline;
+    const timeline = room.state.players[P1].timeline;
     const pos = timeline.findIndex((c) => c.year >= songYear);
     const safePos = pos === -1 ? timeline.length : pos;
-    await send(room, conn, { type: "PLACE", playerId: "p1", position: safePos });
+    await send(room, conn, { type: "PLACE", playerId: P1, position: safePos });
     await send(room, conn, { type: "REVEAL", hostId: "host-uuid" });
 
-    if (room.state.players["p1"].cardCount >= 10) {
+    if (room.state.players[P1].cardCount >= 10) {
       expect(room.state.phase).toBe("ended");
-      expect(room.state.winner).toBe("p1");
+      expect(room.state.winner).toBe(P1);
     }
   });
 });
@@ -392,7 +398,7 @@ describe("NEXT_ROUND handler", () => {
 
     const room = new HitsterRoom(makeRoom() as any);
     const conn = makeConn();
-    await send(room, conn, { type: "JOIN", playerId: "p1", name: "Alice" });
+    await send(room, conn, { type: "JOIN", playerId: P1, name: "Alice" });
     await send(room, conn, { type: "START_GAME", hostId: "host-uuid", playlistUrl: "PLtest" });
 
     const firstSongId = room.state.currentSong?.videoId;
@@ -429,7 +435,7 @@ describe("NEXT_ROUND handler", () => {
 
     const room = new HitsterRoom(makeRoom() as any);
     const conn = makeConn();
-    await send(room, conn, { type: "JOIN", playerId: "p1", name: "Alice" });
+    await send(room, conn, { type: "JOIN", playerId: P1, name: "Alice" });
     await send(room, conn, { type: "START_GAME", hostId: "host-uuid", playlistUrl: "PLtest" });
     await send(room, conn, { type: "REVEAL", hostId: "host-uuid" });
     await send(room, conn, { type: "NEXT_ROUND", hostId: "host-uuid" });
@@ -451,10 +457,10 @@ describe("RESET_GAME handler", () => {
     ]);
     const room = new HitsterRoom(makeRoom() as any);
     const conn = makeConn();
-    await send(room, conn, { type: "JOIN", playerId: "p1", name: "Alice" });
+    await send(room, conn, { type: "JOIN", playerId: P1, name: "Alice" });
     await send(room, conn, { type: "START_GAME", hostId: "host-uuid", playlistUrl: "PLtest" });
     room.state.phase = "ended";
-    room.state.winner = "p1";
+    room.state.winner = P1;
     return { room, conn };
   }
 
@@ -463,9 +469,9 @@ describe("RESET_GAME handler", () => {
     await send(room, conn, { type: "RESET_GAME", hostId: "host-uuid" });
     expect(room.state.phase).toBe("lobby");
     expect(room.state.winner).toBeNull();
-    expect(room.state.players["p1"].name).toBe("Alice");
-    expect(room.state.players["p1"].cardCount).toBe(0);
-    expect(room.state.players["p1"].timeline).toHaveLength(0);
+    expect(room.state.players[P1].name).toBe("Alice");
+    expect(room.state.players[P1].cardCount).toBe(0);
+    expect(room.state.players[P1].timeline).toHaveLength(0);
   });
 
   it("rejects RESET_GAME from non-host", async () => {
@@ -492,10 +498,10 @@ describe("RESET_GAME handler", () => {
 describe("PLACE edge cases", () => {
   function roomInGuessing() {
     const r = new HitsterRoom(makeRoom() as any);
-    r.state.players["p1"] = { name: "Alice", cardCount: 0, timeline: [], connected: true };
-    r.state.players["p2"] = { name: "Bob", cardCount: 0, timeline: [], connected: true };
+    r.state.players[P1] = { name: "Alice", cardCount: 0, timeline: [], connected: true };
+    r.state.players[P2] = { name: "Bob", cardCount: 0, timeline: [], connected: true };
     r.state.phase = "guessing";
-    r.state.activePlayerId = "p1";
+    r.state.activePlayerId = P1;
     r.state.currentSong = {
       id: "v1", videoId: "v1", title: "Song", artist: "Artist", year: 1985, yearSource: "description",
     };
@@ -505,24 +511,24 @@ describe("PLACE edge cases", () => {
   it("silently ignores PLACE from non-active player", async () => {
     const room = roomInGuessing();
     const conn = makeConn();
-    await send(room, conn, { type: "PLACE", playerId: "p2", position: 0 });
-    expect(room.state.placements["p2"]).toBeUndefined();
+    await send(room, conn, { type: "PLACE", playerId: P2, position: 0 });
+    expect(room.state.placements[P2]).toBeUndefined();
     expect(lastSentTo(conn)).toBeNull();
   });
 
   it("rejects negative position with invalid_position error", async () => {
     const room = roomInGuessing();
     const conn = makeConn();
-    await send(room, conn, { type: "PLACE", playerId: "p1", position: -1 });
+    await send(room, conn, { type: "PLACE", playerId: P1, position: -1 });
     expect(lastSentTo(conn)?.error).toBe("invalid_position");
   });
 
   it("rejects float position to prevent cheat bypass", async () => {
     const room = roomInGuessing();
     const conn = makeConn();
-    await send(room, conn, { type: "PLACE", playerId: "p1", position: 0.5 });
+    await send(room, conn, { type: "PLACE", playerId: P1, position: 0.5 });
     expect(lastSentTo(conn)?.error).toBe("invalid_position");
-    expect(room.state.placements["p1"]).toBeUndefined();
+    expect(room.state.placements[P1]).toBeUndefined();
   });
 });
 
@@ -552,7 +558,7 @@ describe("START_GAME targetCardCount clamping", () => {
     ]);
     const room = new HitsterRoom(makeRoom() as any);
     const conn = makeConn();
-    await send(room, conn, { type: "JOIN", playerId: "p1", name: "Alice" });
+    await send(room, conn, { type: "JOIN", playerId: P1, name: "Alice" });
     await send(room, conn, { type: "START_GAME", hostId: "host-uuid", playlistUrl: "PLtest", targetCardCount: 0 });
     expect(room.state.targetCardCount).toBe(1);
   });
@@ -565,7 +571,7 @@ describe("START_GAME targetCardCount clamping", () => {
     ]);
     const room = new HitsterRoom(makeRoom() as any);
     const conn = makeConn();
-    await send(room, conn, { type: "JOIN", playerId: "p1", name: "Alice" });
+    await send(room, conn, { type: "JOIN", playerId: P1, name: "Alice" });
     await send(room, conn, { type: "START_GAME", hostId: "host-uuid", playlistUrl: "PLtest", targetCardCount: 25 });
     expect(room.state.targetCardCount).toBe(20);
   });
