@@ -5,7 +5,26 @@ import { useParams } from "next/navigation";
 import usePartySocket from "partysocket/react";
 import MusicPlayer from "@/components/MusicPlayer";
 import PlayerList from "@/components/PlayerList";
-import type { GameState, ServerMessage, ClientMessage, SongDiagnostic, DiagnosticStatus } from "@/lib/game";
+import PlaylistEditor from "@/components/PlaylistEditor";
+import type { GameState, ServerMessage, ClientMessage, SongDiagnostic, DiagnosticStatus, EditableSong } from "@/lib/game";
+
+const PARTYKIT_HOST = process.env.NEXT_PUBLIC_PARTYKIT_HOST || "localhost:1999";
+
+type SavedPlaylistMeta = { id: string; name: string; songCount: number };
+
+function loadSavedPlaylistIndex(): SavedPlaylistMeta[] {
+  try {
+    return JSON.parse(localStorage.getItem("hitster_playlists") ?? "[]") as SavedPlaylistMeta[];
+  } catch {
+    return [];
+  }
+}
+
+function saveSavedPlaylistIndex(index: SavedPlaylistMeta[]) {
+  try {
+    localStorage.setItem("hitster_playlists", JSON.stringify(index));
+  } catch {}
+}
 
 function getOrCreateHostId(): string {
   const key = "hitster_host_id";
@@ -32,13 +51,27 @@ export default function HostPage() {
   const [diagnosticStatus, setDiagnosticStatus] = useState<DiagnosticStatus | null>(null);
   const [showDiagnostic, setShowDiagnostic] = useState(false);
   const [showContinuePrompt, setShowContinuePrompt] = useState(false);
+  // Saved playlists
+  const [readySongs, setReadySongs] = useState<EditableSong[]>([]);
+  const [savedPlaylists, setSavedPlaylists] = useState<SavedPlaylistMeta[]>([]);
+  const [showSavePanel, setShowSavePanel] = useState(false);
+  const [savePlaylistName, setSavePlaylistName] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [savedId, setSavedId] = useState<string | null>(null);
+  const [showEditor, setShowEditor] = useState(false);
+  const [loadById, setLoadById] = useState("");
+  const [copied, setCopied] = useState(false);
+  const [saveError, setSaveError] = useState("");
   const hostIdRef = useRef<string>("");
   const loadedUrlRef = useRef<string>("");
+  const readySongsRef = useRef<EditableSong[]>([]);
   const nextPromptAtRef = useRef<number>(0);
   const pendingStartAfterAbortRef = useRef<boolean>(false);
+  const pendingSavedIdRef = useRef<string | null>(null);
 
   useEffect(() => {
     hostIdRef.current = getOrCreateHostId();
+    setSavedPlaylists(loadSavedPlaylistIndex());
   }, []);
 
   // 5-minute checkpoint timer: show prompt if loading takes too long.
@@ -55,6 +88,10 @@ export default function HostPage() {
     return () => clearInterval(interval);
   }, [loadStatus]);
 
+  useEffect(() => {
+    readySongsRef.current = readySongs;
+  }, [readySongs]);
+
   const socket = usePartySocket({
     host: process.env.NEXT_PUBLIC_PARTYKIT_HOST ?? "localhost:1999",
     room: params.code,
@@ -70,6 +107,9 @@ export default function HostPage() {
           setDiagnostic(null);
           setDiagnosticStatus(null);
           setPlaylistUrl("");
+          setReadySongs([]);
+          setShowSavePanel(false);
+          setSavedId(null);
         }
       }
       if (msg.type === "ERROR") {
@@ -82,7 +122,13 @@ export default function HostPage() {
       }
       if (msg.type === "PLAYLIST_READY") {
         setReadySongCount(msg.songCount);
+        setReadySongs(Array.isArray(msg.songs) ? msg.songs : []);
         setLoadStatus("ready");
+        setShowSavePanel(false);
+        const incomingSavedId = pendingSavedIdRef.current;
+        setSavedId(incomingSavedId);
+        if (incomingSavedId) setShowEditor(true);
+        pendingSavedIdRef.current = null;
         setShowContinuePrompt(false);
         if (pendingStartAfterAbortRef.current) {
           pendingStartAfterAbortRef.current = false;
@@ -92,6 +138,7 @@ export default function HostPage() {
             hostId: hostIdRef.current,
             playlistUrl: loadedUrlRef.current,
             targetCardCount: targetCount,
+            songs: readySongsRef.current,
           }));
         }
       }
@@ -115,6 +162,7 @@ export default function HostPage() {
     setLoadStatus("loading");
     setShowContinuePrompt(false);
     pendingStartAfterAbortRef.current = false;
+    pendingSavedIdRef.current = null;
     loadedUrlRef.current = url;
     nextPromptAtRef.current = Date.now() + 5 * 60 * 1000;
     send({ type: "LOAD_PLAYLIST", hostId: hostIdRef.current, playlistUrl: url });
@@ -129,6 +177,7 @@ export default function HostPage() {
       hostId: hostIdRef.current,
       playlistUrl: loadedUrlRef.current,
       targetCardCount: targetCount,
+      songs: readySongsRef.current,
     });
   }
 
@@ -144,6 +193,90 @@ export default function HostPage() {
     send({ type: "RESET_GAME", hostId: hostIdRef.current });
   }
 
+  async function handleSavePlaylist() {
+    const name = savePlaylistName.trim();
+    if (!name) return;
+    if (readySongs.length === 0) {
+      setSaveError("No songs loaded yet — load a YouTube playlist first, then save.");
+      return;
+    }
+    setSaveError("");
+    setSaving(true);
+    setError("");
+    try {
+      const id = crypto.randomUUID();
+      const protocol = PARTYKIT_HOST.startsWith("localhost") ? "http" : "https";
+      const res = await fetch(`${protocol}://${PARTYKIT_HOST}/parties/playlist/${id}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          ownerHostId: hostIdRef.current,
+          name,
+          songs: readySongs,
+        }),
+      });
+      if (!res.ok) {
+        const body = (await res.json().catch(() => ({}))) as { error?: string };
+        setSaveError(body.error ?? "Failed to save playlist — please try again.");
+        return;
+      }
+      const meta: SavedPlaylistMeta = { id, name, songCount: readySongs.length };
+      const newIndex = [...savedPlaylists, meta];
+      saveSavedPlaylistIndex(newIndex);
+      setSavedPlaylists(newIndex);
+      setSavedId(id);
+      setShowSavePanel(false);
+      setSavePlaylistName("");
+      setShowEditor(true);
+    } catch {
+      setSaveError("Failed to save playlist — please try again.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function handleLoadSavedPlaylist(id: string) {
+    setError("");
+    setDiagnostic(null);
+    setDiagnosticStatus(null);
+    setLoadStatus("loading");
+    try {
+      const protocol = PARTYKIT_HOST.startsWith("localhost") ? "http" : "https";
+      const res = await fetch(`${protocol}://${PARTYKIT_HOST}/parties/playlist/${id}`);
+      if (!res.ok) {
+        setLoadStatus("error");
+        setError("saved_playlist_not_found");
+        return;
+      }
+      const playlist = (await res.json()) as { songs: EditableSong[] };
+      if (!Array.isArray(playlist.songs) || playlist.songs.length < 2) {
+        setLoadStatus("error");
+        setError("not_enough_songs");
+        return;
+      }
+      loadedUrlRef.current = id;
+      pendingSavedIdRef.current = id;
+      send({ type: "LOAD_SAVED_PLAYLIST", hostId: hostIdRef.current, playlistId: id, songs: playlist.songs });
+    } catch {
+      setLoadStatus("error");
+      setError("saved_playlist_not_found");
+    }
+  }
+
+  async function handleDeleteSavedPlaylist(id: string) {
+    try {
+      const protocol = PARTYKIT_HOST.startsWith("localhost") ? "http" : "https";
+      await fetch(`${protocol}://${PARTYKIT_HOST}/parties/playlist/${id}`, {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ownerHostId: hostIdRef.current }),
+      });
+    } catch {}
+    const newIndex = savedPlaylists.filter((p) => p.id !== id);
+    saveSavedPlaylistIndex(newIndex);
+    setSavedPlaylists(newIndex);
+  }
+
   const phase = state?.phase ?? "lobby";
   const playerCount = Object.keys(state?.players ?? {}).length;
 
@@ -157,8 +290,14 @@ export default function HostPage() {
             {params.code}
           </h1>
         </div>
-        <div className="text-right text-sm text-gray-400">
-          {playerCount} player{playerCount !== 1 ? "s" : ""}
+        <div className="text-right text-sm text-gray-400 flex flex-col items-end gap-0.5">
+          {Object.values(state?.players ?? {}).length === 0 ? (
+            <span className="text-gray-600">No players yet</span>
+          ) : (
+            Object.values(state?.players ?? {}).map((p) => (
+              <span key={p.name}>{p.name}</span>
+            ))
+          )}
         </div>
       </div>
 
@@ -175,6 +314,7 @@ export default function HostPage() {
 
       {/* Lobby setup */}
       {phase === "lobby" && !starting && (
+        <>
         <form onSubmit={handleStartGame} className="flex flex-col gap-5 bg-white/5 rounded-2xl p-6">
           <h2 className="font-semibold text-lg">Set up the game</h2>
 
@@ -242,7 +382,7 @@ export default function HostPage() {
                   <div className="rounded-xl border border-yellow-400/40 bg-yellow-400/10 px-4 py-4 flex flex-col gap-3">
                     <p className="text-yellow-300 text-sm font-semibold">Still searching for years…</p>
                     <p className="text-gray-300 text-xs">
-                      Found <span className="text-yellow-400 font-semibold">{resolvedCount}</span> songs so far. Keep searching for more, or play now with what's been found?
+                      Found <span className="text-yellow-400 font-semibold">{resolvedCount}</span> songs so far. Keep searching for more, or play now with what&apos;s been found?
                     </p>
                     <div className="flex gap-2">
                       <button
@@ -277,11 +417,38 @@ export default function HostPage() {
           {/* Ready state */}
           {loadStatus === "ready" && (
             <div className="rounded-xl border border-green-500/30 bg-green-500/10 px-4 py-3 flex flex-col gap-3">
-              <div className="flex items-center gap-2">
-                <span className="text-green-400 text-lg">✓</span>
-                <p className="text-green-400 font-semibold text-sm">
-                  Playlist loaded — {readySongCount} songs with known years
-                </p>
+              <div className="flex items-center justify-between gap-2">
+                <div className="flex items-center gap-2">
+                  <span className="text-green-400 text-lg">✓</span>
+                  <p className="text-green-400 font-semibold text-sm">
+                    Playlist loaded — {readySongCount} songs with known years
+                  </p>
+                </div>
+                {savedId ? (
+                  <div className="flex items-center gap-2 shrink-0">
+                    <span className="text-xs text-green-400">Saved ✓</span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        void navigator.clipboard.writeText(savedId);
+                        setCopied(true);
+                        setTimeout(() => setCopied(false), 2000);
+                      }}
+                      className="text-xs text-gray-400 hover:text-white transition-colors font-mono"
+                      title={savedId}
+                    >
+                      {copied ? "Copied!" : "Copy ID"}
+                    </button>
+                  </div>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => setShowSavePanel((v) => !v)}
+                    className="text-xs text-gray-400 hover:text-white transition-colors shrink-0"
+                  >
+                    Save playlist
+                  </button>
+                )}
               </div>
               {diagnosticStatus && (diagnosticStatus.spotifyRateLimited || diagnosticStatus.kgBlocked) && (
                 <div className="flex flex-col gap-2">
@@ -298,6 +465,51 @@ export default function HostPage() {
                     </div>
                   )}
                 </div>
+              )}
+              {/* Save panel */}
+              {showSavePanel && (
+                <div className="flex flex-col gap-1.5 pt-1">
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      placeholder="Playlist name"
+                      value={savePlaylistName}
+                      onChange={(e) => { setSavePlaylistName(e.target.value); setSaveError(""); }}
+                      onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); void handleSavePlaylist(); } }}
+                      className="flex-1 rounded-lg bg-white/10 px-3 py-2 text-sm text-white placeholder-gray-500 outline-none focus:ring-2 focus:ring-yellow-400"
+                    />
+                    <button
+                      type="button"
+                      disabled={!savePlaylistName.trim() || saving}
+                      onClick={() => void handleSavePlaylist()}
+                      className="shrink-0 rounded-lg bg-yellow-400 px-4 py-2 text-sm font-bold text-black hover:bg-yellow-300 transition-colors disabled:opacity-40"
+                    >
+                      {saving ? "Saving…" : `Save ${readySongs.length > 0 ? `(${readySongs.length})` : ""}`}
+                    </button>
+                  </div>
+                  {saveError && (
+                    <p className="text-xs text-red-400">{saveError}</p>
+                  )}
+                </div>
+              )}
+              {/* Edit playlist */}
+              {readySongs.length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => setShowEditor((v) => !v)}
+                  className="w-full rounded-lg bg-white/10 px-4 py-2 text-sm font-medium text-white hover:bg-white/20 transition-colors text-left"
+                >
+                  {showEditor ? "▲ Hide song editor" : "✎ Edit song metadata"}
+                </button>
+              )}
+              {showEditor && readySongs.length > 0 && (
+                <PlaylistEditor
+                  playlistId={savedId}
+                  songs={readySongs}
+                  hostId={hostIdRef.current}
+                  partyKitHost={PARTYKIT_HOST}
+                  onSongsChange={setReadySongs}
+                />
               )}
             </div>
           )}
@@ -344,11 +556,78 @@ export default function HostPage() {
             </p>
           )}
         </form>
+
+        {/* Saved playlists panel — always visible so hosts can load by ID from any device */}
+        <div className="flex flex-col gap-3 bg-white/5 rounded-2xl p-5">
+          <h3 className="font-semibold text-sm text-gray-300">Saved playlists</h3>
+
+          {/* Load by ID */}
+          <div className="flex gap-2">
+            <input
+              type="text"
+              placeholder="Paste playlist ID to load from any device…"
+              value={loadById}
+              onChange={(e) => setLoadById(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && loadById.trim()) {
+                  e.preventDefault();
+                  void handleLoadSavedPlaylist(loadById.trim());
+                  setLoadById("");
+                }
+              }}
+              className="flex-1 rounded-xl bg-white/10 px-4 py-2 text-sm text-white placeholder-gray-500 outline-none focus:ring-2 focus:ring-yellow-400 font-mono"
+            />
+            <button
+              type="button"
+              disabled={!loadById.trim() || loadStatus === "loading"}
+              onClick={() => { void handleLoadSavedPlaylist(loadById.trim()); setLoadById(""); }}
+              className="shrink-0 rounded-xl bg-white/10 px-4 py-2 text-sm font-semibold text-white hover:bg-white/20 transition-colors disabled:opacity-40"
+            >
+              Load
+            </button>
+          </div>
+
+          {/* localStorage index */}
+          {savedPlaylists.length > 0 && (
+            <div className="flex flex-col gap-2">
+              {savedPlaylists.map((p) => (
+                <div key={p.id} className="flex items-center justify-between gap-3 rounded-xl border border-white/10 px-4 py-3">
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium text-white">{p.name}</p>
+                    <p className="text-xs text-gray-500 font-mono truncate">{p.id}</p>
+                  </div>
+                  <div className="flex gap-2 shrink-0">
+                    <button
+                      type="button"
+                      disabled={loadStatus === "loading"}
+                      onClick={() => void handleLoadSavedPlaylist(p.id)}
+                      className="rounded-lg bg-yellow-400/20 px-3 py-1.5 text-xs font-semibold text-yellow-300 hover:bg-yellow-400/30 transition-colors disabled:opacity-40"
+                    >
+                      Load
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => void handleDeleteSavedPlaylist(p.id)}
+                      className="rounded-lg bg-white/5 px-3 py-1.5 text-xs text-gray-500 hover:text-red-400 hover:bg-white/10 transition-colors"
+                    >
+                      Delete
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {savedPlaylists.length === 0 && (
+            <p className="text-xs text-gray-500">No saved playlists on this device yet. Load a playlist, then click &ldquo;Save playlist&rdquo; to store it.</p>
+          )}
+        </div>
+        </>
       )}
 
       {/* Game in progress */}
       {(phase === "guessing" || phase === "reveal") && (
-        <div className="grid grid-cols-1 gap-6 lg:grid-cols-[1fr_320px]">
+        <div className="grid grid-cols-1 gap-6 lg:grid-cols-[1fr_480px]">
           <MusicPlayer
             currentSong={state?.currentSong ?? null}
             phase={phase}
@@ -378,7 +657,7 @@ export default function HostPage() {
           <h2 className="text-4xl font-bold text-yellow-400">
             {state.players[state.winner ?? ""]?.name ?? "Unknown"}
           </h2>
-          <div className="w-full max-w-sm">
+          <div className="w-full">
             <PlayerList
               players={state.players}
               placements={{}}
@@ -492,6 +771,8 @@ function ErrorBanner({ code }: { code: string }) {
 
 function errorInfo(code: string): { message: string; detail?: string; hint?: string } {
   if (code === "missing_url") return { message: "Paste a YouTube playlist URL" };
+  if (code === "save_failed") return { message: "Could not save playlist", detail: "Check your connection and try again." };
+  if (code === "saved_playlist_not_found") return { message: "Saved playlist not found", detail: "It may have been deleted or expired.", hint: "Try loading a YouTube playlist URL instead." };
   if (code === "unauthorized") return { message: "Host token mismatch — refresh and try again" };
   if (code === "quota_exceeded") return {
     message: "YouTube API quota exceeded",

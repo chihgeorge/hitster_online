@@ -1,4 +1,5 @@
 // iTunes Search API — used to look up song release years.
+import { isValidYear } from "./utils";
 // No API key required. Free with generous rate limits.
 // Docs: https://developer.apple.com/library/archive/documentation/AudioVideo/Conceptual/iTuneSearchAPI/
 
@@ -129,7 +130,7 @@ async function searchItunes(query: string, artistHint: string, country?: string)
   const repItem = new Map<number, (typeof tracks)[0]>();
   for (const item of candidates) {
     const y = parseInt((item.releaseDate ?? "").slice(0, 4), 10);
-    if (!isNaN(y) && y >= 1900 && y <= new Date().getFullYear() + 1) {
+    if (!isNaN(y) && isValidYear(y)) {
       votes.set(y, (votes.get(y) ?? 0) + 1);
       if (!repItem.has(y)) repItem.set(y, item);
     }
