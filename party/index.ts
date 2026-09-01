@@ -76,10 +76,23 @@ export default class HitsterRoom implements Party.Server {
     this.room.broadcast(JSON.stringify(msg));
   }
 
+  private sanitizedState(): GameState {
+    const { hostId: _h, ...rest } = this.state;
+    return {
+      ...rest,
+      hostId: "",
+      // Strip year from deck — future answers must not be visible to clients
+      songs: rest.songs.map((s) => ({ ...s, year: 0 })),
+      // Strip year from currentSong during guessing — answer not yet revealed
+      currentSong:
+        rest.currentSong && rest.phase === "guessing"
+          ? { ...rest.currentSong, year: 0 }
+          : rest.currentSong,
+    };
+  }
+
   private broadcastState() {
-    // Strip hostId from broadcast — it's a shared secret; clients use their local copy
-    const { hostId: _h, ...publicState } = this.state;
-    this.broadcast({ type: "STATE", state: { ...publicState, hostId: "" } });
+    this.broadcast({ type: "STATE", state: this.sanitizedState() });
   }
 
   private sendTo(conn: Party.Connection, msg: ServerMessage) {
@@ -87,8 +100,7 @@ export default class HitsterRoom implements Party.Server {
   }
 
   onConnect(conn: Party.Connection) {
-    // Send current state to newly connected client
-    this.sendTo(conn, { type: "STATE", state: this.state });
+    this.sendTo(conn, { type: "STATE", state: this.sanitizedState() });
   }
 
   async onMessage(message: string, sender: Party.Connection) {
