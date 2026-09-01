@@ -39,6 +39,11 @@ function sanitizeName(name: string): string {
     .slice(0, MAX_NAME_LENGTH);
 }
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+function isValidPlayerId(id: string): boolean {
+  return UUID_RE.test(id);
+}
+
 type PendingPlaylist = {
   playlistId: string;
   songs: Card[];
@@ -150,6 +155,7 @@ export default class HitsterRoom implements Party.Server {
   }
 
   private handleJoin(conn: Party.Connection, playerId: string, rawName: string) {
+    if (!isValidPlayerId(playerId)) return;
     const name = sanitizeName(rawName);
     if (!name) {
       this.sendTo(conn, { type: "ERROR", error: "invalid_name" });
@@ -173,6 +179,7 @@ export default class HitsterRoom implements Party.Server {
   }
 
   private handleRejoin(conn: Party.Connection, playerId: string, rawName: string) {
+    if (!isValidPlayerId(playerId)) return;
     const name = sanitizeName(rawName);
     if (this.state.players[playerId]) {
       this.state.players[playerId].connected = true;
@@ -182,11 +189,12 @@ export default class HitsterRoom implements Party.Server {
       this.handleJoin(conn, playerId, rawName);
       return;
     }
-    this.sendTo(conn, { type: "STATE", state: this.state });
+    this.sendTo(conn, { type: "STATE", state: this.sanitizedState() });
     this.broadcastState();
   }
 
   private handlePlace(conn: Party.Connection, playerId: string, position: number) {
+    if (!isValidPlayerId(playerId)) return;
     if (this.state.phase !== "guessing") {
       this.sendTo(conn, { type: "TOO_LATE" });
       return;
