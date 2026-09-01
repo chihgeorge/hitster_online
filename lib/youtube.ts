@@ -1,6 +1,8 @@
 // YouTube Data API v3 client — server-side only (uses YOUTUBE_API_KEY env var).
 // Fetches playlist items and returns video metadata.
 
+import { isValidYear } from "./utils";
+
 export interface YouTubeTrack {
   videoId: string;
   title: string;
@@ -179,18 +181,17 @@ export function parseYouTubeMusicDescription(description: string): {
 } {
   const result: { artist?: string; year?: number } = {};
 
-  const MAX_YEAR = new Date().getFullYear() + 1;
   const releasedMatch = description.match(/Released on:\s*(\d{4})/);
   if (releasedMatch) {
     const y = parseInt(releasedMatch[1], 10);
-    if (y >= 1900 && y <= MAX_YEAR) result.year = y;
+    if (isValidYear(y)) result.year = y;
   }
 
   if (!result.year) {
     const copyrightMatch = description.match(/℗\s*(\d{4})/);
     if (copyrightMatch) {
       const y = parseInt(copyrightMatch[1], 10);
-      if (y >= 1900 && y <= MAX_YEAR) result.year = y;
+      if (isValidYear(y)) result.year = y;
     }
   }
 
@@ -239,14 +240,14 @@ export function extractYearFromTitle(title: string): number | null {
   const bracketed = title.match(/[\[(]((?:19|20)\d{2})[\])]/);
   if (bracketed) {
     const year = parseInt(bracketed[1], 10);
-    if (year >= 1900 && year <= new Date().getFullYear() + 1) return year;
+    if (isValidYear(year)) return year;
   }
 
   // Fall back to bare year at end of title: "song name - artist 1980"
   const trailing = title.match(/\b((?:19|20)\d{2})\s*$/);
   if (trailing) {
     const year = parseInt(trailing[1], 10);
-    if (year >= 1900 && year <= new Date().getFullYear() + 1) return year;
+    if (isValidYear(year)) return year;
   }
 
   return null;

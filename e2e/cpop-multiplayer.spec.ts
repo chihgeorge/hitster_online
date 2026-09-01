@@ -72,7 +72,7 @@ test.describe("C-pop multiplayer with metadata verification", () => {
         await hostPage.goto("/");
         await hostPage.getByRole("button", { name: /create a room/i }).click();
         await hostPage.waitForURL(/\/room\/[A-Z]+\/host$/);
-        const roomCode = hostPage.url().match(/\/room\/([A-Z]+)\/host$/)?.[1]!;
+        const roomCode = hostPage.url().match(/\/room\/([A-Z]+)\/host$/)![1];
         expect(roomCode).toHaveLength(4);
 
         // ── 2. Alice joins first, Bob second ─────────────────────────────────
