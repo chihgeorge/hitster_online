@@ -74,7 +74,7 @@ export default function MusicPlayer({ currentSong, phase, placementCount, onReve
         {/* Overlay — covers video during guessing phase */}
         {phase === "guessing" && (
           <div
-            className="absolute inset-0 flex flex-col items-center justify-center bg-[#1a1a2e]/95 backdrop-blur-sm"
+            className="absolute inset-0 flex flex-col items-center justify-center bg-[#1a1a2e]/90 backdrop-blur-sm"
             style={{ willChange: "opacity" }}
           >
             {/* CSS waveform — static keyframe animation, no JS RAF */}

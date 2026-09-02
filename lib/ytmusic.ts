@@ -1,4 +1,5 @@
 // YouTube Music InnerTube API — unofficial, no API key required.
+import { isValidYear } from "./utils";
 // Uses the WEB_REMIX client that the YouTube Music web app uses.
 // Two-step process: search for the track to get an album browseId,
 // then browse the album to extract the release year from its subtitle.
@@ -208,7 +209,7 @@ function extractYearFromSubtitle(obj: unknown, depth = 0): number | null {
         const text = ((run as Record<string, unknown>).text as string ?? "").trim();
         if (/^\d{4}$/.test(text)) {
           const y = parseInt(text, 10);
-          if (y >= 1900 && y <= new Date().getFullYear() + 1) return y;
+          if (isValidYear(y)) return y;
         }
       }
     }

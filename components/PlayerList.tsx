@@ -42,7 +42,7 @@ export default function PlayerList({ players, placements, targetCardCount, activ
 
             {/* Horizontal timeline tiles */}
             {player.timeline.length > 0 ? (
-              <div className="flex gap-1.5 overflow-x-auto pb-0.5">
+              <div className="flex flex-wrap gap-1.5">
                 {player.timeline.map((card, i) => (
                   <MiniTile key={card.id ?? i} card={card} />
                 ))}

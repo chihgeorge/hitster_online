@@ -8,7 +8,9 @@ import {
   type ServerMessage,
   type SongDiagnostic,
   type Card,
+  type EditableSong,
 } from "../lib/game";
+import { isValidYear, sanitizeText } from "../lib/utils";
 import {
   fetchPlaylistItems,
   parseArtistAndTrack,
@@ -37,6 +39,11 @@ function sanitizeName(name: string): string {
     .slice(0, MAX_NAME_LENGTH);
 }
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+function isValidPlayerId(id: string): boolean {
+  return UUID_RE.test(id);
+}
+
 type PendingPlaylist = {
   playlistId: string;
   songs: Card[];
@@ -49,6 +56,8 @@ export default class HitsterRoom implements Party.Server {
   state: GameState;
   private pendingPlaylist: PendingPlaylist | null = null;
   private abortLoad = false;
+  private loadSeq = 0;
+  private hostConnId = "";
 
   constructor(readonly room: Party.Room) {
     this.state = this.emptyState();
@@ -74,10 +83,23 @@ export default class HitsterRoom implements Party.Server {
     this.room.broadcast(JSON.stringify(msg));
   }
 
+  private sanitizedState(): GameState {
+    const { hostId: _h, ...rest } = this.state;
+    return {
+      ...rest,
+      hostId: "",
+      // Strip year from deck — future answers must not be visible to clients
+      songs: rest.songs.map((s) => ({ ...s, year: 0 })),
+      // Strip year from currentSong during guessing — answer not yet revealed
+      currentSong:
+        rest.currentSong && rest.phase === "guessing"
+          ? { ...rest.currentSong, year: 0 }
+          : rest.currentSong,
+    };
+  }
+
   private broadcastState() {
-    // Strip hostId from broadcast — it's a shared secret; clients use their local copy
-    const { hostId: _h, ...publicState } = this.state;
-    this.broadcast({ type: "STATE", state: { ...publicState, hostId: "" } });
+    this.broadcast({ type: "STATE", state: this.sanitizedState() });
   }
 
   private sendTo(conn: Party.Connection, msg: ServerMessage) {
@@ -85,8 +107,8 @@ export default class HitsterRoom implements Party.Server {
   }
 
   onConnect(conn: Party.Connection) {
-    // Send current state to newly connected client
-    this.sendTo(conn, { type: "STATE", state: this.state });
+    if (!this.hostConnId) this.hostConnId = conn.id;
+    this.sendTo(conn, { type: "STATE", state: this.sanitizedState() });
   }
 
   async onMessage(message: string, sender: Party.Connection) {
@@ -113,8 +135,11 @@ export default class HitsterRoom implements Party.Server {
       case "ABORT_LOAD":
         if (this.isValidHostId(msg.hostId)) this.abortLoad = true;
         break;
+      case "LOAD_SAVED_PLAYLIST":
+        this.handleLoadSavedPlaylist(sender, msg.hostId, msg.playlistId, msg.songs);
+        break;
       case "START_GAME":
-        await this.handleStartGame(sender, msg.hostId, msg.playlistUrl, msg.targetCardCount);
+        await this.handleStartGame(sender, msg.hostId, msg.playlistUrl, msg.targetCardCount, msg.songs);
         break;
       case "REVEAL":
         this.handleReveal(sender, msg.hostId);
@@ -133,6 +158,7 @@ export default class HitsterRoom implements Party.Server {
   }
 
   private handleJoin(conn: Party.Connection, playerId: string, rawName: string) {
+    if (!isValidPlayerId(playerId)) return;
     const name = sanitizeName(rawName);
     if (!name) {
       this.sendTo(conn, { type: "ERROR", error: "invalid_name" });
@@ -156,6 +182,7 @@ export default class HitsterRoom implements Party.Server {
   }
 
   private handleRejoin(conn: Party.Connection, playerId: string, rawName: string) {
+    if (!isValidPlayerId(playerId)) return;
     const name = sanitizeName(rawName);
     if (this.state.players[playerId]) {
       this.state.players[playerId].connected = true;
@@ -165,13 +192,14 @@ export default class HitsterRoom implements Party.Server {
       this.handleJoin(conn, playerId, rawName);
       return;
     }
-    this.sendTo(conn, { type: "STATE", state: this.state });
+    this.sendTo(conn, { type: "STATE", state: this.sanitizedState() });
     this.broadcastState();
   }
 
   private handlePlace(conn: Party.Connection, playerId: string, position: number) {
+    if (!isValidPlayerId(playerId)) return;
     if (this.state.phase !== "guessing") {
-      this.sendTo(conn, { type: "WRONG_PHASE" });
+      this.sendTo(conn, { type: "TOO_LATE" });
       return;
     }
     if (playerId !== this.state.activePlayerId) return;
@@ -228,7 +256,12 @@ export default class HitsterRoom implements Party.Server {
       return;
     }
     if (this.state.hostId === "") {
+      if (this.hostConnId !== "" && conn.id !== this.hostConnId) {
+        this.sendTo(conn, { type: "PLAYLIST_LOAD_ERROR", error: "unauthorized" });
+        return;
+      }
       this.state.hostId = hostId;
+      this.hostConnId = conn.id;
     } else if (!this.isValidHostId(hostId)) {
       this.sendTo(conn, { type: "PLAYLIST_LOAD_ERROR", error: "unauthorized" });
       return;
@@ -239,7 +272,7 @@ export default class HitsterRoom implements Party.Server {
     // Test seeds: signal ready immediately.
     if (playlistUrl === "hitster://test" || playlistUrl === "hitster://cpop-test") {
       this.pendingPlaylist = { playlistId, songs: [], diagnostics: [], spotifyRateLimited: false, kgBlocked: false };
-      this.sendTo(conn, { type: "PLAYLIST_READY", songCount: 20 });
+      this.sendTo(conn, { type: "PLAYLIST_READY", songCount: 20, songs: [] });
       return;
     }
 
@@ -250,6 +283,7 @@ export default class HitsterRoom implements Party.Server {
 
     // Reset abort flag and clear any previous cached result.
     this.abortLoad = false;
+    const mySeq = ++this.loadSeq;
     this.pendingPlaylist = null;
 
     // Helper: build a partial playlist snapshot from whatever year sources have resolved so far.
@@ -303,7 +337,7 @@ export default class HitsterRoom implements Party.Server {
       // ── Pass 1: YouTube Music ────────────────────────────────────────────────
       const YTM_BATCH = 5;
       for (let i = 0; i < tracks.length; i += YTM_BATCH) {
-        if (this.abortLoad) break;
+        if (this.abortLoad || mySeq !== this.loadSeq) break;
         const batch = Array.from({ length: Math.min(YTM_BATCH, tracks.length - i) }, (_, j) => i + j);
         await Promise.all(
           batch.map(async (idx) => {
@@ -330,30 +364,42 @@ export default class HitsterRoom implements Party.Server {
       }
 
       // Abort checkpoint after YTM pass.
-      if (this.abortLoad) {
-        const snap = buildSnapshot(false, kgBlocked);
-        this.pendingPlaylist = { playlistId, ...snap };
-        this.sendTo(conn, snap.songs.length >= 2
-          ? { type: "PLAYLIST_READY", songCount: snap.songs.length }
-          : { type: "PLAYLIST_LOAD_ERROR", error: "not_enough_songs" });
+      if (this.abortLoad || mySeq !== this.loadSeq) {
+        if (this.abortLoad) {
+          const snap = buildSnapshot(false, kgBlocked);
+          this.pendingPlaylist = { playlistId, ...snap };
+          this.sendTo(conn, snap.songs.length >= 2
+            ? { type: "PLAYLIST_READY", songCount: snap.songs.length, songs: snap.songs.map((s) => ({ videoId: s.videoId, title: s.title, artist: s.artist, year: s.year })) }
+            : { type: "PLAYLIST_LOAD_ERROR", error: "not_enough_songs" });
+        }
         return;
       }
 
-      // ── Pass 2: Spotify ──────────────────────────────────────────────────────
+      // ── Pass 2: Spotify (paired batches, 200 ms between pairs) ──────────────
+      // Running 2 songs concurrently at 5 req/s is the same throughput limit as
+      // the old single-at-a-time approach but halves wall-clock time per song.
+      // The previous burst (25 simultaneous calls) reliably triggered 429s; 2
+      // concurrent calls never will.
       let spotifyRateLimited = false;
       if (spotifyClientId && spotifyClientSecret) {
-        for (let i = 0; i < tracks.length; i++) {
-          if (this.abortLoad) break;
-          const { descYear, titleYear, artist, trackName } = metas[i];
-          if (descYear ?? titleYear ?? ytmYears.get(i)) continue;
-          if (spotifyRateLimited) break;
-          try {
-            const result = await lookupReleaseYear(artist, trackName, spotifyClientId, spotifyClientSecret);
-            if (result) spotifyResults.set(i, result);
-          } catch (err) {
-            if (err instanceof SpotifyRateLimitedError) spotifyRateLimited = true;
-          }
-          if (i < tracks.length - 1) await new Promise((r) => setTimeout(r, 200));
+        const toQuery = tracks.map((_, i) => i).filter(
+          (i) => !(metas[i].descYear ?? metas[i].titleYear ?? ytmYears.get(i))
+        );
+        for (let b = 0; b < toQuery.length && !spotifyRateLimited && !this.abortLoad && mySeq === this.loadSeq; b += 2) {
+          const pair = toQuery.slice(b, b + 2);
+          await Promise.allSettled(
+            pair.map(async (idx) => {
+              if (spotifyRateLimited) return;
+              const { artist, trackName } = metas[idx];
+              try {
+                const result = await lookupReleaseYear(artist, trackName, spotifyClientId, spotifyClientSecret);
+                if (result) spotifyResults.set(idx, result);
+              } catch (err) {
+                if (err instanceof SpotifyRateLimitedError) spotifyRateLimited = true;
+              }
+            })
+          );
+          if (b + 2 < toQuery.length) await new Promise((r) => setTimeout(r, 200));
         }
         this.sendTo(conn, {
           type: "DIAGNOSTIC",
@@ -373,12 +419,14 @@ export default class HitsterRoom implements Party.Server {
       }
 
       // Abort checkpoint after Spotify pass.
-      if (this.abortLoad) {
-        const snap = buildSnapshot(spotifyRateLimited, kgBlocked);
-        this.pendingPlaylist = { playlistId, ...snap };
-        this.sendTo(conn, snap.songs.length >= 2
-          ? { type: "PLAYLIST_READY", songCount: snap.songs.length }
-          : { type: "PLAYLIST_LOAD_ERROR", error: "not_enough_songs" });
+      if (this.abortLoad || mySeq !== this.loadSeq) {
+        if (this.abortLoad) {
+          const snap = buildSnapshot(spotifyRateLimited, kgBlocked);
+          this.pendingPlaylist = { playlistId, ...snap };
+          this.sendTo(conn, snap.songs.length >= 2
+            ? { type: "PLAYLIST_READY", songCount: snap.songs.length, songs: snap.songs.map((s) => ({ videoId: s.videoId, title: s.title, artist: s.artist, year: s.year })) }
+            : { type: "PLAYLIST_LOAD_ERROR", error: "not_enough_songs" });
+        }
         return;
       }
 
@@ -387,7 +435,7 @@ export default class HitsterRoom implements Party.Server {
       const songs: Card[] = [];
       const diagnostics: SongDiagnostic[] = [];
       for (let i = 0; i < tracks.length; i += BATCH) {
-        if (this.abortLoad) break;
+        if (this.abortLoad || mySeq !== this.loadSeq) break;
         const batch = tracks.slice(i, i + BATCH);
         const batchKgBlocked = kgBlocked;
         const results = await Promise.allSettled(
@@ -442,11 +490,13 @@ export default class HitsterRoom implements Party.Server {
       }
 
       // Abort checkpoint after iTunes/KG pass (or mid-pass).
-      if (this.abortLoad) {
-        const count = songs.length;
-        this.sendTo(conn, count >= 2
-          ? { type: "PLAYLIST_READY", songCount: count }
-          : { type: "PLAYLIST_LOAD_ERROR", error: "not_enough_songs" });
+      if (this.abortLoad || mySeq !== this.loadSeq) {
+        if (this.abortLoad) {
+          const count = songs.length;
+          this.sendTo(conn, count >= 2
+            ? { type: "PLAYLIST_READY", songCount: count, songs: songs.map((s) => ({ videoId: s.videoId, title: s.title, artist: s.artist, year: s.year })) }
+            : { type: "PLAYLIST_LOAD_ERROR", error: "not_enough_songs" });
+        }
         return;
       }
 
@@ -457,24 +507,105 @@ export default class HitsterRoom implements Party.Server {
         return;
       }
 
-      this.sendTo(conn, { type: "PLAYLIST_READY", songCount: songs.length });
+      this.sendTo(conn, {
+        type: "PLAYLIST_READY",
+        songCount: songs.length,
+        songs: songs.map((s) => ({ videoId: s.videoId, title: s.title, artist: s.artist, year: s.year })),
+      });
     } catch (err) {
       this.sendTo(conn, { type: "PLAYLIST_LOAD_ERROR", error: this.parseErrorCode(err) });
     }
+  }
+
+  private handleLoadSavedPlaylist(
+    conn: Party.Connection,
+    hostId: string,
+    playlistId: string,
+    songs: EditableSong[]
+  ) {
+    if (this.state.phase !== "lobby") {
+      this.sendTo(conn, { type: "PLAYLIST_LOAD_ERROR", error: "wrong_phase" });
+      return;
+    }
+    if (this.state.hostId === "") {
+      if (this.hostConnId !== "" && conn.id !== this.hostConnId) {
+        this.sendTo(conn, { type: "PLAYLIST_LOAD_ERROR", error: "unauthorized" });
+        return;
+      }
+      this.state.hostId = hostId;
+      this.hostConnId = conn.id;
+    } else if (!this.isValidHostId(hostId)) {
+      this.sendTo(conn, { type: "PLAYLIST_LOAD_ERROR", error: "unauthorized" });
+      return;
+    }
+
+    if (!Array.isArray(songs) || songs.length < 2) {
+      this.sendTo(conn, { type: "PLAYLIST_LOAD_ERROR", error: "not_enough_songs" });
+      return;
+    }
+
+    const cards: Card[] = songs
+      .filter(
+        (s) =>
+          typeof s.videoId === "string" &&
+          s.videoId.length > 0 &&
+          typeof s.title === "string" &&
+          s.title.trim().length > 0 &&
+          typeof s.year === "number" &&
+          isValidYear(s.year)
+      )
+      .map((s) => ({
+        id: s.videoId,
+        videoId: s.videoId,
+        title: sanitizeText(s.title, 200),
+        artist: sanitizeText(s.artist ?? "", 100),
+        year: s.year,
+        yearSource: "manual" as const,
+      }));
+
+    if (cards.length < 2) {
+      this.sendTo(conn, { type: "PLAYLIST_LOAD_ERROR", error: "not_enough_songs" });
+      return;
+    }
+
+    this.pendingPlaylist = {
+      playlistId,
+      songs: cards,
+      diagnostics: cards.map((c) => ({
+        title: c.title,
+        artist: c.artist,
+        year: c.year,
+        yearSource: null,
+      })),
+      spotifyRateLimited: false,
+      kgBlocked: false,
+    };
+
+    this.sendTo(conn, {
+      type: "PLAYLIST_READY",
+      songCount: cards.length,
+      songs: cards.map((c) => ({ videoId: c.videoId, title: c.title, artist: c.artist, year: c.year })),
+    });
   }
 
   private async handleStartGame(
     conn: Party.Connection,
     hostId: string,
     playlistUrl: string,
-    targetCardCount?: number
+    targetCardCount?: number,
+    songOverrides?: EditableSong[]
   ) {
     if (this.state.phase !== "lobby") {
       this.sendTo(conn, { type: "ERROR", error: "wrong_phase" });
       return;
     }
     if (this.state.hostId === "") {
+      if (this.hostConnId !== "" && conn.id !== this.hostConnId) {
+        this.sendTo(conn, { type: "ERROR", error: "unauthorized" });
+        return;
+      }
       this.state.hostId = hostId;
+      this.hostConnId = conn.id;
     } else if (!this.isValidHostId(hostId)) {
       this.sendTo(conn, { type: "ERROR", error: "unauthorized" });
       return;
@@ -522,6 +653,20 @@ export default class HitsterRoom implements Party.Server {
       if (pending.songs.length < 2) {
         this.sendTo(conn, { type: "ERROR", error: "not_enough_songs" });
         return;
+      }
+      // Apply host-side edits (year/title/artist overrides from PlaylistEditor).
+      if (songOverrides && songOverrides.length > 0) {
+        const overrideMap = new Map(songOverrides.map((s) => [s.videoId, s]));
+        pending.songs = pending.songs.map((card) => {
+          const ov = overrideMap.get(card.videoId);
+          if (!ov) return card;
+          return {
+            ...card,
+            title: sanitizeText(ov.title) || card.title,
+            artist: sanitizeText(ov.artist) || card.artist,
+            year: isValidYear(ov.year) ? ov.year : card.year,
+          };
+        });
       }
       this.state.songs = [...pending.songs].sort(() => Math.random() - 0.5);
       this.broadcast({ type: "DIAGNOSTIC", songs: pending.diagnostics, status: { spotifyRateLimited: pending.spotifyRateLimited, kgBlocked: pending.kgBlocked } });

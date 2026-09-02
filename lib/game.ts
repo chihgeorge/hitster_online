@@ -36,13 +36,29 @@ export interface GameState {
 
 // --- Message types sent over the WebSocket ---
 
+export interface EditableSong {
+  videoId: string;
+  title: string;
+  artist: string;
+  year: number;
+}
+
+export interface SavedPlaylist {
+  id: string;
+  name: string;
+  songs: EditableSong[];
+  createdAt: number;
+  updatedAt: number;
+}
+
 export type ClientMessage =
   | { type: "JOIN"; name: string; playerId: string }
   | { type: "REJOIN"; playerId: string; name: string }
   | { type: "PLACE"; playerId: string; position: number }
   | { type: "LOAD_PLAYLIST"; hostId: string; playlistUrl: string }
   | { type: "ABORT_LOAD"; hostId: string }
-  | { type: "START_GAME"; hostId: string; playlistUrl: string; targetCardCount?: number }
+  | { type: "START_GAME"; hostId: string; playlistUrl: string; targetCardCount?: number; songs?: EditableSong[] }
+  | { type: "LOAD_SAVED_PLAYLIST"; hostId: string; playlistId: string; songs: EditableSong[] }
   | { type: "REVEAL"; hostId: string }
   | { type: "NEXT_ROUND"; hostId: string }
   | { type: "RESET_GAME"; hostId: string };
@@ -64,10 +80,10 @@ export type ServerMessage =
   | { type: "PLACEMENT_ACK"; playerId: string }
   | { type: "ERROR"; error: string }
   | { type: "DIAGNOSTIC"; songs: SongDiagnostic[]; status: DiagnosticStatus }
-  | { type: "PLAYLIST_READY"; songCount: number }
+  | { type: "PLAYLIST_READY"; songCount: number; songs: EditableSong[] }
   | { type: "PLAYLIST_LOAD_ERROR"; error: string }
-  | { type: "TOO_LATE" }
-  | { type: "WRONG_PHASE" };
+  | { type: "PLAYLIST_SAVED"; playlistId: string }
+  | { type: "TOO_LATE" };
 
 // --- Placement evaluation (core game logic) ---
 

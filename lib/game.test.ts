@@ -8,6 +8,7 @@ import {
   type Card,
   type Player,
 } from "./game";
+import { isValidYear } from "./utils";
 
 // Helper to make a Card with just the fields needed for placement tests
 function card(id: string, year: number): Card {
@@ -165,6 +166,18 @@ describe("generateRoomCode", () => {
       expect(generateRoomCode()).toMatch(allowed);
     }
   });
+});
+
+// ─── isValidYear ─────────────────────────────────────────────────────────────
+
+describe("isValidYear", () => {
+  it("returns true for 1900", () => expect(isValidYear(1900)).toBe(true));
+  it("returns true for current year", () => expect(isValidYear(new Date().getFullYear())).toBe(true));
+  it("returns true for current year + 1", () => expect(isValidYear(new Date().getFullYear() + 1)).toBe(true));
+  it("returns false for 1899", () => expect(isValidYear(1899)).toBe(false));
+  it("returns false for current year + 2", () => expect(isValidYear(new Date().getFullYear() + 2)).toBe(false));
+  it("returns false for 0", () => expect(isValidYear(0)).toBe(false));
+  it("returns false for NaN", () => expect(isValidYear(NaN)).toBe(false));
 });
 
 // ─── extractPlaylistId ────────────────────────────────────────────────────────
