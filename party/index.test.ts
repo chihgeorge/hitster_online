@@ -282,6 +282,24 @@ describe("START_GAME handler", () => {
     expect(lastSentTo(impostor)?.error).toBe("unauthorized");
   });
 
+  it("rejects START_GAME from a different connection once hostConnId is established via onConnect", async () => {
+    const room = new HitsterRoom(makeRoom() as any);
+    const hostConn = makeConn("host-conn");
+    const attackerConn = makeConn("attacker-conn");
+
+    // onConnect from the host — establishes hostConnId
+    room.onConnect(hostConn);
+
+    // Attacker tries to claim host before the real host has loaded anything
+    await send(room, attackerConn, {
+      type: "START_GAME",
+      hostId: "host-uuid",
+      playlistUrl: "hitster://test",
+    });
+    expect(lastSentTo(attackerConn)?.error).toBe("unauthorized");
+    expect(room.state.hostId).toBe(""); // host not claimed
+  });
+
   it("falls back to Spotify year when no year in description or title", async () => {
     vi.mocked(fetchPlaylistItems).mockResolvedValue([
       { videoId: "v1", title: "Untitled Song", description: "no year here", channelTitle: "Artist" },

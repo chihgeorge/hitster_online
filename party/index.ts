@@ -56,6 +56,8 @@ export default class HitsterRoom implements Party.Server {
   state: GameState;
   private pendingPlaylist: PendingPlaylist | null = null;
   private abortLoad = false;
+  private loadSeq = 0;
+  private hostConnId = "";
 
   constructor(readonly room: Party.Room) {
     this.state = this.emptyState();
@@ -105,6 +107,7 @@ export default class HitsterRoom implements Party.Server {
   }
 
   onConnect(conn: Party.Connection) {
+    if (!this.hostConnId) this.hostConnId = conn.id;
     this.sendTo(conn, { type: "STATE", state: this.sanitizedState() });
   }
 
@@ -253,7 +256,12 @@ export default class HitsterRoom implements Party.Server {
       return;
     }
     if (this.state.hostId === "") {
+      if (this.hostConnId !== "" && conn.id !== this.hostConnId) {
+        this.sendTo(conn, { type: "PLAYLIST_LOAD_ERROR", error: "unauthorized" });
+        return;
+      }
       this.state.hostId = hostId;
+      this.hostConnId = conn.id;
     } else if (!this.isValidHostId(hostId)) {
       this.sendTo(conn, { type: "PLAYLIST_LOAD_ERROR", error: "unauthorized" });
       return;
@@ -275,6 +283,7 @@ export default class HitsterRoom implements Party.Server {
 
     // Reset abort flag and clear any previous cached result.
     this.abortLoad = false;
+    const mySeq = ++this.loadSeq;
     this.pendingPlaylist = null;
 
     // Helper: build a partial playlist snapshot from whatever year sources have resolved so far.
@@ -328,7 +337,7 @@ export default class HitsterRoom implements Party.Server {
       // ── Pass 1: YouTube Music ────────────────────────────────────────────────
       const YTM_BATCH = 5;
       for (let i = 0; i < tracks.length; i += YTM_BATCH) {
-        if (this.abortLoad) break;
+        if (this.abortLoad || mySeq !== this.loadSeq) break;
         const batch = Array.from({ length: Math.min(YTM_BATCH, tracks.length - i) }, (_, j) => i + j);
         await Promise.all(
           batch.map(async (idx) => {
@@ -355,12 +364,14 @@ export default class HitsterRoom implements Party.Server {
       }
 
       // Abort checkpoint after YTM pass.
-      if (this.abortLoad) {
-        const snap = buildSnapshot(false, kgBlocked);
-        this.pendingPlaylist = { playlistId, ...snap };
-        this.sendTo(conn, snap.songs.length >= 2
-          ? { type: "PLAYLIST_READY", songCount: snap.songs.length, songs: snap.songs.map((s) => ({ videoId: s.videoId, title: s.title, artist: s.artist, year: s.year })) }
-          : { type: "PLAYLIST_LOAD_ERROR", error: "not_enough_songs" });
+      if (this.abortLoad || mySeq !== this.loadSeq) {
+        if (this.abortLoad) {
+          const snap = buildSnapshot(false, kgBlocked);
+          this.pendingPlaylist = { playlistId, ...snap };
+          this.sendTo(conn, snap.songs.length >= 2
+            ? { type: "PLAYLIST_READY", songCount: snap.songs.length, songs: snap.songs.map((s) => ({ videoId: s.videoId, title: s.title, artist: s.artist, year: s.year })) }
+            : { type: "PLAYLIST_LOAD_ERROR", error: "not_enough_songs" });
+        }
         return;
       }
 
@@ -374,7 +385,7 @@ export default class HitsterRoom implements Party.Server {
         const toQuery = tracks.map((_, i) => i).filter(
           (i) => !(metas[i].descYear ?? metas[i].titleYear ?? ytmYears.get(i))
         );
-        for (let b = 0; b < toQuery.length && !spotifyRateLimited && !this.abortLoad; b += 2) {
+        for (let b = 0; b < toQuery.length && !spotifyRateLimited && !this.abortLoad && mySeq === this.loadSeq; b += 2) {
           const pair = toQuery.slice(b, b + 2);
           await Promise.allSettled(
             pair.map(async (idx) => {
@@ -408,12 +419,14 @@ export default class HitsterRoom implements Party.Server {
       }
 
       // Abort checkpoint after Spotify pass.
-      if (this.abortLoad) {
-        const snap = buildSnapshot(spotifyRateLimited, kgBlocked);
-        this.pendingPlaylist = { playlistId, ...snap };
-        this.sendTo(conn, snap.songs.length >= 2
-          ? { type: "PLAYLIST_READY", songCount: snap.songs.length, songs: snap.songs.map((s) => ({ videoId: s.videoId, title: s.title, artist: s.artist, year: s.year })) }
-          : { type: "PLAYLIST_LOAD_ERROR", error: "not_enough_songs" });
+      if (this.abortLoad || mySeq !== this.loadSeq) {
+        if (this.abortLoad) {
+          const snap = buildSnapshot(spotifyRateLimited, kgBlocked);
+          this.pendingPlaylist = { playlistId, ...snap };
+          this.sendTo(conn, snap.songs.length >= 2
+            ? { type: "PLAYLIST_READY", songCount: snap.songs.length, songs: snap.songs.map((s) => ({ videoId: s.videoId, title: s.title, artist: s.artist, year: s.year })) }
+            : { type: "PLAYLIST_LOAD_ERROR", error: "not_enough_songs" });
+        }
         return;
       }
 
@@ -422,7 +435,7 @@ export default class HitsterRoom implements Party.Server {
       const songs: Card[] = [];
       const diagnostics: SongDiagnostic[] = [];
       for (let i = 0; i < tracks.length; i += BATCH) {
-        if (this.abortLoad) break;
+        if (this.abortLoad || mySeq !== this.loadSeq) break;
         const batch = tracks.slice(i, i + BATCH);
         const batchKgBlocked = kgBlocked;
         const results = await Promise.allSettled(
@@ -477,11 +490,13 @@ export default class HitsterRoom implements Party.Server {
       }
 
       // Abort checkpoint after iTunes/KG pass (or mid-pass).
-      if (this.abortLoad) {
-        const count = songs.length;
-        this.sendTo(conn, count >= 2
-          ? { type: "PLAYLIST_READY", songCount: count, songs: songs.map((s) => ({ videoId: s.videoId, title: s.title, artist: s.artist, year: s.year })) }
-          : { type: "PLAYLIST_LOAD_ERROR", error: "not_enough_songs" });
+      if (this.abortLoad || mySeq !== this.loadSeq) {
+        if (this.abortLoad) {
+          const count = songs.length;
+          this.sendTo(conn, count >= 2
+            ? { type: "PLAYLIST_READY", songCount: count, songs: songs.map((s) => ({ videoId: s.videoId, title: s.title, artist: s.artist, year: s.year })) }
+            : { type: "PLAYLIST_LOAD_ERROR", error: "not_enough_songs" });
+        }
         return;
       }
 
@@ -513,7 +528,12 @@ export default class HitsterRoom implements Party.Server {
       return;
     }
     if (this.state.hostId === "") {
+      if (this.hostConnId !== "" && conn.id !== this.hostConnId) {
+        this.sendTo(conn, { type: "PLAYLIST_LOAD_ERROR", error: "unauthorized" });
+        return;
+      }
       this.state.hostId = hostId;
+      this.hostConnId = conn.id;
     } else if (!this.isValidHostId(hostId)) {
       this.sendTo(conn, { type: "PLAYLIST_LOAD_ERROR", error: "unauthorized" });
       return;
@@ -580,7 +600,12 @@ export default class HitsterRoom implements Party.Server {
       return;
     }
     if (this.state.hostId === "") {
+      if (this.hostConnId !== "" && conn.id !== this.hostConnId) {
+        this.sendTo(conn, { type: "ERROR", error: "unauthorized" });
+        return;
+      }
       this.state.hostId = hostId;
+      this.hostConnId = conn.id;
     } else if (!this.isValidHostId(hostId)) {
       this.sendTo(conn, { type: "ERROR", error: "unauthorized" });
       return;
