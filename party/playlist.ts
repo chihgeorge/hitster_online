@@ -52,7 +52,6 @@ export default class PlaylistParty implements Party.Server {
   constructor(readonly room: Party.Room) {}
 
   async onRequest(req: Party.Request): Promise<Response> {
-    const url = new URL(req.url);
     const method = req.method.toUpperCase();
 
     // CORS preflight
@@ -104,10 +103,11 @@ export default class PlaylistParty implements Party.Server {
 
     // PUT /parties/playlist/:id — update name or songs, or update a single song
     if (method === "PUT") {
-      const stored = await this.room.storage.get<SavedPlaylist>("playlist");
+      const [stored, storedOwner] = await Promise.all([
+        this.room.storage.get<SavedPlaylist>("playlist"),
+        this.room.storage.get<string>("ownerHostId"),
+      ]);
       if (!stored) return err("Not found", 404);
-
-      const storedOwner = await this.room.storage.get<string>("ownerHostId");
       const { ownerHostId } = body as { ownerHostId?: unknown };
       if (ownerHostId !== storedOwner) return err("Unauthorized", 403);
 
@@ -150,6 +150,7 @@ export default class PlaylistParty implements Party.Server {
         const before = stored.songs.length;
         stored.songs = stored.songs.filter((s) => s.videoId !== videoId);
         if (stored.songs.length === before) return err("Song not found", 404);
+        if (stored.songs.length < 2) return err("Cannot delete — playlist must keep at least 2 songs", 400);
         stored.updatedAt = Date.now();
         await this.room.storage.put("playlist", stored);
         return json({ ok: true });

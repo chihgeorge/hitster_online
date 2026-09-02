@@ -34,6 +34,22 @@
   The party server's `handlePlace` doesn't race, but a test with two `PLACE` messages arriving within the same tick would confirm `placements[playerId]` is set correctly and `PLACEMENT_ACK` is sent to both.  
   _Deferred from plan: foamy-crafting-bonbon.md_
 
+- [ ] **P2** Cross-session playlist dedup by source URL  
+  Within-session: Save button replaced by "Saved ✓" after first save. Cross-session (page reload + same URL): no dedup by source URL — the same YouTube playlist can be saved multiple times across sessions. Fix: store source URL in playlist metadata and skip save if already present.  
+  _Deferred from plan: georgechih-feat-custom-playlist-eng-review-test-plan-20260828-221211.md_
+
+- [ ] **P2** E2E: full round-trip save → reload → select saved playlist → start game  
+  API and save-panel UI tests exist, but no browser test completes the full flow of: reload page → select saved playlist from panel → verify game starts with those songs.  
+  _Deferred from plan: georgechih-feat-custom-playlist-eng-review-test-plan-20260828-221211.md_
+
+- [ ] **P2** E2E: edit year on one song → verify updated year used in placement evaluation  
+  The override path exists (`party/index.ts` applies song overrides from playlist party), but no automated test verifies the year change propagates to correct/incorrect placement scoring.  
+  _Deferred from plan: georgechih-feat-custom-playlist-eng-review-test-plan-20260828-221211.md_
+
+- [ ] **P2** E2E: two-player game using saved playlist (not hitster://test seed)  
+  `e2e/two-player-game.spec.ts` still uses the `hitster://test` seed. Add a variant that loads a saved playlist and runs a full 2-player round to confirm the full pipeline end-to-end.  
+  _Deferred from plan: georgechih-feat-custom-playlist-eng-review-test-plan-20260828-221211.md_
+
 - [x] **P2** Invalid room code silently creates orphaned waiting room  
   Fixed by /qa on feat/initial-scaffold, 2026-08-28 — commit ed7449a. Shows yellow warning banner after 90s: "Still waiting after 90 seconds — double-check your room code."
 
