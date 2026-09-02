@@ -240,6 +240,12 @@ export default function HostPage() {
     setDiagnostic(null);
     setDiagnosticStatus(null);
     setLoadStatus("loading");
+    const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    if (!UUID_RE.test(id)) {
+      setLoadStatus("error");
+      setError("saved_playlist_not_found");
+      return;
+    }
     try {
       const protocol = PARTYKIT_HOST.startsWith("localhost") ? "http" : "https";
       const res = await fetch(`${protocol}://${PARTYKIT_HOST}/parties/playlist/${id}`);
@@ -266,12 +272,15 @@ export default function HostPage() {
   async function handleDeleteSavedPlaylist(id: string) {
     try {
       const protocol = PARTYKIT_HOST.startsWith("localhost") ? "http" : "https";
-      await fetch(`${protocol}://${PARTYKIT_HOST}/parties/playlist/${id}`, {
+      const res = await fetch(`${protocol}://${PARTYKIT_HOST}/parties/playlist/${id}`, {
         method: "DELETE",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ ownerHostId: hostIdRef.current }),
       });
-    } catch {}
+      if (!res.ok) return;
+    } catch {
+      return;
+    }
     const newIndex = savedPlaylists.filter((p) => p.id !== id);
     saveSavedPlaylistIndex(newIndex);
     setSavedPlaylists(newIndex);
