@@ -595,6 +595,193 @@ describe("START_GAME targetCardCount clamping", () => {
   });
 });
 
+// ─── sanitizedState — year stripping ─────────────────────────────────────────
+
+describe("sanitizedState — year stripping", () => {
+  it("strips year from deck songs in STATE broadcast", async () => {
+    const room = new HitsterRoom(makeRoom() as any);
+    room.state.songs = [
+      { id: "s1", videoId: "s1", title: "Song A", artist: "Artist", year: 1985, yearSource: "description" },
+      { id: "s2", videoId: "s2", title: "Song B", artist: "Artist", year: 1990, yearSource: "description" },
+    ];
+    const conn = makeConn();
+    room.onConnect(conn);
+    const msg = lastSentTo(conn);
+    expect(msg?.state.songs.every((s: { year: number }) => s.year === 0)).toBe(true);
+  });
+
+  it("strips year from currentSong during guessing phase", async () => {
+    const room = new HitsterRoom(makeRoom() as any);
+    room.state.phase = "guessing";
+    room.state.currentSong = { id: "s1", videoId: "s1", title: "Song A", artist: "Artist", year: 1985, yearSource: "description" };
+    const conn = makeConn();
+    room.onConnect(conn);
+    const msg = lastSentTo(conn);
+    expect(msg?.state.currentSong?.year).toBe(0);
+  });
+
+  it("preserves year on currentSong during reveal phase", async () => {
+    const room = new HitsterRoom(makeRoom() as any);
+    room.state.phase = "reveal";
+    room.state.currentSong = { id: "s1", videoId: "s1", title: "Song A", artist: "Artist", year: 1985, yearSource: "description" };
+    const conn = makeConn();
+    room.onConnect(conn);
+    const msg = lastSentTo(conn);
+    expect(msg?.state.currentSong?.year).toBe(1985);
+  });
+
+  it("strips hostId from STATE broadcast", async () => {
+    const room = new HitsterRoom(makeRoom() as any);
+    room.state.hostId = "secret-host-id";
+    const conn = makeConn();
+    room.onConnect(conn);
+    const msg = lastSentTo(conn);
+    expect(msg?.state.hostId).toBe("");
+  });
+});
+
+// ─── UUID validation ──────────────────────────────────────────────────────────
+
+describe("UUID validation on JOIN/REJOIN/PLACE", () => {
+  it("rejects JOIN with non-UUID playerId", async () => {
+    const room = new HitsterRoom(makeRoom() as any);
+    const conn = makeConn();
+    await send(room, conn, { type: "JOIN", playerId: "not-a-uuid", name: "Alice" });
+    expect(room.state.players["not-a-uuid"]).toBeUndefined();
+    expect(Object.keys(room.state.players)).toHaveLength(0);
+  });
+
+  it("rejects REJOIN with non-UUID playerId", async () => {
+    const room = new HitsterRoom(makeRoom() as any);
+    const conn = makeConn();
+    await send(room, conn, { type: "REJOIN", playerId: "bad-id", name: "Alice" });
+    expect(room.state.players["bad-id"]).toBeUndefined();
+  });
+
+  it("rejects PLACE with non-UUID playerId", async () => {
+    const room = new HitsterRoom(makeRoom() as any);
+    room.state.phase = "guessing";
+    room.state.players[P1] = { name: "Alice", cardCount: 0, timeline: [], connected: true };
+    room.state.activePlayerId = P1;
+    room.state.currentSong = { id: "s1", videoId: "s1", title: "Song", artist: "Artist", year: 1985, yearSource: "description" };
+    const conn = makeConn();
+    await send(room, conn, { type: "PLACE", playerId: "not-a-uuid", position: 0 });
+    expect(room.state.placements["not-a-uuid"]).toBeUndefined();
+    expect(lastSentTo(conn)).toBeNull();
+  });
+
+  it("accepts JOIN with valid UUID", async () => {
+    const room = new HitsterRoom(makeRoom() as any);
+    const conn = makeConn();
+    await send(room, conn, { type: "JOIN", playerId: P1, name: "Alice" });
+    expect(room.state.players[P1]?.name).toBe("Alice");
+  });
+});
+
+// ─── LOAD_SAVED_PLAYLIST handler ──────────────────────────────────────────────
+
+describe("LOAD_SAVED_PLAYLIST handler", () => {
+  const validSongs = [
+    { videoId: "v1", title: "Song A", artist: "Artist", year: 1985 },
+    { videoId: "v2", title: "Song B", artist: "Artist", year: 1990 },
+  ];
+
+  it("happy path — sets pendingPlaylist and sends PLAYLIST_READY", async () => {
+    const room = new HitsterRoom(makeRoom() as any);
+    const conn = makeConn();
+    await send(room, conn, {
+      type: "LOAD_SAVED_PLAYLIST",
+      hostId: "host-uuid",
+      playlistId: "pl-123",
+      songs: validSongs,
+    });
+    expect(lastSentTo(conn)?.type).toBe("PLAYLIST_READY");
+    expect(lastSentTo(conn)?.songCount).toBe(2);
+  });
+
+  it("rejects in non-lobby phase", async () => {
+    const room = new HitsterRoom(makeRoom() as any);
+    room.state.phase = "guessing";
+    room.state.hostId = "host-uuid";
+    const conn = makeConn();
+    await send(room, conn, {
+      type: "LOAD_SAVED_PLAYLIST",
+      hostId: "host-uuid",
+      playlistId: "pl-123",
+      songs: validSongs,
+    });
+    expect(lastSentTo(conn)?.error).toBe("wrong_phase");
+  });
+
+  it("rejects unauthorized hostId once host is established", async () => {
+    const room = new HitsterRoom(makeRoom() as any);
+    const conn = makeConn();
+    // First call establishes host
+    await send(room, conn, { type: "LOAD_SAVED_PLAYLIST", hostId: "host-uuid", playlistId: "pl-1", songs: validSongs });
+    // Second call with wrong hostId
+    const impostor = makeConn("impostor");
+    await send(room, impostor, { type: "LOAD_SAVED_PLAYLIST", hostId: "wrong-uuid", playlistId: "pl-2", songs: validSongs });
+    expect(lastSentTo(impostor)?.error).toBe("unauthorized");
+  });
+
+  it("rejects when songs is not an array", async () => {
+    const room = new HitsterRoom(makeRoom() as any);
+    const conn = makeConn();
+    await send(room, conn, {
+      type: "LOAD_SAVED_PLAYLIST",
+      hostId: "host-uuid",
+      playlistId: "pl-123",
+      songs: null,
+    });
+    expect(lastSentTo(conn)?.error).toBe("not_enough_songs");
+  });
+
+  it("rejects when fewer than 2 songs pass validation", async () => {
+    const room = new HitsterRoom(makeRoom() as any);
+    const conn = makeConn();
+    await send(room, conn, {
+      type: "LOAD_SAVED_PLAYLIST",
+      hostId: "host-uuid",
+      playlistId: "pl-123",
+      songs: [{ videoId: "v1", title: "Song A", artist: "Artist", year: 1985 }],
+    });
+    expect(lastSentTo(conn)?.error).toBe("not_enough_songs");
+  });
+
+  it("filters out cards with invalid years", async () => {
+    const room = new HitsterRoom(makeRoom() as any);
+    const conn = makeConn();
+    await send(room, conn, {
+      type: "LOAD_SAVED_PLAYLIST",
+      hostId: "host-uuid",
+      playlistId: "pl-123",
+      songs: [
+        { videoId: "v1", title: "Good Song", artist: "Artist", year: 1985 },
+        { videoId: "v2", title: "Good Song 2", artist: "Artist", year: 1990 },
+        { videoId: "v3", title: "Bad Song", artist: "Artist", year: 1800 }, // invalid year
+      ],
+    });
+    const msg = lastSentTo(conn);
+    expect(msg?.type).toBe("PLAYLIST_READY");
+    expect(msg?.songCount).toBe(2); // third card filtered out
+  });
+
+  it("rejects when hostConnId established but a different conn tries to claim host", async () => {
+    const room = new HitsterRoom(makeRoom() as any);
+    const hostConn = makeConn("host-conn");
+    room.onConnect(hostConn); // establishes hostConnId
+    const attacker = makeConn("attacker");
+    await send(room, attacker, {
+      type: "LOAD_SAVED_PLAYLIST",
+      hostId: "host-uuid",
+      playlistId: "pl-123",
+      songs: validSongs,
+    });
+    expect(lastSentTo(attacker)?.error).toBe("unauthorized");
+    expect(room.state.hostId).toBe(""); // host not claimed
+  });
+});
+
 // ─── Malformed JSON ───────────────────────────────────────────────────────────
 
 describe("malformed message handling", () => {
