@@ -13,6 +13,7 @@ import {
 import { isValidYear, sanitizeText } from "../lib/utils";
 import {
   fetchPlaylistItems,
+  fetchEmbeddableVideoIds,
   parseArtistAndTrack,
   parseYouTubeMusicDescription,
   channelToArtist,
@@ -318,6 +319,11 @@ export default class HitsterRoom implements Party.Server {
       tracks = await fetchPlaylistItems(playlistId, youtubeKey);
       let kgBlocked = false;
 
+      // Filter out videos with embedding disabled before year resolution.
+      const embeddable = await fetchEmbeddableVideoIds(tracks.map((t) => t.videoId), youtubeKey);
+      const skippedCount = tracks.length - embeddable.size;
+      tracks = tracks.filter((t) => embeddable.has(t.videoId));
+
       metas = tracks.map((track) => {
         const descMeta = parseYouTubeMusicDescription(track.description);
         const titleYear = extractYearFromTitle(track.title);
@@ -332,6 +338,7 @@ export default class HitsterRoom implements Party.Server {
         type: "DIAGNOSTIC",
         songs: tracks.map((t, i) => ({ title: t.title, artist: metas[i].artist, year: null, yearSource: null })),
         status: { spotifyRateLimited: false, kgBlocked: false },
+        ...(skippedCount > 0 ? { skippedEmbeddingCount: skippedCount } : {}),
       });
 
       // ── Pass 1: YouTube Music ────────────────────────────────────────────────

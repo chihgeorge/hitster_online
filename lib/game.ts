@@ -79,7 +79,7 @@ export type ServerMessage =
   | { type: "STATE"; state: GameState }
   | { type: "PLACEMENT_ACK"; playerId: string }
   | { type: "ERROR"; error: string }
-  | { type: "DIAGNOSTIC"; songs: SongDiagnostic[]; status: DiagnosticStatus }
+  | { type: "DIAGNOSTIC"; songs: SongDiagnostic[]; status: DiagnosticStatus; skippedEmbeddingCount?: number }
   | { type: "PLAYLIST_READY"; songCount: number; songs: EditableSong[] }
   | { type: "PLAYLIST_LOAD_ERROR"; error: string }
   | { type: "PLAYLIST_SAVED"; playlistId: string }

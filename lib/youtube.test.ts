@@ -1,9 +1,10 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi, afterEach } from "vitest";
 import {
   parseArtistAndTrack,
   parseYouTubeMusicDescription,
   channelToArtist,
   extractYearFromTitle,
+  fetchEmbeddableVideoIds,
 } from "./youtube";
 
 // ─── parseArtistAndTrack ──────────────────────────────────────────────────────
@@ -210,5 +211,42 @@ describe("extractYearFromTitle", () => {
 
   it("handles year 1999 (19xx prefix)", () => {
     expect(extractYearFromTitle("Song (1999)")).toBe(1999);
+  });
+});
+
+// ─── fetchEmbeddableVideoIds ──────────────────────────────────────────────────
+
+describe("fetchEmbeddableVideoIds", () => {
+  afterEach(() => { vi.restoreAllMocks(); });
+
+  it("returns embeddable IDs from API response", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        items: [
+          { id: "vid1", status: { embeddable: true } },
+          { id: "vid2", status: { embeddable: false } },
+          { id: "vid3", status: { embeddable: true } },
+        ],
+      }),
+    }));
+    const result = await fetchEmbeddableVideoIds(["vid1", "vid2", "vid3"], "fake-key");
+    expect(result).toEqual(new Set(["vid1", "vid3"]));
+  });
+
+  it("returns empty set for empty input", async () => {
+    const result = await fetchEmbeddableVideoIds([], "fake-key");
+    expect(result.size).toBe(0);
+  });
+
+  it("falls back to assuming all embeddable when API fails", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: false, status: 403 }));
+    const result = await fetchEmbeddableVideoIds(["vid1", "vid2"], "fake-key");
+    expect(result).toEqual(new Set(["vid1", "vid2"]));
+  });
+
+  it("assumes all embeddable when no API key is provided", async () => {
+    const result = await fetchEmbeddableVideoIds(["vid1", "vid2"]);
+    expect(result).toEqual(new Set(["vid1", "vid2"]));
   });
 });

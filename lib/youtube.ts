@@ -223,6 +223,44 @@ export function extractCjkTrackName(title: string): string | null {
 }
 
 /**
+ * Fetches the embeddability status of a set of video IDs.
+ * Returns a Set of IDs that are embeddable (i.e. can play in an IFrame).
+ * Videos absent from the response (private, deleted, or API error) are excluded.
+ * Batches up to 50 IDs per API call.
+ */
+export async function fetchEmbeddableVideoIds(
+  videoIds: string[],
+  apiKey?: string
+): Promise<Set<string>> {
+  const key = apiKey ?? process.env.YOUTUBE_API_KEY;
+  if (!key) return new Set(videoIds); // no key → assume all embeddable
+  if (videoIds.length === 0) return new Set();
+
+  const embeddable = new Set<string>();
+  for (let i = 0; i < videoIds.length; i += 50) {
+    const batch = videoIds.slice(i, i + 50);
+    const params = new URLSearchParams({
+      part: "status",
+      id: batch.join(","),
+      key,
+    });
+    const res = await fetch(`${BASE}/videos?${params}`);
+    if (!res.ok) {
+      // On API error, assume the batch is embeddable to avoid false-positives.
+      batch.forEach((id) => embeddable.add(id));
+      continue;
+    }
+    const data = (await res.json()) as {
+      items: { id: string; status: { embeddable: boolean } }[];
+    };
+    for (const item of data.items) {
+      if (item.status.embeddable) embeddable.add(item.id);
+    }
+  }
+  return embeddable;
+}
+
+/**
  * Strips "Artist - Topic" suffix from YouTube auto-generated channel names.
  * e.g. "Frank Mills - Topic" → "Frank Mills"
  */
