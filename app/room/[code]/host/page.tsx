@@ -62,6 +62,7 @@ export default function HostPage() {
   const [loadById, setLoadById] = useState("");
   const [copied, setCopied] = useState(false);
   const [saveError, setSaveError] = useState("");
+  const [skippedEmbeddingCount, setSkippedEmbeddingCount] = useState(0);
   const hostIdRef = useRef<string>("");
   const loadedUrlRef = useRef<string>("");
   const readySongsRef = useRef<EditableSong[]>([]);
@@ -105,6 +106,7 @@ export default function HostPage() {
         if (msg.state.phase === "lobby" && state?.phase !== "lobby") {
           setLoadStatus("idle");
           setDiagnostic(null);
+          setSkippedEmbeddingCount(0);
           setDiagnosticStatus(null);
           setPlaylistUrl("");
           setReadySongs([]);
@@ -119,6 +121,7 @@ export default function HostPage() {
       if (msg.type === "DIAGNOSTIC") {
         setDiagnostic(msg.songs);
         setDiagnosticStatus(msg.status);
+        if (msg.skippedEmbeddingCount) setSkippedEmbeddingCount(msg.skippedEmbeddingCount);
       }
       if (msg.type === "PLAYLIST_READY") {
         setReadySongCount(msg.songCount);
@@ -158,6 +161,7 @@ export default function HostPage() {
     if (!url) { setError("missing_url"); return; }
     setError("");
     setDiagnostic(null);
+    setSkippedEmbeddingCount(0);
     setDiagnosticStatus(null);
     setLoadStatus("loading");
     setShowContinuePrompt(false);
@@ -238,6 +242,7 @@ export default function HostPage() {
   async function handleLoadSavedPlaylist(id: string) {
     setError("");
     setDiagnostic(null);
+    setSkippedEmbeddingCount(0);
     setDiagnosticStatus(null);
     setLoadStatus("loading");
     const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -342,6 +347,7 @@ export default function HostPage() {
                   if (loadStatus !== "idle") {
                     setLoadStatus("idle");
                     setDiagnostic(null);
+                    setSkippedEmbeddingCount(0);
                     setDiagnosticStatus(null);
                   }
                 }}
@@ -459,6 +465,14 @@ export default function HostPage() {
                   </button>
                 )}
               </div>
+              {skippedEmbeddingCount > 0 && (
+                <div className="flex items-start gap-2 text-xs text-orange-300/80">
+                  <span className="text-orange-400 mt-0.5">⚠</span>
+                  <span>
+                    {skippedEmbeddingCount} video{skippedEmbeddingCount === 1 ? "" : "s"} skipped — embedding disabled by the uploader. These songs won&apos;t play in the game.
+                  </span>
+                </div>
+              )}
               {diagnosticStatus && (diagnosticStatus.spotifyRateLimited || diagnosticStatus.kgBlocked) && (
                 <div className="flex flex-col gap-2">
                   {diagnosticStatus.spotifyRateLimited && (
