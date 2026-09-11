@@ -313,11 +313,11 @@ export default class HitsterRoom implements Party.Server {
       });
 
       // ── AI metadata resolution ───────────────────────────────────────────────
-      // resolveTracksWithAI batches 15 tracks per Claude call and runs up to 4
-      // batches in parallel. It calls onBatchDone after each window completes so
-      // we can push incremental DIAGNOSTIC progress to the host.
-      const aiResults = anthropicKey
-        ? await resolveTracksWithAI(tracks, anthropicKey, (partial) => {
+      // Only send tracks that don't already have a year from description/title —
+      // no point paying the AI to re-derive what we already know.
+      const tracksNeedingAI = tracks.filter((_, i) => !metas[i].descYear && !metas[i].titleYear);
+      const aiResults = anthropicKey && tracksNeedingAI.length > 0
+        ? await resolveTracksWithAI(tracksNeedingAI, anthropicKey, (partial) => {
             if (this.abortLoad || mySeq !== this.loadSeq) return;
             const diagSongs: SongDiagnostic[] = tracks.map((t, i) => {
               const { descYear, titleYear, artist } = metas[i];
@@ -565,8 +565,9 @@ export default class HitsterRoom implements Party.Server {
         return { artist, descYear: descMeta.year ?? null, titleYear: titleYear ?? null };
       });
 
-      const aiResults = anthropicKey
-        ? await resolveTracksWithAI(tracks, anthropicKey)
+      const tracksNeedingAI = tracks.filter((_, i) => !metas[i].descYear && !metas[i].titleYear);
+      const aiResults = anthropicKey && tracksNeedingAI.length > 0
+        ? await resolveTracksWithAI(tracksNeedingAI, anthropicKey)
         : new Map();
 
       const songs: Card[] = [];
