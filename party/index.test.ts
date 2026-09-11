@@ -34,12 +34,12 @@ vi.mock("../lib/youtube", async (importOriginal) => {
   return { ...actual, fetchPlaylistItems: vi.fn() };
 });
 
-vi.mock("../lib/spotify", () => ({
-  lookupReleaseYear: vi.fn(),
+vi.mock("../lib/ai-metadata", () => ({
+  resolveTracksWithAI: vi.fn().mockResolvedValue(new Map()),
 }));
 
 import { fetchPlaylistItems } from "../lib/youtube";
-import { lookupReleaseYear } from "../lib/spotify";
+import { resolveTracksWithAI } from "../lib/ai-metadata";
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -300,16 +300,17 @@ describe("START_GAME handler", () => {
     expect(room.state.hostId).toBe(""); // host not claimed
   });
 
-  it("falls back to Spotify year when no year in description or title", async () => {
+  it("uses AI year when no year in description or title", async () => {
     vi.mocked(fetchPlaylistItems).mockResolvedValue([
       { videoId: "v1", title: "Untitled Song", description: "no year here", channelTitle: "Artist" },
       { videoId: "v2", title: "Another Song", description: "no year here", channelTitle: "Artist" },
     ]);
-    vi.mocked(lookupReleaseYear).mockResolvedValue({ year: 1980, title: "Untitled Song", artist: "Artist" });
+    vi.mocked(resolveTracksWithAI).mockResolvedValue(new Map([
+      ["v1", { title: "Untitled Song", artist: "Artist", year: 1980 }],
+      ["v2", { title: "Another Song", artist: "Artist", year: 1982 }],
+    ]));
 
-    // Provide fake Spotify credentials so the Spotify pass is triggered.
-    process.env.SPOTIFY_CLIENT_ID = "test-cid";
-    process.env.SPOTIFY_CLIENT_SECRET = "test-csec";
+    process.env.ANTHROPIC_API_KEY = "test-key";
     const room = new HitsterRoom(makeRoom() as any);
     const conn = makeConn();
     await send(room, conn, {
@@ -318,11 +319,10 @@ describe("START_GAME handler", () => {
       playlistUrl: "PLtest",
     });
 
-    expect(lookupReleaseYear).toHaveBeenCalled();
+    expect(resolveTracksWithAI).toHaveBeenCalled();
     expect(room.state.phase).toBe("guessing");
 
-    delete process.env.SPOTIFY_CLIENT_ID;
-    delete process.env.SPOTIFY_CLIENT_SECRET;
+    delete process.env.ANTHROPIC_API_KEY;
   });
 
   it("handles quota exceeded error from YouTube API", async () => {

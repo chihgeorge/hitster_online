@@ -18,16 +18,11 @@ import {
   parseYouTubeMusicDescription,
   channelToArtist,
   extractYearFromTitle,
-  extractCjkTrackName,
 } from "../lib/youtube";
-import { lookupReleaseYear, SpotifyRateLimitedError, type SpotifyTrackResult } from "../lib/spotify";
-import { lookupYearFromItunes, type ItunesTrackResult } from "../lib/itunes";
-import { lookupYearFromKnowledgeGraph, KnowledgeGraphBlockedError } from "../lib/googlekg";
-import { lookupYearFromYTMusic } from "../lib/ytmusic";
+import { resolveTracksWithAI } from "../lib/ai-metadata";
 
 const DEFAULT_TARGET_CARD_COUNT = 10;
 const MAX_TARGET_CARD_COUNT = 20;
-const SPOTIFY_BATCH_SIZE = 5;
 const MAX_PLAYERS_SOFT = 8;
 const PLAYLIST_ID_PATTERN = /^[A-Za-z0-9_-]{5,64}$/;
 
@@ -229,14 +224,10 @@ export default class HitsterRoom implements Party.Server {
         (this.room.env?.["pkvar-YOUTUBE_API_KEY"] as string | undefined) ??
         (this.room.env?.YOUTUBE_API_KEY as string | undefined) ??
         process.env.YOUTUBE_API_KEY,
-      spotifyClientId:
-        (this.room.env?.["pkvar-SPOTIFY_CLIENT_ID"] as string | undefined) ??
-        (this.room.env?.SPOTIFY_CLIENT_ID as string | undefined) ??
-        process.env.SPOTIFY_CLIENT_ID,
-      spotifyClientSecret:
-        (this.room.env?.["pkvar-SPOTIFY_CLIENT_SECRET"] as string | undefined) ??
-        (this.room.env?.SPOTIFY_CLIENT_SECRET as string | undefined) ??
-        process.env.SPOTIFY_CLIENT_SECRET,
+      anthropicKey:
+        (this.room.env?.["pkvar-ANTHROPIC_API_KEY"] as string | undefined) ??
+        (this.room.env?.ANTHROPIC_API_KEY as string | undefined) ??
+        process.env.ANTHROPIC_API_KEY,
     };
   }
 
@@ -287,53 +278,33 @@ export default class HitsterRoom implements Party.Server {
     const mySeq = ++this.loadSeq;
     this.pendingPlaylist = null;
 
-    // Helper: build a partial playlist snapshot from whatever year sources have resolved so far.
-    const buildSnapshot = (spotifyRateLimited: boolean, kgBlocked: boolean) => {
-      const songs: Card[] = [];
-      const diagnostics: SongDiagnostic[] = [];
-      for (let i = 0; i < tracks.length; i++) {
-        const { descYear, titleYear, artist } = metas[i];
-        const ytmYear = ytmYears.get(i) ?? null;
-        const spotify = spotifyResults.get(i) ?? null;
-        const spotifyYear = spotify?.year ?? null;
-        const year = descYear ?? titleYear ?? ytmYear ?? spotifyYear ?? null;
-        const src: Card["yearSource"] = descYear ? "description" : titleYear ? "title" : ytmYear ? "ytmusic" : "spotify";
-        const cleanTitle = spotify?.title ?? tracks[i].title;
-        const cleanArtist = spotify?.artist ?? artist;
-        diagnostics.push({ title: cleanTitle, artist: cleanArtist, year, yearSource: year ? src : null });
-        if (year) songs.push({ id: tracks[i].videoId, videoId: tracks[i].videoId, title: cleanTitle, artist: cleanArtist, year, yearSource: src });
-      }
-      return { songs, diagnostics, spotifyRateLimited, kgBlocked };
-    };
-
-    // Declare outside try so buildSnapshot can close over them.
+    // Tracks and metas declared outside the try so the abort handler can reference them.
     let tracks: Awaited<ReturnType<typeof fetchPlaylistItems>> = [];
-    type TrackMeta = { artist: string; trackName: string; descYear: number | null; titleYear: number | null };
+    type TrackMeta = { artist: string; descYear: number | null; titleYear: number | null };
     let metas: TrackMeta[] = [];
-    const ytmYears = new Map<number, number>();
-    const spotifyResults = new Map<number, SpotifyTrackResult>();
 
     try {
-      const { youtubeKey, spotifyClientId, spotifyClientSecret } = this.resolveEnv();
+      const { youtubeKey, anthropicKey } = this.resolveEnv();
 
       tracks = await fetchPlaylistItems(playlistId, youtubeKey);
-      let kgBlocked = false;
 
       // Filter out videos with embedding disabled before year resolution.
       const embeddable = await fetchEmbeddableVideoIds(tracks.map((t) => t.videoId), youtubeKey);
       const skippedCount = tracks.length - embeddable.size;
       tracks = tracks.filter((t) => embeddable.has(t.videoId));
 
+      // Fast pre-parse: extract artist/year from structured descriptions and title brackets.
+      // Description year (YouTube Music "Released on: YYYY") is highly reliable — we keep
+      // it as the authoritative source and don't ask the AI to re-derive it.
       metas = tracks.map((track) => {
         const descMeta = parseYouTubeMusicDescription(track.description);
         const titleYear = extractYearFromTitle(track.title);
         const titleParsed = parseArtistAndTrack(track.title);
         const artist = descMeta.artist ?? titleParsed?.artist ?? channelToArtist(track.channelTitle);
-        const trackName = titleParsed?.track ?? extractCjkTrackName(track.title) ?? track.title;
-        return { artist, trackName, descYear: descMeta.year ?? null, titleYear: titleYear ?? null };
+        return { artist, descYear: descMeta.year ?? null, titleYear: titleYear ?? null };
       });
 
-      // Send initial status so host sees the song list immediately.
+      // Send initial DIAGNOSTIC immediately so the host sees the song list.
       this.sendTo(conn, {
         type: "DIAGNOSTIC",
         songs: tracks.map((t, i) => ({ title: t.title, artist: metas[i].artist, year: null, yearSource: null })),
@@ -341,173 +312,69 @@ export default class HitsterRoom implements Party.Server {
         ...(skippedCount > 0 ? { skippedEmbeddingCount: skippedCount } : {}),
       });
 
-      // ── Pass 1: YouTube Music ────────────────────────────────────────────────
-      const YTM_BATCH = 5;
-      for (let i = 0; i < tracks.length; i += YTM_BATCH) {
-        if (this.abortLoad || mySeq !== this.loadSeq) break;
-        const batch = Array.from({ length: Math.min(YTM_BATCH, tracks.length - i) }, (_, j) => i + j);
-        await Promise.all(
-          batch.map(async (idx) => {
-            const { descYear, titleYear, artist, trackName } = metas[idx];
-            if (descYear ?? titleYear) return;
-            const y = await lookupYearFromYTMusic(artist, trackName).catch(() => null);
-            if (y) ytmYears.set(idx, y);
+      // ── AI metadata resolution ───────────────────────────────────────────────
+      // resolveTracksWithAI batches 15 tracks per Claude call and runs up to 4
+      // batches in parallel. It calls onBatchDone after each window completes so
+      // we can push incremental DIAGNOSTIC progress to the host.
+      const aiResults = anthropicKey
+        ? await resolveTracksWithAI(tracks, anthropicKey, (partial) => {
+            if (this.abortLoad || mySeq !== this.loadSeq) return;
+            const diagSongs: SongDiagnostic[] = tracks.map((t, i) => {
+              const { descYear, titleYear, artist } = metas[i];
+              const ai = partial.get(t.videoId);
+              const year = descYear ?? titleYear ?? ai?.year ?? null;
+              const yearSource: SongDiagnostic["yearSource"] =
+                descYear ? "description" : titleYear ? "title" : ai?.year ? "ai" : null;
+              return { title: ai?.title ?? t.title, artist: ai?.artist ?? artist, year, yearSource };
+            });
+            const partialSongs: Card[] = tracks
+              .map((t, i) => {
+                const d = diagSongs[i];
+                if (d.year == null) return null;
+                return { id: t.videoId, videoId: t.videoId, title: d.title, artist: d.artist, year: d.year, yearSource: d.yearSource as Card["yearSource"] };
+              })
+              .filter((s): s is Card => s !== null);
+            this.pendingPlaylist = { playlistId, songs: partialSongs, diagnostics: diagSongs, spotifyRateLimited: false, kgBlocked: false };
+            this.sendTo(conn, { type: "DIAGNOSTIC", songs: diagSongs, status: { spotifyRateLimited: false, kgBlocked: false } });
           })
-        );
-        // Push YTM progress after each batch.
-        this.sendTo(conn, {
-          type: "DIAGNOSTIC",
-          songs: tracks.map((t, i) => {
-            const { descYear, titleYear, artist } = metas[i];
-            const ytmYear = ytmYears.get(i) ?? null;
-            const year = descYear ?? titleYear ?? ytmYear ?? null;
-            const yearSource = descYear ? "description" : titleYear ? "title" : ytmYear ? "ytmusic" : null;
-            return { title: t.title, artist, year, yearSource };
-          }),
-          status: { spotifyRateLimited: false, kgBlocked },
-        });
-        // Cache partial results so an abort between batches has something to use.
-        this.pendingPlaylist = { playlistId, ...buildSnapshot(false, kgBlocked) };
-      }
+        : new Map();
 
-      // Abort checkpoint after YTM pass.
+      // Abort checkpoint after AI pass.
       if (this.abortLoad || mySeq !== this.loadSeq) {
         if (this.abortLoad) {
-          const snap = buildSnapshot(false, kgBlocked);
-          this.pendingPlaylist = { playlistId, ...snap };
-          this.sendTo(conn, snap.songs.length >= 2
-            ? { type: "PLAYLIST_READY", songCount: snap.songs.length, songs: snap.songs.map((s) => ({ videoId: s.videoId, title: s.title, artist: s.artist, year: s.year })) }
+          // Cast via unknown to break TS 5.x class-field narrowing (pendingPlaylist
+          // was set to null earlier; TS doesn't see the callback assignment).
+          const abortPending = this.pendingPlaylist as unknown as PendingPlaylist | null;
+          const abortSongs = abortPending?.songs ?? [];
+          this.sendTo(conn, abortSongs.length >= 2
+            ? { type: "PLAYLIST_READY", songCount: abortSongs.length, songs: abortSongs.map((s: Card) => ({ videoId: s.videoId, title: s.title, artist: s.artist, year: s.year })) }
             : { type: "PLAYLIST_LOAD_ERROR", error: "not_enough_songs" });
         }
         return;
       }
 
-      // ── Pass 2: Spotify (paired batches, 200 ms between pairs) ──────────────
-      // Running 2 songs concurrently at 5 req/s is the same throughput limit as
-      // the old single-at-a-time approach but halves wall-clock time per song.
-      // The previous burst (25 simultaneous calls) reliably triggered 429s; 2
-      // concurrent calls never will.
-      let spotifyRateLimited = false;
-      if (spotifyClientId && spotifyClientSecret) {
-        const toQuery = tracks.map((_, i) => i).filter(
-          (i) => !(metas[i].descYear ?? metas[i].titleYear ?? ytmYears.get(i))
-        );
-        for (let b = 0; b < toQuery.length && !spotifyRateLimited && !this.abortLoad && mySeq === this.loadSeq; b += 2) {
-          const pair = toQuery.slice(b, b + 2);
-          await Promise.allSettled(
-            pair.map(async (idx) => {
-              if (spotifyRateLimited) return;
-              const { artist, trackName } = metas[idx];
-              try {
-                const result = await lookupReleaseYear(artist, trackName, spotifyClientId, spotifyClientSecret);
-                if (result) spotifyResults.set(idx, result);
-              } catch (err) {
-                if (err instanceof SpotifyRateLimitedError) spotifyRateLimited = true;
-              }
-            })
-          );
-          if (b + 2 < toQuery.length) await new Promise((r) => setTimeout(r, 200));
-        }
-        this.sendTo(conn, {
-          type: "DIAGNOSTIC",
-          songs: tracks.map((t, i) => {
-            const { descYear, titleYear, artist } = metas[i];
-            const ytmYear = ytmYears.get(i) ?? null;
-            const spotify = spotifyResults.get(i) ?? null;
-            const spotifyYear = spotify?.year ?? null;
-            const year = descYear ?? titleYear ?? ytmYear ?? spotifyYear ?? null;
-            const yearSource = descYear ? "description" : titleYear ? "title" : ytmYear ? "ytmusic" : spotifyYear ? "spotify" : null;
-            return { title: spotify?.title ?? t.title, artist: spotify?.artist ?? artist, year, yearSource };
-          }),
-          status: { spotifyRateLimited, kgBlocked },
-        });
-        // Update cached snapshot after Spotify pass.
-        this.pendingPlaylist = { playlistId, ...buildSnapshot(spotifyRateLimited, kgBlocked) };
-      }
-
-      // Abort checkpoint after Spotify pass.
-      if (this.abortLoad || mySeq !== this.loadSeq) {
-        if (this.abortLoad) {
-          const snap = buildSnapshot(spotifyRateLimited, kgBlocked);
-          this.pendingPlaylist = { playlistId, ...snap };
-          this.sendTo(conn, snap.songs.length >= 2
-            ? { type: "PLAYLIST_READY", songCount: snap.songs.length, songs: snap.songs.map((s) => ({ videoId: s.videoId, title: s.title, artist: s.artist, year: s.year })) }
-            : { type: "PLAYLIST_LOAD_ERROR", error: "not_enough_songs" });
-        }
-        return;
-      }
-
-      // ── Pass 3: iTunes + KG ──────────────────────────────────────────────────
-      const BATCH = SPOTIFY_BATCH_SIZE;
+      // ── Final merge ──────────────────────────────────────────────────────────
+      // Priority: description year > title-embedded year > AI year
+      // For title/artist: AI wins over raw YouTube title (cleaner names).
       const songs: Card[] = [];
       const diagnostics: SongDiagnostic[] = [];
-      for (let i = 0; i < tracks.length; i += BATCH) {
-        if (this.abortLoad || mySeq !== this.loadSeq) break;
-        const batch = tracks.slice(i, i + BATCH);
-        const batchKgBlocked = kgBlocked;
-        const results = await Promise.allSettled(
-          batch.map(async (track, j) => {
-            const idx = i + j;
-            const { descYear, titleYear, artist, trackName } = metas[idx];
-            const ytmYear = ytmYears.get(idx) ?? null;
-            const spotify = spotifyResults.get(idx) ?? null;
-            const spotifyYear = spotify?.year ?? null;
-            let year: number | null = descYear ?? titleYear ?? ytmYear ?? spotifyYear;
-            let yearSource: Card["yearSource"] = descYear ? "description" : titleYear ? "title" : ytmYear ? "ytmusic" : spotifyYear ? "spotify" : "itunes";
-            let cleanTitle = spotify?.title ?? track.title;
-            let cleanArtist = spotify?.artist ?? artist;
-            let itunesResult: ItunesTrackResult | null = null;
-            if (!year) {
-              itunesResult = await lookupYearFromItunes(artist, trackName).catch(() => null);
-              if (itunesResult) {
-                year = itunesResult.year;
-                yearSource = "itunes";
-                cleanTitle = itunesResult.title;
-                cleanArtist = itunesResult.artist;
-              }
-            }
-            if (!year && youtubeKey && !batchKgBlocked) {
-              try {
-                year = await lookupYearFromKnowledgeGraph(artist, trackName, youtubeKey);
-                if (year) yearSource = "google";
-              } catch (err) {
-                if (err instanceof KnowledgeGraphBlockedError) kgBlocked = true;
-              }
-            }
-            return { track, cleanTitle, cleanArtist, year, yearSource };
-          })
-        );
 
-        for (const result of results) {
-          if (result.status !== "fulfilled") continue;
-          const { track, cleanTitle, cleanArtist, year, yearSource } = result.value;
-          diagnostics.push({ title: cleanTitle, artist: cleanArtist, year, yearSource: year ? yearSource : null });
-          if (year) {
-            songs.push({ id: track.videoId, videoId: track.videoId, title: cleanTitle, artist: cleanArtist, year, yearSource } satisfies Card);
-          }
+      for (let i = 0; i < tracks.length; i++) {
+        const t = tracks[i];
+        const { descYear, titleYear, artist } = metas[i];
+        const ai = aiResults.get(t.videoId);
+        const year = descYear ?? titleYear ?? ai?.year ?? null;
+        const yearSource: SongDiagnostic["yearSource"] =
+          descYear ? "description" : titleYear ? "title" : ai?.year ? "ai" : null;
+        const cleanTitle = ai?.title ?? t.title;
+        const cleanArtist = ai?.artist ?? artist;
+        diagnostics.push({ title: cleanTitle, artist: cleanArtist, year, yearSource });
+        if (year) {
+          songs.push({ id: t.videoId, videoId: t.videoId, title: cleanTitle, artist: cleanArtist, year, yearSource: yearSource as Card["yearSource"] } satisfies Card);
         }
-
-        this.sendTo(conn, {
-          type: "DIAGNOSTIC",
-          songs: [...diagnostics],
-          status: { spotifyRateLimited, kgBlocked },
-        });
-        // Keep partial cached result current throughout this pass.
-        this.pendingPlaylist = { playlistId, songs: [...songs], diagnostics: [...diagnostics], spotifyRateLimited, kgBlocked };
       }
 
-      // Abort checkpoint after iTunes/KG pass (or mid-pass).
-      if (this.abortLoad || mySeq !== this.loadSeq) {
-        if (this.abortLoad) {
-          const count = songs.length;
-          this.sendTo(conn, count >= 2
-            ? { type: "PLAYLIST_READY", songCount: count, songs: songs.map((s) => ({ videoId: s.videoId, title: s.title, artist: s.artist, year: s.year })) }
-            : { type: "PLAYLIST_LOAD_ERROR", error: "not_enough_songs" });
-        }
-        return;
-      }
-
-      this.pendingPlaylist = { playlistId, songs, diagnostics, spotifyRateLimited, kgBlocked };
+      this.pendingPlaylist = { playlistId, songs, diagnostics, spotifyRateLimited: false, kgBlocked: false };
 
       if (songs.length < 2) {
         this.sendTo(conn, { type: "PLAYLIST_LOAD_ERROR", error: "not_enough_songs" });
@@ -688,97 +555,37 @@ export default class HitsterRoom implements Party.Server {
       return;
     }
     try {
-      const { youtubeKey, spotifyClientId, spotifyClientSecret } = this.resolveEnv();
+      const { youtubeKey, anthropicKey } = this.resolveEnv();
       const tracks = await fetchPlaylistItems(playlistId, youtubeKey);
-      const songs: Card[] = [];
-      const diagnostics: SongDiagnostic[] = [];
-      let kgBlocked = false;
-      type TrackMeta = { artist: string; trackName: string; descYear: number | null; titleYear: number | null };
-      const metas: TrackMeta[] = tracks.map((track) => {
+      const metas = tracks.map((track) => {
         const descMeta = parseYouTubeMusicDescription(track.description);
         const titleYear = extractYearFromTitle(track.title);
         const titleParsed = parseArtistAndTrack(track.title);
         const artist = descMeta.artist ?? titleParsed?.artist ?? channelToArtist(track.channelTitle);
-        const trackName = titleParsed?.track ?? extractCjkTrackName(track.title) ?? track.title;
-        return { artist, trackName, descYear: descMeta.year ?? null, titleYear: titleYear ?? null };
+        return { artist, descYear: descMeta.year ?? null, titleYear: titleYear ?? null };
       });
-      const YTM_BATCH = 5;
-      const ytmYears = new Map<number, number>();
-      for (let i = 0; i < tracks.length; i += YTM_BATCH) {
-        const batch = Array.from({ length: Math.min(YTM_BATCH, tracks.length - i) }, (_, j) => i + j);
-        await Promise.all(batch.map(async (idx) => {
-          const { descYear, titleYear, artist, trackName } = metas[idx];
-          if (descYear ?? titleYear) return;
-          const y = await lookupYearFromYTMusic(artist, trackName).catch(() => null);
-          if (y) ytmYears.set(idx, y);
-        }));
-      }
-      let spotifyRateLimited = false;
-      const spotifyResultsFallback = new Map<number, SpotifyTrackResult>();
-      if (spotifyClientId && spotifyClientSecret) {
-        for (let i = 0; i < tracks.length; i++) {
-          const { descYear, titleYear, artist, trackName } = metas[i];
-          if (descYear ?? titleYear ?? ytmYears.get(i)) continue;
-          if (spotifyRateLimited) break;
-          try {
-            const result = await lookupReleaseYear(artist, trackName, spotifyClientId, spotifyClientSecret);
-            if (result) spotifyResultsFallback.set(i, result);
-          } catch (err) {
-            if (err instanceof SpotifyRateLimitedError) spotifyRateLimited = true;
-          }
-          if (i < tracks.length - 1) await new Promise((r) => setTimeout(r, 200));
+
+      const aiResults = anthropicKey
+        ? await resolveTracksWithAI(tracks, anthropicKey)
+        : new Map();
+
+      const songs: Card[] = [];
+      const diagnostics: SongDiagnostic[] = [];
+      for (let i = 0; i < tracks.length; i++) {
+        const t = tracks[i];
+        const { descYear, titleYear, artist } = metas[i];
+        const ai = aiResults.get(t.videoId);
+        const year = descYear ?? titleYear ?? ai?.year ?? null;
+        const yearSource: SongDiagnostic["yearSource"] =
+          descYear ? "description" : titleYear ? "title" : ai?.year ? "ai" : null;
+        const cleanTitle = ai?.title ?? t.title;
+        const cleanArtist = ai?.artist ?? artist;
+        diagnostics.push({ title: cleanTitle, artist: cleanArtist, year, yearSource });
+        if (year) {
+          songs.push({ id: t.videoId, videoId: t.videoId, title: cleanTitle, artist: cleanArtist, year, yearSource: yearSource as Card["yearSource"] } satisfies Card);
         }
       }
-      this.sendTo(conn, {
-        type: "DIAGNOSTIC",
-        songs: tracks.map((t, i) => {
-          const { descYear, titleYear, artist } = metas[i];
-          const ytmYear = ytmYears.get(i) ?? null;
-          const spotify = spotifyResultsFallback.get(i) ?? null;
-          const spotifyYear = spotify?.year ?? null;
-          const year = descYear ?? titleYear ?? ytmYear ?? spotifyYear ?? null;
-          const yearSource = descYear ? "description" : titleYear ? "title" : ytmYear ? "ytmusic" : year ? "spotify" : null;
-          return { title: spotify?.title ?? t.title, artist: spotify?.artist ?? artist, year, yearSource };
-        }),
-        status: { spotifyRateLimited, kgBlocked },
-      });
-      const BATCH = SPOTIFY_BATCH_SIZE;
-      for (let i = 0; i < tracks.length; i += BATCH) {
-        const batch = tracks.slice(i, i + BATCH);
-        const batchKgBlocked = kgBlocked;
-        const results = await Promise.allSettled(batch.map(async (track, j) => {
-          const idx = i + j;
-          const { descYear, titleYear, artist, trackName } = metas[idx];
-          const ytmYear = ytmYears.get(idx) ?? null;
-          const spotify = spotifyResultsFallback.get(idx) ?? null;
-          const spotifyYear = spotify?.year ?? null;
-          let year: number | null = descYear ?? titleYear ?? ytmYear ?? spotifyYear;
-          let yearSource: Card["yearSource"] = descYear ? "description" : titleYear ? "title" : ytmYear ? "ytmusic" : spotifyYear ? "spotify" : "itunes";
-          let cleanTitle = spotify?.title ?? track.title;
-          let cleanArtist = spotify?.artist ?? artist;
-          if (!year) {
-            const itunesResult = await lookupYearFromItunes(artist, trackName).catch(() => null);
-            if (itunesResult) {
-              year = itunesResult.year;
-              yearSource = "itunes";
-              cleanTitle = itunesResult.title;
-              cleanArtist = itunesResult.artist;
-            }
-          }
-          if (!year && youtubeKey && !batchKgBlocked) {
-            try { year = await lookupYearFromKnowledgeGraph(artist, trackName, youtubeKey); if (year) yearSource = "google"; }
-            catch (err) { if (err instanceof KnowledgeGraphBlockedError) kgBlocked = true; }
-          }
-          return { track, cleanTitle, cleanArtist, year, yearSource };
-        }));
-        for (const result of results) {
-          if (result.status !== "fulfilled") continue;
-          const { track, cleanTitle, cleanArtist, year, yearSource } = result.value;
-          diagnostics.push({ title: cleanTitle, artist: cleanArtist, year, yearSource: year ? yearSource : null });
-          if (year) songs.push({ id: track.videoId, videoId: track.videoId, title: cleanTitle, artist: cleanArtist, year, yearSource } satisfies Card);
-        }
-        this.sendTo(conn, { type: "DIAGNOSTIC", songs: [...diagnostics], status: { spotifyRateLimited, kgBlocked } });
-      }
+
       if (songs.length < 2) { this.sendTo(conn, { type: "ERROR", error: "not_enough_songs" }); return; }
       this.state.songs = songs.sort(() => Math.random() - 0.5);
       this.dealStartingCardsAndStart();
