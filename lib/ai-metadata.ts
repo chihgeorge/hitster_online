@@ -12,7 +12,7 @@ export interface AITrackMeta {
 
 const ANTHROPIC_API = "https://api.anthropic.com/v1/messages";
 const MODEL = "claude-haiku-4-5-20251001";
-const BATCH_SIZE = 15;
+const BATCH_SIZE = 10;
 // Max parallel batches — keeps total concurrent Anthropic connections low.
 const MAX_CONCURRENT = 4;
 
@@ -22,11 +22,11 @@ Return ONLY a valid JSON array — no prose, no markdown fences — one element 
 [{"videoId":"ID","title":"Song Title","artist":"Artist Name","year":2019},...]
 
 Rules:
-- title: clean song name only. Remove suffixes like "Official MV", "(Audio)", "MV", "Official Video", "Lyric Video", "Live", etc.
+- title: clean song name only. Remove suffixes like "Official MV", "(Audio)", "MV", "Official Video", "Lyric Video", "Live", "(4K)", "HD", "HQ", etc.
 - artist: primary artist only. No "ft.", "feat.", or collaborators.
-- year: original studio/single release year as a number. null if genuinely uncertain.
+- year: original studio/single release year as an integer. Use your best estimate — prefer a year over null. Only use null for truly unidentifiable tracks (no artist, no recognizable song name, pure noise/ambient, etc.).
 - Preserve non-Latin characters (Chinese, Japanese, Korean) exactly as they appear.
-- Do NOT invent data. Use null for year when you are not confident.`;
+- For well-known songs you recognise, always provide the year even if the video title is messy.`;
 
 function formatBatch(
   tracks: { videoId: string; title: string; description: string; channelTitle: string }[]
