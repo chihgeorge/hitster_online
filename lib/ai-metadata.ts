@@ -16,17 +16,16 @@ const BATCH_SIZE = 10;
 // Max parallel batches — keeps total concurrent Anthropic connections low.
 const MAX_CONCURRENT = 4;
 
-const SYSTEM_PROMPT = `You are a music metadata expert. Given YouTube video metadata, identify the song's original title, primary artist, and release year.
+const SYSTEM_PROMPT = `Music metadata expert. For each YouTube track, return clean title, primary artist, and release year.
 
-Return ONLY a valid JSON array — no prose, no markdown fences — one element per video, in the same order as input:
-[{"videoId":"ID","title":"Song Title","artist":"Artist Name","year":2019},...]
+Return ONLY a JSON array, one object per input track, same order:
+[{"v":"VIDEO_ID","t":"Song Title","a":"Artist","y":2019},...]
 
 Rules:
-- title: clean song name only. Remove suffixes like "Official MV", "(Audio)", "MV", "Official Video", "Lyric Video", "Live", "(4K)", "HD", "HQ", etc.
-- artist: primary artist only. No "ft.", "feat.", or collaborators.
-- year: original studio/single release year as an integer. Use your best estimate — prefer a year over null. Only use null for truly unidentifiable tracks (no artist, no recognizable song name, pure noise/ambient, etc.).
-- Preserve non-Latin characters (Chinese, Japanese, Korean) exactly as they appear.
-- For well-known songs you recognise, always provide the year even if the video title is messy.`;
+- t: clean song name, strip suffixes (Official MV, Audio, Lyric Video, Live, HD, 4K, etc.)
+- a: primary artist only, no ft./feat.
+- y: original studio/single release year as integer. Best estimate — prefer a number over null. null only for truly unidentifiable tracks.
+- Preserve CJK characters exactly.`;
 
 function formatBatch(
   tracks: { videoId: string; title: string; description: string; channelTitle: string }[]
@@ -34,13 +33,14 @@ function formatBatch(
   return tracks
     .map(
       (t, i) =>
-        `${i + 1}. id=${t.videoId} | "${t.title}" | channel: "${t.channelTitle}"` +
-        (t.description ? ` | desc: "${t.description.slice(0, 120).replace(/\n/g, " ")}"` : "")
+        `${i + 1}. ${t.videoId} | "${t.title}" | ch:"${t.channelTitle}"` +
+        (t.description ? ` | "${t.description.slice(0, 60).replace(/\n/g, " ")}"` : "")
     )
     .join("\n");
 }
 
-type RawResult = { videoId: string; title?: unknown; artist?: unknown; year?: unknown };
+// Compact field names: v=videoId, t=title, a=artist, y=year
+type RawResult = { v?: unknown; t?: unknown; a?: unknown; y?: unknown };
 
 function parseResponse(text: string): RawResult[] {
   // Strip optional markdown fences the model might add despite instructions.
@@ -68,13 +68,17 @@ async function resolveBatch(
     },
     body: JSON.stringify({
       model: MODEL,
-      max_tokens: 1024,
+      max_tokens: 600,
       system: SYSTEM_PROMPT,
       messages: [{ role: "user", content: formatBatch(tracks) }],
     }),
   });
 
-  if (!res.ok) return result; // fail-open: return empty, caller falls back to title parsing
+  if (!res.ok) {
+    const body = await res.text().catch(() => "");
+    console.error(`[ai-metadata] Anthropic API error ${res.status}: ${body.slice(0, 300)}`);
+    return result;
+  }
 
   const data = (await res.json()) as { content?: { type: string; text: string }[] };
   const text = data.content?.find((b) => b.type === "text")?.text ?? "";
@@ -82,19 +86,21 @@ async function resolveBatch(
   let parsed: RawResult[] = [];
   try {
     parsed = parseResponse(text);
-  } catch {
+  } catch (e) {
+    console.error(`[ai-metadata] parse error: ${e}`);
     return result;
   }
 
   for (const item of parsed) {
-    if (typeof item.videoId !== "string") continue;
-    const title = typeof item.title === "string" && item.title.trim() ? item.title.trim() : null;
-    const artist = typeof item.artist === "string" && item.artist.trim() ? item.artist.trim() : null;
-    const year = typeof item.year === "number" && item.year >= 1900 && item.year <= new Date().getFullYear() + 1
-      ? item.year
+    const videoId = typeof item.v === "string" ? item.v : null;
+    if (!videoId) continue;
+    const title = typeof item.t === "string" && item.t.trim() ? item.t.trim() : null;
+    const artist = typeof item.a === "string" && item.a.trim() ? item.a.trim() : null;
+    const year = typeof item.y === "number" && item.y >= 1900 && item.y <= new Date().getFullYear() + 1
+      ? item.y
       : null;
     if (title && artist) {
-      result.set(item.videoId, { title, artist, year });
+      result.set(videoId, { title, artist, year });
     }
   }
 
