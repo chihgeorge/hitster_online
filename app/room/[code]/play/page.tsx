@@ -114,7 +114,7 @@ export default function PlayPage() {
   if (phase === "ended" && state) {
     const winner = state.players[state.winner ?? ""];
     return (
-      <main className="flex min-h-screen flex-col items-center justify-center gap-4 px-4 text-center">
+      <main className="flex min-h-screen flex-col items-center justify-center gap-4 px-2 text-center">
         <p className="text-gray-400 text-sm uppercase tracking-widest">Game over</p>
         {state.winner === playerIdRef.current ? (
           <h1 className="text-4xl font-bold text-yellow-400">You won! 🎉</h1>
@@ -129,7 +129,7 @@ export default function PlayPage() {
   }
 
   return (
-    <main className="min-h-screen pb-40 px-3 pt-4">
+    <main className="min-h-screen pb-40 px-1 pt-4">
       {/* Mini header */}
       <div className="flex items-center justify-between mb-4">
         <div>
