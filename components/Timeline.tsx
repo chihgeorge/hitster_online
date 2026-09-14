@@ -109,7 +109,7 @@ export default function Timeline({
 
 function TimelineCard({ card }: { card: Card }) {
   return (
-    <div className="flex flex-col items-center justify-center rounded-2xl bg-white/8 border border-white/10 py-5 px-5 mx-1 min-h-[96px] text-center gap-1">
+    <div className="flex flex-col items-center justify-center rounded-2xl bg-white/8 border border-white/10 py-5 px-5 min-h-[96px] text-center gap-1">
       <p className="font-mono text-yellow-400 font-bold text-3xl leading-none tracking-tight">
         {card.year}
       </p>
