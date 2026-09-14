@@ -1,5 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import HitsterRoom from "./index";
 
 // Valid UUID-format player IDs used throughout tests
@@ -23,22 +23,26 @@ function makeRoom() {
     id: "room-1",
     broadcast: vi.fn(),
     getConnections: vi.fn(() => []),
-    storage: { get: vi.fn(), put: vi.fn(), delete: vi.fn() },
+    storage: {
+      get: vi.fn((key: unknown) => Promise.resolve(Array.isArray(key) ? new Map() : undefined)),
+      put: vi.fn(() => Promise.resolve()),
+      delete: vi.fn(() => Promise.resolve()),
+    },
   } as unknown as import("partykit/server").Room;
 }
 
-// Only mock fetchPlaylistItems (network); real parse helpers run untouched so
+// Only mock network functions; real parse helpers run untouched so
 // fakeTrack descriptions are parsed correctly without extra stubbing.
 vi.mock("../lib/youtube", async (importOriginal) => {
   const actual = (await importOriginal()) as object;
-  return { ...actual, fetchPlaylistItems: vi.fn() };
+  return { ...actual, fetchPlaylistItems: vi.fn(), fetchEmbeddableVideoIds: vi.fn() };
 });
 
 vi.mock("../lib/ai-metadata", () => ({
   resolveTracksWithAI: vi.fn().mockResolvedValue(new Map()),
 }));
 
-import { fetchPlaylistItems } from "../lib/youtube";
+import { fetchPlaylistItems, fetchEmbeddableVideoIds } from "../lib/youtube";
 import { resolveTracksWithAI } from "../lib/ai-metadata";
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -321,6 +325,141 @@ describe("START_GAME handler", () => {
 
     expect(resolveTracksWithAI).toHaveBeenCalled();
     expect(room.state.phase).toBe("guessing");
+
+    delete process.env.ANTHROPIC_API_KEY;
+  });
+
+  it("skips AI call for tracks already in storage cache", async () => {
+    const cachedMeta = { title: "Cached Title", artist: "Cached Artist", year: 1975 };
+    vi.mocked(fetchPlaylistItems).mockResolvedValue([
+      { videoId: "v1", title: "Raw Title", description: "no year here", channelTitle: "Artist" },
+      { videoId: "v2", title: "Another Song", description: "no year here", channelTitle: "Artist" },
+    ]);
+    vi.mocked(resolveTracksWithAI).mockResolvedValue(new Map([
+      ["v2", { title: "Another Song", artist: "Artist", year: 1990 }],
+    ]));
+
+    process.env.ANTHROPIC_API_KEY = "test-key";
+    const room = new HitsterRoom(makeRoom() as any);
+    // Seed storage with v1 already cached
+    (room.room.storage.get as ReturnType<typeof vi.fn>).mockImplementation((keys: unknown) =>
+      Promise.resolve(Array.isArray(keys) ? new Map([["aiMeta:v1", cachedMeta]]) : undefined)
+    );
+    const conn = makeConn();
+    await send(room, conn, {
+      type: "START_GAME",
+      hostId: "host-uuid",
+      playlistUrl: "PLtest",
+    });
+
+    // AI should only have been called with v2 (v1 was cached)
+    const callArg = vi.mocked(resolveTracksWithAI).mock.calls[0]?.[0] as { videoId: string }[];
+    expect(callArg.map((t) => t.videoId)).toEqual(["v2"]);
+    expect(room.state.phase).toBe("guessing");
+
+    delete process.env.ANTHROPIC_API_KEY;
+  });
+
+  it("writes fresh AI results to storage cache", async () => {
+    vi.mocked(fetchPlaylistItems).mockResolvedValue([
+      { videoId: "v1", title: "A Song", description: "no year", channelTitle: "Artist" },
+    ]);
+    vi.mocked(resolveTracksWithAI).mockResolvedValue(new Map([
+      ["v1", { title: "A Song", artist: "Artist", year: 2001 }],
+    ]));
+
+    process.env.ANTHROPIC_API_KEY = "test-key";
+    const room = new HitsterRoom(makeRoom() as any);
+    // Seed a second track so the game can start (needs ≥2 songs)
+    vi.mocked(fetchPlaylistItems).mockResolvedValue([
+      { videoId: "v1", title: "A Song", description: "no year", channelTitle: "Artist" },
+      { videoId: "v2", title: "B Song", description: "no year", channelTitle: "Artist" },
+    ]);
+    vi.mocked(resolveTracksWithAI).mockResolvedValue(new Map([
+      ["v1", { title: "A Song", artist: "Artist", year: 2001 }],
+      ["v2", { title: "B Song", artist: "Artist", year: 2003 }],
+    ]));
+    const conn = makeConn();
+    await send(room, conn, {
+      type: "START_GAME",
+      hostId: "host-uuid",
+      playlistUrl: "PLtest",
+    });
+
+    const putCalls = (room.room.storage.put as ReturnType<typeof vi.fn>).mock.calls;
+    expect(putCalls.length).toBeGreaterThan(0);
+    const stored = putCalls[0][0] as Record<string, unknown>;
+    expect(stored["aiMeta:v1"]).toBeDefined();
+    expect(stored["aiMeta:v2"]).toBeDefined();
+
+    delete process.env.ANTHROPIC_API_KEY;
+  });
+
+  it("all tracks cached — AI not called and storage.put not called", async () => {
+    vi.mocked(fetchPlaylistItems).mockResolvedValue([
+      { videoId: "v1", title: "Song A", description: "no year", channelTitle: "Artist" },
+      { videoId: "v2", title: "Song B", description: "no year", channelTitle: "Artist" },
+    ]);
+
+    process.env.ANTHROPIC_API_KEY = "test-key";
+    const room = new HitsterRoom(makeRoom() as any);
+    (room.room.storage.get as ReturnType<typeof vi.fn>).mockImplementation((keys: unknown) =>
+      Promise.resolve(Array.isArray(keys)
+        ? new Map([
+            ["aiMeta:v1", { title: "Song A", artist: "Artist", year: 1980 }],
+            ["aiMeta:v2", { title: "Song B", artist: "Artist", year: 1985 }],
+          ])
+        : undefined)
+    );
+
+    const conn = makeConn();
+    await send(room, conn, {
+      type: "START_GAME",
+      hostId: "host-uuid",
+      playlistUrl: "PLtest",
+    });
+
+    expect(resolveTracksWithAI).not.toHaveBeenCalled();
+    const putCalls = (room.room.storage.put as ReturnType<typeof vi.fn>).mock.calls;
+    expect(putCalls.length).toBe(0);
+    expect(room.state.phase).toBe("guessing");
+
+    delete process.env.ANTHROPIC_API_KEY;
+  });
+
+  it("cached metadata (title, artist, year) used in final song cards", async () => {
+    vi.mocked(fetchPlaylistItems).mockResolvedValue([
+      { videoId: "v1", title: "Raw Title", description: "no year", channelTitle: "Unknown" },
+      { videoId: "v2", title: "Song B", description: "no year", channelTitle: "Artist" },
+    ]);
+
+    process.env.ANTHROPIC_API_KEY = "test-key";
+    const room = new HitsterRoom(makeRoom() as any);
+    (room.room.storage.get as ReturnType<typeof vi.fn>).mockImplementation((keys: unknown) =>
+      Promise.resolve(Array.isArray(keys)
+        ? new Map([
+            ["aiMeta:v1", { title: "Clean Title", artist: "Clean Artist", year: 1975 }],
+            ["aiMeta:v2", { title: "Song B", artist: "Artist", year: 1985 }],
+          ])
+        : undefined)
+    );
+
+    const conn = makeConn();
+    await send(room, conn, {
+      type: "START_GAME",
+      hostId: "host-uuid",
+      playlistUrl: "PLtest",
+    });
+
+    // startNextRound splices the first song into currentSong; search both pools.
+    const allCards = [
+      ...room.state.songs,
+      ...(room.state.currentSong ? [room.state.currentSong] : []),
+    ];
+    const v1Card = allCards.find((s) => s.videoId === "v1");
+    expect(v1Card?.year).toBe(1975);
+    expect(v1Card?.title).toBe("Clean Title");
+    expect(v1Card?.artist).toBe("Clean Artist");
 
     delete process.env.ANTHROPIC_API_KEY;
   });
@@ -779,6 +918,101 @@ describe("LOAD_SAVED_PLAYLIST handler", () => {
     });
     expect(lastSentTo(attacker)?.error).toBe("unauthorized");
     expect(room.state.hostId).toBe(""); // host not claimed
+  });
+});
+
+// ─── LOAD_PLAYLIST handler — AI metadata cache ────────────────────────────────
+
+describe("LOAD_PLAYLIST handler — AI metadata cache", () => {
+  const TWO_TRACKS = [
+    { videoId: "v1", title: "Raw Title", description: "no year here", channelTitle: "Artist" },
+    { videoId: "v2", title: "Another Song", description: "no year here", channelTitle: "Artist" },
+  ];
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(fetchPlaylistItems).mockResolvedValue(TWO_TRACKS);
+    vi.mocked(fetchEmbeddableVideoIds).mockResolvedValue(new Set(["v1", "v2"]));
+    vi.mocked(resolveTracksWithAI).mockResolvedValue(new Map());
+    process.env.ANTHROPIC_API_KEY = "test-key";
+  });
+
+  afterEach(() => {
+    delete process.env.ANTHROPIC_API_KEY;
+  });
+
+  it("cache hit — skips AI for cached tracks", async () => {
+    vi.mocked(resolveTracksWithAI).mockResolvedValue(
+      new Map([["v2", { title: "Another Song", artist: "Artist", year: 1990 }]])
+    );
+
+    const room = new HitsterRoom(makeRoom() as any);
+    (room.room.storage.get as ReturnType<typeof vi.fn>).mockImplementation((keys: unknown) =>
+      Promise.resolve(Array.isArray(keys)
+        ? new Map([["aiMeta:v1", { title: "Cached Title", artist: "Cached Artist", year: 1975 }]])
+        : undefined)
+    );
+
+    const conn = makeConn();
+    await send(room, conn, { type: "LOAD_PLAYLIST", hostId: "host-uuid", playlistUrl: "PLtest" });
+
+    const callArg = vi.mocked(resolveTracksWithAI).mock.calls[0]?.[0] as { videoId: string }[];
+    expect(callArg.map((t) => t.videoId)).toEqual(["v2"]);
+    expect(lastSentTo(conn)?.type).toBe("PLAYLIST_READY");
+  });
+
+  it("cache write — persists fresh AI results to storage after LOAD_PLAYLIST", async () => {
+    vi.mocked(resolveTracksWithAI).mockResolvedValue(new Map([
+      ["v1", { title: "Song A", artist: "Artist", year: 1980 }],
+      ["v2", { title: "Song B", artist: "Artist", year: 1985 }],
+    ]));
+
+    const room = new HitsterRoom(makeRoom() as any);
+    const conn = makeConn();
+    await send(room, conn, { type: "LOAD_PLAYLIST", hostId: "host-uuid", playlistUrl: "PLtest" });
+
+    const putCalls = (room.room.storage.put as ReturnType<typeof vi.fn>).mock.calls;
+    expect(putCalls.length).toBeGreaterThan(0);
+    const stored = putCalls[0][0] as Record<string, unknown>;
+    expect(stored["aiMeta:v1"]).toBeDefined();
+    expect(stored["aiMeta:v2"]).toBeDefined();
+  });
+
+  it("onBatchDone callback merges cachedAI + partial in DIAGNOSTIC", async () => {
+    const cachedV1 = { title: "Cached Title", artist: "Cached Artist", year: 1975 };
+
+    vi.mocked(resolveTracksWithAI).mockImplementation(
+      (_tracks: unknown, _key: unknown, onBatchDone?: (partial: Map<string, { title: string; artist: string; year: number }>) => void) => {
+        if (onBatchDone) {
+          onBatchDone(new Map([["v2", { title: "AI Song B", artist: "AI Artist", year: 1990 }]]));
+        }
+        return Promise.resolve(new Map([["v2", { title: "AI Song B", artist: "AI Artist", year: 1990 }]]));
+      }
+    );
+
+    const room = new HitsterRoom(makeRoom() as any);
+    (room.room.storage.get as ReturnType<typeof vi.fn>).mockImplementation((keys: unknown) =>
+      Promise.resolve(Array.isArray(keys)
+        ? new Map([["aiMeta:v1", cachedV1]])
+        : undefined)
+    );
+
+    const conn = makeConn();
+    await send(room, conn, { type: "LOAD_PLAYLIST", hostId: "host-uuid", playlistUrl: "PLtest" });
+
+    // Find a DIAGNOSTIC emitted by the onBatchDone callback (has 2 songs with non-null years)
+    const allMessages = (conn.send as ReturnType<typeof vi.fn>).mock.calls
+      .map((c: unknown[]) => JSON.parse(c[0] as string));
+    const callbackDiagnostic = allMessages.find(
+      (m: { type: string; songs?: { year: number | null }[] }) =>
+        m.type === "DIAGNOSTIC" && m.songs?.some((s) => s.year != null)
+    );
+    expect(callbackDiagnostic).toBeDefined();
+
+    const v1Entry = callbackDiagnostic.songs.find((s: { title: string }) => s.title === "Cached Title");
+    const v2Entry = callbackDiagnostic.songs.find((s: { title: string }) => s.title === "AI Song B");
+    expect(v1Entry?.year).toBe(1975);
+    expect(v2Entry?.year).toBe(1990);
   });
 });
 

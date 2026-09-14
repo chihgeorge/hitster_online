@@ -19,7 +19,7 @@ import {
   channelToArtist,
   extractYearFromTitle,
 } from "../lib/youtube";
-import { resolveTracksWithAI } from "../lib/ai-metadata";
+import { resolveTracksWithAI, type AITrackMeta } from "../lib/ai-metadata";
 
 const DEFAULT_TARGET_CARD_COUNT = 10;
 const MAX_TARGET_CARD_COUNT = 20;
@@ -312,16 +312,23 @@ export default class HitsterRoom implements Party.Server {
         ...(skippedCount > 0 ? { skippedEmbeddingCount: skippedCount } : {}),
       });
 
+      // ── Metadata cache check ─────────────────────────────────────────────────
+      const cacheRaw = await this.room.storage.get<AITrackMeta>(
+        tracks.map(t => `aiMeta:${t.videoId}`)
+      ) as Map<string, AITrackMeta>;
+      const cachedAI = new Map<string, AITrackMeta>(
+        [...cacheRaw].map(([k, v]) => [k.slice(7), v])
+      );
+      const uncachedTracks = tracks.filter(t => !cachedAI.has(t.videoId));
+
       // ── AI metadata resolution ───────────────────────────────────────────────
-      // Only send tracks that don't already have a year from description/title —
-      // no point paying the AI to re-derive what we already know.
-      const tracksNeedingAI = tracks.filter((_, i) => !metas[i].descYear && !metas[i].titleYear);
-      const aiResults = anthropicKey && tracksNeedingAI.length > 0
-        ? await resolveTracksWithAI(tracksNeedingAI, anthropicKey, (partial) => {
+      const freshAI = anthropicKey && uncachedTracks.length > 0
+        ? await resolveTracksWithAI(uncachedTracks, anthropicKey, (partial) => {
             if (this.abortLoad || mySeq !== this.loadSeq) return;
+            const mergedAI = new Map([...cachedAI, ...partial]);
             const diagSongs: SongDiagnostic[] = tracks.map((t, i) => {
               const { descYear, titleYear, artist } = metas[i];
-              const ai = partial.get(t.videoId);
+              const ai = mergedAI.get(t.videoId);
               const year = descYear ?? titleYear ?? ai?.year ?? null;
               const yearSource: SongDiagnostic["yearSource"] =
                 descYear ? "description" : titleYear ? "title" : ai?.year ? "ai" : null;
@@ -337,17 +344,33 @@ export default class HitsterRoom implements Party.Server {
             this.pendingPlaylist = { playlistId, songs: partialSongs, diagnostics: diagSongs, spotifyRateLimited: false, kgBlocked: false };
             this.sendTo(conn, { type: "DIAGNOSTIC", songs: diagSongs, status: { spotifyRateLimited: false, kgBlocked: false } });
           })
-        : new Map();
+        : new Map<string, AITrackMeta>();
+
+      // Persist new AI results to cache (fire and forget).
+      if (freshAI.size > 0) {
+        const toStore = Object.fromEntries([...freshAI].map(([id, meta]) => [`aiMeta:${id}`, meta]));
+        this.room.storage.put(toStore).catch(() => {});
+      }
+      const aiResults = new Map([...cachedAI, ...freshAI]);
 
       // Abort checkpoint after AI pass.
+      // Build abort songs from aiResults + metas rather than pendingPlaylist so that
+      // tracks with description/title years and cache hits are not silently dropped
+      // when abort arrives before the first onBatchDone callback fires.
       if (this.abortLoad || mySeq !== this.loadSeq) {
         if (this.abortLoad) {
-          // Cast via unknown to break TS 5.x class-field narrowing (pendingPlaylist
-          // was set to null earlier; TS doesn't see the callback assignment).
-          const abortPending = this.pendingPlaylist as unknown as PendingPlaylist | null;
-          const abortSongs = abortPending?.songs ?? [];
+          const abortSongs: Card[] = tracks
+            .map((t, i) => {
+              const { descYear, titleYear, artist } = metas[i];
+              const ai = aiResults.get(t.videoId);
+              const year = descYear ?? titleYear ?? ai?.year ?? null;
+              if (!year) return null;
+              const yearSource = (descYear ? "description" : titleYear ? "title" : "ai") as Card["yearSource"];
+              return { id: t.videoId, videoId: t.videoId, title: ai?.title ?? t.title, artist: ai?.artist ?? artist, year, yearSource } satisfies Card;
+            })
+            .filter((s): s is Card => s !== null);
           this.sendTo(conn, abortSongs.length >= 2
-            ? { type: "PLAYLIST_READY", songCount: abortSongs.length, songs: abortSongs.map((s: Card) => ({ videoId: s.videoId, title: s.title, artist: s.artist, year: s.year })) }
+            ? { type: "PLAYLIST_READY", songCount: abortSongs.length, songs: abortSongs.map((s) => ({ videoId: s.videoId, title: s.title, artist: s.artist, year: s.year })) }
             : { type: "PLAYLIST_LOAD_ERROR", error: "not_enough_songs" });
         }
         return;
@@ -565,10 +588,21 @@ export default class HitsterRoom implements Party.Server {
         return { artist, descYear: descMeta.year ?? null, titleYear: titleYear ?? null };
       });
 
-      const tracksNeedingAI = tracks.filter((_, i) => !metas[i].descYear && !metas[i].titleYear);
-      const aiResults = anthropicKey && tracksNeedingAI.length > 0
-        ? await resolveTracksWithAI(tracksNeedingAI, anthropicKey)
-        : new Map();
+      const cacheRaw = await this.room.storage.get<AITrackMeta>(
+        tracks.map(t => `aiMeta:${t.videoId}`)
+      ) as Map<string, AITrackMeta>;
+      const cachedAI = new Map<string, AITrackMeta>(
+        [...cacheRaw].map(([k, v]) => [k.slice(7), v])
+      );
+      const uncachedTracks = tracks.filter(t => !cachedAI.has(t.videoId));
+      const freshAI = anthropicKey && uncachedTracks.length > 0
+        ? await resolveTracksWithAI(uncachedTracks, anthropicKey)
+        : new Map<string, AITrackMeta>();
+      if (freshAI.size > 0) {
+        const toStore = Object.fromEntries([...freshAI].map(([id, meta]) => [`aiMeta:${id}`, meta]));
+        this.room.storage.put(toStore).catch(() => {});
+      }
+      const aiResults = new Map([...cachedAI, ...freshAI]);
 
       const songs: Card[] = [];
       const diagnostics: SongDiagnostic[] = [];
