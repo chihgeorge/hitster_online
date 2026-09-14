@@ -295,7 +295,7 @@ export default function HostPage() {
   const playerCount = Object.keys(state?.players ?? {}).length;
 
   return (
-    <div className="min-h-screen flex flex-col gap-6 p-6 max-w-4xl mx-auto">
+    <div className="min-h-screen flex flex-col gap-6 p-6 max-w-4xl mx-auto" style={{ background: "#1a1a2e", color: "white" }}>
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>

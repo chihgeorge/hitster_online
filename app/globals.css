@@ -1,19 +1,61 @@
 @import "tailwindcss";
 
 :root {
-  --background: #0a0a0a;
-  --foreground: #ededed;
-}
-
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --orange: #FF6B35;
+  --orange-dk: #E85520;
+  --gold: #FFD600;
+  --mint: #00C896;
+  --red: #FF3B5C;
+  --ink: #1A1A2E;
+  --bg: #FFF9F5;
+  --surface: #FFFFFF;
+  --surface2: #FFF0E8;
+  --text: #1A1A2E;
+  --text2: #7B7B9A;
+  --text3: #B0AFBC;
+  --font-zh: 'Noto Sans TC', var(--font-nunito), system-ui, sans-serif;
+  --font-display: var(--font-nunito), 'Noto Sans TC', system-ui, sans-serif;
+  --font-mono: var(--font-dm-mono), 'DM Mono', monospace;
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-zh);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
 }
+
+/* ── animations ── */
+@keyframes vinyl-spin  { to { transform: rotate(360deg); } }
+@keyframes wave-bar    { from { height: 4px; opacity: .35; } to { height: var(--h, 22px); opacity: .95; } }
+@keyframes pulse-dot   { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:.4;transform:scale(.7)} }
+@keyframes dz-pulse    { 0%,100%{border-color:rgba(255,107,53,.3)} 50%{border-color:rgba(255,107,53,.7);background:rgba(255,107,53,.05)} }
+@keyframes sparkle     { from{opacity:.3;transform:scale(.7) rotate(-10deg)} to{opacity:1;transform:scale(1.15) rotate(10deg)} }
+@keyframes fade-up     { from{opacity:0;transform:translateY(10px)} to{opacity:1;transform:translateY(0)} }
+
+.animate-vinyl     { animation: vinyl-spin 9s linear infinite; }
+.animate-wave      { animation: wave-bar .7s ease-in-out infinite alternate; }
+.animate-pulse-dot { animation: pulse-dot 1.4s ease-in-out infinite; }
+.animate-dz-pulse  { animation: dz-pulse 2s ease-in-out infinite; }
+.animate-sparkle   { animation: sparkle 2.2s ease-in-out infinite alternate; }
+.animate-fade-up   { animation: fade-up .3s ease-out; }
+
+/* ── outlined game title ── */
+.title-outlined {
+  -webkit-text-stroke: 2px var(--ink);
+  paint-order: stroke fill;
+  color: var(--orange);
+  font-family: var(--font-display);
+  font-weight: 900;
+}
+.title-outlined-sm {
+  -webkit-text-stroke: 1.5px var(--ink);
+  paint-order: stroke fill;
+  color: var(--orange);
+  font-family: var(--font-display);
+  font-weight: 900;
+}
+
+/* ── mono util ── */
+.font-mono-custom { font-family: var(--font-mono); }

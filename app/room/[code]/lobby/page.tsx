@@ -5,6 +5,22 @@ import { useParams, useRouter } from "next/navigation";
 import usePartySocket from "partysocket/react";
 import type { GameState, ServerMessage } from "@/lib/game";
 
+function SmallVinyl() {
+  return (
+    <div className="animate-vinyl rounded-full mx-auto" style={{
+      width: 80, height: 80,
+      background: "radial-gradient(circle, #FF6B35 0%, #E85520 34%, #1A1A2E 36%, #1A1A2E 42%, #E85520 44%, #1A1A2E 46%, #1A1A2E 56%, #E85520 58%, #1A1A2E 60%, #1A1A2E 100%)",
+      boxShadow: "0 8px 28px rgba(255,107,53,.35)",
+      position: "relative",
+    }}>
+      <div className="absolute rounded-full" style={{
+        top: "50%", left: "50%", transform: "translate(-50%,-50%)",
+        width: 16, height: 16, background: "#FFF9F5",
+      }} />
+    </div>
+  );
+}
+
 export default function LobbyPage() {
   const params = useParams<{ code: string }>();
   const router = useRouter();
@@ -19,37 +35,75 @@ export default function LobbyPage() {
       if (msg.type === "STATE") {
         setState(msg.state);
         if (msg.state.phase !== "lobby") {
-          // Host started the game — redirect to play
           router.push(`/room/${params.code}/play`);
         }
       }
     },
   });
 
+  const playerCount = Object.keys(state?.players ?? {}).length;
+
   return (
-    <main className="flex min-h-screen flex-col items-center justify-center gap-8 px-4">
-      <div className="text-center">
-        <p className="text-gray-400 text-sm uppercase tracking-widest">Room</p>
-        <h1 className="text-6xl font-mono font-bold tracking-[0.3em] text-yellow-400">
-          {params.code}
-        </h1>
-        <p className="mt-2 text-gray-400">Waiting for host to start…</p>
+    <main className="flex min-h-screen flex-col items-center justify-center gap-7 px-5 py-12"
+      style={{ background: "#FFF9F5" }}>
+
+      {/* Header */}
+      <div className="flex flex-col items-center gap-4">
+        <SmallVinyl />
+        <h1 className="title-outlined" style={{ fontSize: 44, lineHeight: 1 }}>HITSTER!</h1>
       </div>
 
-      <div className="w-full max-w-sm">
-        <h2 className="text-sm uppercase tracking-widest text-gray-500 mb-3">
-          Players ({Object.keys(state?.players ?? {}).length})
-        </h2>
-        <ul className="flex flex-col gap-2">
+      {/* Room code chip */}
+      <div style={{
+        background: "#1A1A2E", borderRadius: 20,
+        padding: "16px 32px", textAlign: "center",
+      }}>
+        <p style={{ fontSize: 11, color: "#7B7B9A", fontWeight: 700, textTransform: "uppercase", letterSpacing: ".12em", marginBottom: 4 }}>
+          Room Code
+        </p>
+        <p style={{
+          fontFamily: "var(--font-mono)", fontSize: 36, letterSpacing: ".22em",
+          color: "#FFD600", fontWeight: 700,
+        }}>
+          {params.code}
+        </p>
+      </div>
+
+      {/* Status */}
+      <div style={{ display: "flex", alignItems: "center", gap: 8, color: "#7B7B9A", fontSize: 14 }}>
+        <span className="animate-pulse-dot" style={{
+          display: "inline-block", width: 8, height: 8, borderRadius: "50%", background: "#FF6B35",
+        }} />
+        等待主持人開始遊戲…
+      </div>
+
+      {/* Player list */}
+      <div style={{
+        background: "white", borderRadius: 20, padding: 20,
+        boxShadow: "0 4px 20px rgba(255,107,53,.08)",
+        width: "100%", maxWidth: 360,
+      }}>
+        <p style={{ fontSize: 12, fontWeight: 700, color: "#B0AFBC", marginBottom: 12 }}>
+          玩家 · Players ({playerCount})
+        </p>
+        <ul style={{ display: "flex", flexDirection: "column", gap: 8 }}>
           {Object.entries(state?.players ?? {}).map(([playerId, player]) => (
-            <li
-              key={playerId}
-              className="flex items-center gap-3 rounded-xl bg-white/5 px-4 py-3"
-            >
-              <span className="h-2 w-2 rounded-full bg-green-400" />
-              <span className="font-medium">{player.name}</span>
+            <li key={playerId} className="animate-fade-up" style={{
+              display: "flex", alignItems: "center", gap: 12,
+              background: "#FFF0E8", borderRadius: 14, padding: "11px 14px",
+            }}>
+              <span style={{
+                width: 8, height: 8, borderRadius: "50%", background: "#00C896",
+                flexShrink: 0, boxShadow: "0 0 6px rgba(0,200,150,.5)",
+              }} />
+              <span style={{ fontWeight: 700, color: "#1A1A2E", fontSize: 15 }}>{player.name}</span>
             </li>
           ))}
+          {playerCount === 0 && (
+            <li style={{ textAlign: "center", color: "#C0B8B0", fontSize: 13, padding: "8px 0" }}>
+              還沒有玩家…
+            </li>
+          )}
         </ul>
       </div>
     </main>
