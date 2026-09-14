@@ -766,6 +766,7 @@ function DiagnosticTable({ songs, compact, hideYears }: { songs: SongDiagnostic[
                   {s.yearSource === "spotify" && <span className="text-purple-400">Spotify</span>}
                   {s.yearSource === "itunes" && <span className="text-pink-400">iTunes</span>}
                   {s.yearSource === "google" && <span className="text-sky-400">Google</span>}
+                  {s.yearSource === "ai" && <span className="text-violet-400">AI</span>}
                   {s.yearSource === null && <span className="text-gray-500">not found</span>}
                 </td>
               </tr>
