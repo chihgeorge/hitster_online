@@ -77,50 +77,62 @@ export default function MusicPlayer({ currentSong, phase, placementCount, onReve
             className="absolute inset-0 flex flex-col items-center justify-center bg-[#1a1a2e]/90 backdrop-blur-sm"
             style={{ willChange: "opacity" }}
           >
-            {/* CSS waveform — static keyframe animation, no JS RAF */}
+            {/* CSS waveform */}
             <div className="flex items-end gap-1 h-16 mb-6" aria-label="Audio playing">
               {[0.4, 0.7, 1, 0.6, 0.9, 0.5, 0.8, 0.3, 0.75, 0.55].map((h, i) => (
                 <div
                   key={i}
-                  className="w-2 rounded-full bg-yellow-400 animate-[waveform_1.2s_ease-in-out_infinite_alternate]"
+                  className="w-2 rounded-full animate-wave"
                   style={{
-                    height: `${h * 100}%`,
-                    animationDelay: `${i * 0.12}s`,
-                    willChange: "height",
+                    ["--h" as string]: `${h * 64}px`,
+                    height: `${h * 64}px`,
+                    background: "#FF6B35",
+                    animationDelay: `${i * 0.1}s`,
                   }}
                 />
               ))}
             </div>
-            <p className="text-gray-300 text-sm">Listening…</p>
+            <p style={{ color: "#B0AFBC", fontSize: 13 }}>聆聽中… Listening</p>
           </div>
         )}
       </div>
 
       {/* Reveal phase: show song info */}
       {phase === "reveal" && (
-        <div className="px-2">
-          <p className="text-xl font-bold">{currentSong.title}</p>
-          <p className="text-yellow-400 font-mono text-lg">{currentSong.year}</p>
+        <div style={{ background: "rgba(255,214,0,.08)", borderRadius: 14, padding: "14px 16px", border: "1.5px solid rgba(255,214,0,.2)" }}>
+          <p style={{ fontWeight: 900, fontSize: 16, color: "white" }}>{currentSong.title}</p>
+          <p style={{ fontFamily: "var(--font-mono)", color: "#FFD600", fontSize: 22, fontWeight: 700, marginTop: 2 }}>{currentSong.year}</p>
+          <p style={{ color: "#7B7B9A", fontSize: 12, marginTop: 2 }}>{currentSong.artist}</p>
         </div>
       )}
 
-      {/* Host controls — outside the overflow-hidden container so overlay can't cover them */}
+      {/* Host controls */}
       <div className="flex gap-3">
         {phase === "guessing" && (
           <button
             onClick={onReveal}
             disabled={placementCount === 0}
-            className="flex-1 rounded-xl bg-yellow-400 py-3 font-bold text-black hover:bg-yellow-300 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+            style={{
+              flex: 1, background: placementCount === 0 ? "rgba(255,107,53,.3)" : "#FF6B35",
+              color: "white", border: "none", borderRadius: 14, padding: "14px",
+              fontSize: 15, fontWeight: 900, cursor: placementCount === 0 ? "not-allowed" : "pointer",
+              fontFamily: "var(--font-zh)", boxShadow: placementCount > 0 ? "0 4px 14px rgba(255,107,53,.3)" : "none",
+            }}
           >
-            {placementCount === 0 ? "Waiting for placements…" : `Reveal → (${placementCount} placed)`}
+            {placementCount === 0 ? "等待玩家放置… Waiting" : `揭曉答案 → Reveal (${placementCount} placed)`}
           </button>
         )}
         {phase === "reveal" && (
           <button
             onClick={onNextRound}
-            className="flex-1 rounded-xl bg-white/10 py-3 font-semibold text-white hover:bg-white/20 transition-colors"
+            style={{
+              flex: 1, background: "rgba(255,255,255,.1)", color: "white",
+              border: "none", borderRadius: 14, padding: "14px",
+              fontSize: 15, fontWeight: 700, cursor: "pointer",
+              fontFamily: "var(--font-zh)",
+            }}
           >
-            Next round
+            下一回合 · Next Round
           </button>
         )}
       </div>
