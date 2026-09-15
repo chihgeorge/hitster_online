@@ -375,7 +375,7 @@ export default function HostPage() {
                   flexShrink: 0, background: "#FF6B35", color: "white", border: "none", borderRadius: 14,
                   padding: "12px 20px", fontSize: 14, fontWeight: 900, cursor: "pointer",
                   fontFamily: "var(--font-zh)", opacity: (!playlistUrl.trim() || loadStatus === "loading") ? 0.45 : 1,
-                  display: "flex", alignItems: "center", gap: 8,
+                  display: "flex", alignItems: "center", gap: 8, alignSelf: "stretch", boxSizing: "border-box",
                 }}
               >
                 {loadStatus === "loading" ? (
@@ -494,7 +494,7 @@ export default function HostPage() {
                       onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); void handleSavePlaylist(); } }}
                       style={{ ...inp, flex: 1, padding: "10px 14px", fontSize: 13 }} />
                     <button type="button" disabled={!savePlaylistName.trim() || saving} onClick={() => void handleSavePlaylist()}
-                      style={{ flexShrink: 0, background: "#FF6B35", color: "white", border: "none", borderRadius: 10, padding: "10px 16px", fontSize: 13, fontWeight: 900, cursor: "pointer", fontFamily: "var(--font-zh)", opacity: (!savePlaylistName.trim() || saving) ? 0.45 : 1 }}>
+                      style={{ flexShrink: 0, background: "#FF6B35", color: "white", border: "none", borderRadius: 10, padding: "10px 16px", fontSize: 13, fontWeight: 900, cursor: "pointer", fontFamily: "var(--font-zh)", opacity: (!savePlaylistName.trim() || saving) ? 0.45 : 1, alignSelf: "stretch", display: "flex", alignItems: "center" }}>
                       {saving ? "儲存中…" : `儲存 ${readySongs.length > 0 ? `(${readySongs.length})` : ""}`}
                     </button>
                   </div>
@@ -555,10 +555,10 @@ export default function HostPage() {
               value={loadById}
               onChange={(e) => setLoadById(e.target.value)}
               onKeyDown={(e) => { if (e.key === "Enter" && loadById.trim()) { e.preventDefault(); void handleLoadSavedPlaylist(loadById.trim()); setLoadById(""); } }}
-              style={{ ...inp, flex: 1, fontFamily: "var(--font-mono)", fontSize: 12, padding: "10px 14px" }} />
+              style={{ ...inp, flex: 1, fontFamily: "var(--font-mono)", fontSize: 13, padding: "10px 14px" }} />
             <button type="button" disabled={!loadById.trim() || loadStatus === "loading"}
               onClick={() => { void handleLoadSavedPlaylist(loadById.trim()); setLoadById(""); }}
-              style={{ flexShrink: 0, background: "#FF6B35", color: "white", border: "none", borderRadius: 14, padding: "10px 18px", fontSize: 13, fontWeight: 900, cursor: "pointer", fontFamily: "var(--font-zh)", opacity: (!loadById.trim() || loadStatus === "loading") ? 0.45 : 1 }}>
+              style={{ flexShrink: 0, background: "#FF6B35", color: "white", border: "none", borderRadius: 14, padding: "10px 18px", fontSize: 13, fontWeight: 900, cursor: "pointer", fontFamily: "var(--font-zh)", opacity: (!loadById.trim() || loadStatus === "loading") ? 0.45 : 1, alignSelf: "stretch", display: "flex", alignItems: "center" }}>
               載入
             </button>
           </div>
