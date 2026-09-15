@@ -125,9 +125,9 @@ export default function HomePage() {
         </div>
 
         <button type="button" onClick={handleCreateRoom} style={{
-          background: "#1A1A2E", color: "#FFD600", border: "none", borderRadius: 14,
+          background: "#FF6B35", color: "white", border: "none", borderRadius: 14,
           padding: "14px", fontSize: 15, fontWeight: 900, cursor: "pointer",
-          fontFamily: "var(--font-zh)",
+          fontFamily: "var(--font-zh)", boxShadow: "0 4px 16px rgba(255,107,53,.35)",
         }}>
           🎮 主持遊戲 · Create a Room
         </button>
