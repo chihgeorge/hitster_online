@@ -72,6 +72,7 @@ export default function HomePage() {
         background: "white", borderRadius: 24, padding: "24px 24px",
         boxShadow: "0 8px 40px rgba(255,107,53,.1), 0 2px 8px rgba(0,0,0,.04)",
         width: "100%", maxWidth: 380, display: "flex", flexDirection: "column", gap: 12,
+        overflow: "hidden",
       }}>
         <p style={{ fontSize: 12, fontWeight: 700, color: "#B0AFBC", marginBottom: 2 }}>
           加入現有房間
@@ -99,7 +100,7 @@ export default function HomePage() {
             maxLength={4}
             style={{
               flex: 1, background: "#FFF0E8", border: "2px solid rgba(255,107,53,.2)", borderRadius: 14,
-              padding: "13px 16px", fontSize: 20, color: "#1A1A2E", outline: "none",
+              padding: "13px 16px", fontSize: 16, color: "#1A1A2E", outline: "none",
               fontFamily: "var(--font-mono)", letterSpacing: ".18em", textAlign: "center", textTransform: "uppercase",
             }}
             onFocus={(e) => (e.target.style.borderColor = "#FF6B35")}
@@ -110,6 +111,7 @@ export default function HomePage() {
             padding: "13px 20px", fontSize: 15, fontWeight: 900, cursor: "pointer",
             fontFamily: "var(--font-zh)", whiteSpace: "nowrap",
             boxShadow: "0 4px 12px rgba(255,107,53,.3)",
+            alignSelf: "stretch",
           }}>
             加入 →
           </button>
