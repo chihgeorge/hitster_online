@@ -305,19 +305,19 @@ export default function HostPage() {
   };
 
   return (
-    <div style={{ minHeight: "100vh", display: "flex", flexDirection: "column", gap: 20, padding: 24, maxWidth: 960, margin: "0 auto" }}>
+    <div style={{ minHeight: "100vh", background: "#FFF9F5", display: "flex", flexDirection: "column", gap: 20, padding: 24, maxWidth: 960, margin: "0 auto" }}>
       {/* Header */}
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
-          <div style={{ background: "#1A1A2E", borderRadius: 16, padding: "12px 24px", textAlign: "center" }}>
-            <p style={{ fontSize: 10, color: "#7B7B9A", fontWeight: 700, textTransform: "uppercase", letterSpacing: ".12em", marginBottom: 4 }}>
+          <h1 className="title-outlined-sm" style={{ fontSize: 28, lineHeight: 1 }}>HITSTER!</h1>
+          <div style={{ background: "white", borderRadius: 16, padding: "10px 20px", boxShadow: "0 2px 12px rgba(255,107,53,.1)", border: "2px solid rgba(255,107,53,.15)" }}>
+            <p style={{ fontSize: 10, color: "#B0AFBC", fontWeight: 700, textTransform: "uppercase", letterSpacing: ".12em", marginBottom: 2 }}>
               Room Code
             </p>
-            <p style={{ fontFamily: "var(--font-mono)", fontSize: 28, letterSpacing: ".22em", color: "#FFD600", fontWeight: 700, lineHeight: 1 }}>
+            <p style={{ fontFamily: "var(--font-mono)", fontSize: 26, letterSpacing: ".2em", color: "#FF6B35", fontWeight: 900, lineHeight: 1 }}>
               {params.code}
             </p>
           </div>
-          <h1 className="title-outlined-sm" style={{ fontSize: 26, lineHeight: 1 }}>HITSTER!</h1>
         </div>
         <div style={{ textAlign: "right", fontSize: 13, display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 3 }}>
           {Object.values(state?.players ?? {}).length === 0 ? (
