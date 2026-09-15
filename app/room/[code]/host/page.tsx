@@ -297,19 +297,24 @@ export default function HostPage() {
   return (
     <div className="min-h-screen flex flex-col gap-6 p-6 max-w-4xl mx-auto" style={{ background: "#1a1a2e", color: "white" }}>
       {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <p className="text-xs uppercase tracking-widest text-gray-500">Room code</p>
-          <h1 className="text-4xl font-mono font-bold tracking-[0.3em] text-yellow-400">
-            {params.code}
-          </h1>
+      <div className="flex items-center justify-between gap-4">
+        <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
+          <div style={{ textAlign: "center" }}>
+            <p style={{ fontSize: 10, color: "#7B7B9A", fontWeight: 700, textTransform: "uppercase", letterSpacing: ".12em", marginBottom: 4 }}>
+              Room Code
+            </p>
+            <p style={{ fontFamily: "var(--font-mono)", fontSize: 28, letterSpacing: ".22em", color: "#FFD600", fontWeight: 700, lineHeight: 1 }}>
+              {params.code}
+            </p>
+          </div>
+          <h1 className="title-outlined-sm" style={{ fontSize: 26, lineHeight: 1 }}>HITSTER!</h1>
         </div>
-        <div className="text-right text-sm text-gray-400 flex flex-col items-end gap-0.5">
+        <div style={{ textAlign: "right", fontSize: 13, color: "#7B7B9A", display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 3 }}>
           {Object.values(state?.players ?? {}).length === 0 ? (
-            <span className="text-gray-600">No players yet</span>
+            <span style={{ color: "#4A4A5A" }}>No players yet</span>
           ) : (
             Object.values(state?.players ?? {}).map((p) => (
-              <span key={p.name}>{p.name}</span>
+              <span key={p.name} style={{ color: "#B0AFBC", fontWeight: 600 }}>{p.name}</span>
             ))
           )}
         </div>
@@ -567,9 +572,9 @@ export default function HostPage() {
             <button
               type="submit"
               disabled={playerCount === 0}
-              className="rounded-xl bg-yellow-400 py-3 font-bold text-black hover:bg-yellow-300 transition-colors disabled:opacity-50"
+              style={{ background: playerCount === 0 ? "rgba(255,107,53,.4)" : "#FF6B35", color: "white", border: "none", borderRadius: 14, padding: "14px", fontSize: 15, fontWeight: 900, cursor: playerCount === 0 ? "not-allowed" : "pointer", fontFamily: "var(--font-zh)", boxShadow: "0 4px 16px rgba(255,107,53,.3)" }}
             >
-              Start Game
+              🎮 開始遊戲 · Start Game
             </button>
           )}
 

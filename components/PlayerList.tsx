@@ -19,24 +19,26 @@ export default function PlayerList({ players, placements, targetCardCount, activ
         return (
           <div
             key={playerId}
-            className={`rounded-xl px-4 py-3 flex flex-col gap-2 ${
-              isActive ? "bg-yellow-400/10 border border-yellow-400/30" : "bg-white/5"
-            }`}
+            style={{
+              borderRadius: 14, padding: "12px 14px", display: "flex", flexDirection: "column", gap: 8,
+              background: isActive ? "rgba(255,107,53,.1)" : "rgba(255,255,255,.05)",
+              border: isActive ? "1.5px solid rgba(255,107,53,.35)" : "1.5px solid transparent",
+            }}
           >
             {/* Name row */}
-            <div className="flex items-center justify-between gap-2">
-              <div className="flex items-center gap-2 min-w-0">
-                <p className="font-medium truncate">{player.name}</p>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
+                <p style={{ fontWeight: 700, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: "white" }}>{player.name}</p>
                 {isActive && phase === "guessing" && (
-                  <span className="text-xs text-yellow-400 font-semibold uppercase tracking-wide shrink-0">
+                  <span style={{ fontSize: 10, color: "#FF6B35", fontWeight: 900, textTransform: "uppercase", letterSpacing: ".1em", flexShrink: 0 }}>
                     guessing
                   </span>
                 )}
               </div>
-              <div className="flex items-center gap-1.5 shrink-0 text-sm">
-                <span className="font-bold text-yellow-400">{player.cardCount}</span>
-                <span className="text-gray-500">/{targetCardCount}</span>
-                <span>{hasPlaced ? "✓" : "…"}</span>
+              <div style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0, fontSize: 14 }}>
+                <span style={{ fontWeight: 900, color: "#FFD600", fontFamily: "var(--font-mono)" }}>{player.cardCount}</span>
+                <span style={{ color: "#4A4A5A" }}>/{targetCardCount}</span>
+                <span style={{ color: hasPlaced ? "#00C896" : "#4A4A5A" }}>{hasPlaced ? "✓" : "…"}</span>
               </div>
             </div>
 
@@ -48,9 +50,9 @@ export default function PlayerList({ players, placements, targetCardCount, activ
                 ))}
               </div>
             ) : (
-              <div className="flex gap-1">
+              <div style={{ display: "flex", gap: 4 }}>
                 {Array.from({ length: Math.min(targetCardCount, 12) }).map((_, i) => (
-                  <div key={i} className="h-1.5 w-5 rounded-sm bg-white/10 shrink-0" />
+                  <div key={i} style={{ height: 6, width: 20, borderRadius: 4, background: "rgba(255,107,53,.15)", flexShrink: 0 }} />
                 ))}
               </div>
             )}
@@ -64,13 +66,16 @@ export default function PlayerList({ players, placements, targetCardCount, activ
 function MiniTile({ card }: { card: Card }) {
   return (
     <div
-      className="shrink-0 flex flex-col items-center rounded-lg border border-white/15 px-2 py-2 w-[60px] gap-0.5"
-      style={{ background: "rgba(255,255,255,0.07)" }}
+      style={{
+        flexShrink: 0, display: "flex", flexDirection: "column", alignItems: "center",
+        borderRadius: 10, border: "1.5px solid rgba(255,107,53,.2)", padding: "6px 6px",
+        width: 60, gap: 2, background: "rgba(255,107,53,.06)",
+      }}
       title={`${card.title} – ${card.artist}`}
     >
-      <p className="font-mono font-bold text-yellow-400 text-base leading-none">{card.year}</p>
-      <p className="text-[9px] text-white/60 leading-tight w-full text-center truncate">{card.artist}</p>
-      <p className="text-[9px] text-gray-500 leading-tight w-full text-center truncate">{card.title}</p>
+      <p style={{ fontFamily: "var(--font-mono)", fontWeight: 700, color: "#FFD600", fontSize: 14, lineHeight: 1 }}>{card.year}</p>
+      <p style={{ fontSize: 9, color: "rgba(255,255,255,.6)", lineHeight: 1.2, width: "100%", textAlign: "center", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{card.artist}</p>
+      <p style={{ fontSize: 9, color: "#4A4A5A", lineHeight: 1.2, width: "100%", textAlign: "center", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{card.title}</p>
     </div>
   );
 }
