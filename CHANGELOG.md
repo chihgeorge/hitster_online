@@ -21,6 +21,8 @@
 ## [0.2.0.0] — 2026-09-02
 
 ### Added
+- **AI metadata resolver** (`lib/ai-metadata.ts`) — replaces the 5-layer YTM/Spotify/iTunes/KG pipeline with a single Claude Haiku call per batch of 10 tracks; returns clean title, primary artist, and release year with CJK support; fails open (no year returned rather than blocking load)
+- **Durable Object metadata cache** — resolved AI results are stored under `aiMeta:<videoId>` keys in DO storage; repeat playlist loads skip the Anthropic API for already-seen videos, making re-loads near-instant and cutting AI spend proportionally
 - **Custom playlist library** — hosts can save any YouTube playlist to a per-device library, load it again in future sessions without re-fetching from YouTube/Spotify, and share it to a new device by pasting the playlist ID
 - **Inline song editor** — after loading a playlist, hosts can correct song titles, artists, and years directly in the UI; edits are persisted in the playlist party and survive page reloads
 - **Saved playlist management** — hosts can delete playlists from the library; deletes are confirmed with the server before the local index is updated
@@ -30,6 +32,9 @@
 - **Year resolution pipeline** now applies host-edited overrides from the playlist party when starting a game from a saved playlist
 
 ### Fixed
+- Non-embeddable YouTube videos are now filtered out at playlist upload time, so they never reach the AI resolver or appear as dead tracks in the game
+- Abort checkpoint (`ABORT_LOAD`) now builds its song list directly from `aiResults + metas` instead of reading `pendingPlaylist`, which could be `null` when abort arrives before the first batch callback fires — tracks with description/title years or cache hits are no longer silently dropped on abort
+- "AI" yearSource badge now appears in the host diagnostic table (previously the column was blank for AI-resolved tracks)
 - Concurrent `LOAD_PLAYLIST` calls no longer race — a generation counter (`loadSeq`) ensures only the latest request writes state; superseded loads exit silently
 - Host identity is now bound to the first WebSocket connection (`hostConnId`); a second connection cannot steal the host role by racing a `LOAD_PLAYLIST` or `START_GAME` message
 - Song years are now stripped from the broadcast state during the guessing phase (`sanitizedState`), preventing players from inspecting WebSocket frames to learn answers
