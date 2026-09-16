@@ -8,7 +8,7 @@ export interface Card {
   title: string;
   artist: string;
   year: number;
-  yearSource: "spotify" | "description" | "title" | "google" | "itunes" | "ytmusic" | "manual";
+  yearSource: "spotify" | "description" | "title" | "google" | "itunes" | "ytmusic" | "manual" | "ai";
 }
 
 export interface Player {
@@ -67,7 +67,7 @@ export type SongDiagnostic = {
   title: string;
   artist: string;
   year: number | null;
-  yearSource: "description" | "title" | "ytmusic" | "spotify" | "google" | "itunes" | null;
+  yearSource: "description" | "title" | "ytmusic" | "spotify" | "google" | "itunes" | "ai" | null;
 };
 
 export type DiagnosticStatus = {
