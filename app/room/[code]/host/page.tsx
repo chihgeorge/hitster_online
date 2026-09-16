@@ -319,7 +319,7 @@ export default function HostPage() {
             </p>
           </div>
         </div>
-        <div className="hide-xs" style={{ textAlign: "right", fontSize: 13, display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 3 }}>
+        <div style={{ textAlign: "right", fontSize: 13, display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 3, flexShrink: 1, minWidth: 0 }}>
           {Object.values(state?.players ?? {}).length === 0 ? (
             <span style={{ color: "#B0AFBC" }}>No players yet</span>
           ) : (
