@@ -119,13 +119,14 @@ test.describe("Host lobby: save and load playlist", () => {
     await page.waitForURL(/\/room\/[A-Z]{4}\/host$/);
 
     // Use the test seed (no network)
-    const input = page.getByPlaceholder(/youtube.*playlist/i);
-    await input.fill("hitster://test");
-    await page.getByRole("button", { name: /^load$/i }).click();
+    const input = page.locator('input[type="url"]');
+    await input.click();
+    await input.pressSequentially("hitster://test");
+    await page.getByRole("button", { name: /Load/i }).click();
 
     // PLAYLIST_READY fires immediately for test seed
-    await expect(page.getByText(/playlist loaded/i)).toBeVisible({ timeout: 5000 });
-    await expect(page.getByRole("button", { name: /save playlist/i })).toBeVisible();
+    await expect(page.getByText(/已載入/i)).toBeVisible({ timeout: 5000 });
+    await expect(page.getByRole("button", { name: "儲存播放清單" })).toBeVisible();
   });
 
   test("can expand and collapse the save panel", async ({ page }) => {
@@ -133,13 +134,14 @@ test.describe("Host lobby: save and load playlist", () => {
     await page.getByRole("button", { name: /create/i }).click();
     await page.waitForURL(/\/room\/[A-Z]{4}\/host$/);
 
-    const input = page.getByPlaceholder(/youtube.*playlist/i);
-    await input.fill("hitster://test");
-    await page.getByRole("button", { name: /^load$/i }).click();
-    await expect(page.getByText(/playlist loaded/i)).toBeVisible({ timeout: 5000 });
+    const input = page.locator('input[type="url"]');
+    await input.click();
+    await input.pressSequentially("hitster://test");
+    await page.getByRole("button", { name: /Load/i }).click();
+    await expect(page.getByText(/已載入/i)).toBeVisible({ timeout: 5000 });
 
-    // Click "Save playlist" to reveal the name input
-    await page.getByRole("button", { name: /save playlist/i }).click();
-    await expect(page.getByPlaceholder(/playlist name/i)).toBeVisible();
+    // Click "儲存播放清單" to reveal the name input
+    await page.getByRole("button", { name: "儲存播放清單" }).click();
+    await expect(page.getByPlaceholder("播放清單名稱")).toBeVisible();
   });
 });

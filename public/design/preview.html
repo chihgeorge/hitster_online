@@ -1,0 +1,495 @@
+<title>HITSTER Online</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;700;900&family=Nunito:wght@700;900&family=DM+Mono:wght@400;500&display=swap">
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html{scroll-behavior:smooth}
+body{font-family:'Noto Sans TC','Nunito',system-ui,sans-serif;background:#FFF9F5;color:#1A1A2E;-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility;overflow-x:hidden}
+
+/* ── NAV ── */
+nav{position:fixed;top:0;left:0;right:0;z-index:100;background:rgba(255,249,245,.92);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);border-bottom:1px solid rgba(255,107,53,.1)}
+.nav-inner{max-width:1100px;margin:0 auto;padding:0 28px;height:60px;display:flex;align-items:center;gap:20px}
+.logo{font-family:'Nunito',sans-serif;font-size:22px;font-weight:900;color:#FF6B35;-webkit-text-stroke:.5px #E85520;paint-order:stroke fill;letter-spacing:-.5px}
+.logo span{color:#1A1A2E;-webkit-text-stroke:0}
+.nav-room{background:#1A1A2E;color:#FFD600;font-family:'DM Mono',monospace;font-size:11px;padding:3px 10px;border-radius:8px;letter-spacing:.1em}
+.nav-right{margin-left:auto;display:flex;align-items:center;gap:12px}
+.nav-join{background:#FF6B35;color:white;border:none;border-radius:12px;padding:8px 20px;font-family:'Noto Sans TC','Nunito',sans-serif;font-size:13px;font-weight:900;cursor:pointer;transition:background .15s}
+.nav-join:hover{background:#E85520}
+.nav-host{font-size:13px;font-weight:700;color:#7B7B9A;text-decoration:none}
+.nav-host:hover{color:#FF6B35}
+
+/* ── HERO ── */
+.hero{min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:80px 28px 60px;position:relative;overflow:hidden}
+/* squiggly background deco */
+.hero-deco{position:absolute;pointer-events:none;opacity:.18}
+.hero-deco.d1{top:10%;right:5%;width:300px;height:300px}
+.hero-deco.d2{bottom:8%;left:3%;width:200px;height:200px}
+.vinyl-wrap{position:relative;margin-bottom:48px}
+.vinyl-hero{width:200px;height:200px;border-radius:50%;
+  background:radial-gradient(circle,#FF6B35 0%,#E85520 35%,#1A1A2E 37%,#1A1A2E 43%,#E85520 45%,#1A1A2E 47%,#1A1A2E 56%,#E85520 58%,#1A1A2E 60%,#1A1A2E 100%);
+  box-shadow:0 16px 60px rgba(255,107,53,.4),0 4px 16px rgba(0,0,0,.25);
+  animation:spin 10s linear infinite;position:relative;z-index:1}
+.vinyl-hero::after{content:'';position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);
+  width:38px;height:38px;border-radius:50%;background:#FFF9F5;box-shadow:0 0 0 8px rgba(255,107,53,.2)}
+@keyframes spin{to{transform:rotate(360deg)}}
+.orbit{position:absolute;top:50%;left:50%;width:260px;height:260px;margin:-130px 0 0 -130px;border-radius:50%;border:1.5px dashed rgba(255,107,53,.2);animation:spin 30s linear infinite reverse}
+.orbit::after{content:'♪';position:absolute;top:-10px;left:50%;transform:translateX(-50%);font-size:18px;color:#FF6B35;background:#FFF9F5;padding:0 4px}
+.sp{position:absolute;color:#FF6B35;animation:sparkle 2.2s ease-in-out infinite alternate;pointer-events:none;font-size:20px}
+@keyframes sparkle{from{opacity:.3;transform:scale(.7) rotate(-10deg)}to{opacity:1;transform:scale(1.15) rotate(10deg)}}
+
+.hero-tag{display:inline-flex;align-items:center;gap:6px;background:rgba(255,107,53,.1);border:1px solid rgba(255,107,53,.2);border-radius:20px;padding:4px 14px;font-family:'DM Mono',monospace;font-size:11px;color:#FF6B35;letter-spacing:.06em;margin-bottom:20px}
+.hero h1{font-family:'Noto Sans TC',sans-serif;font-size:clamp(40px,6vw,80px);font-weight:900;line-height:1.1;text-align:center;color:#FF6B35;
+  -webkit-text-stroke:clamp(1.5px,0.2vw,2.5px) #1A1A2E;paint-order:stroke fill;text-wrap:balance;margin-bottom:12px}
+.hero h1 .sub{display:block;font-size:.55em;color:#1A1A2E;-webkit-text-stroke:0;letter-spacing:.02em;margin-top:6px}
+.hero-sub{font-size:17px;color:#7B7B9A;text-align:center;max-width:480px;line-height:1.7;margin-bottom:40px;font-weight:400}
+
+.join-box{background:white;border-radius:24px;padding:24px 28px;box-shadow:0 8px 40px rgba(255,107,53,.12),0 2px 8px rgba(0,0,0,.05);width:100%;max-width:420px}
+.jb-lbl{font-size:12px;font-weight:700;color:#B0AFBC;margin-bottom:10px}
+.jb-row{display:flex;gap:10px;margin-bottom:14px}
+.jb-in{flex:1;background:#FFF0E8;border:2px solid rgba(255,107,53,.2);border-radius:14px;
+  padding:14px 18px;font-family:'DM Mono',monospace;font-size:20px;font-weight:500;color:#1A1A2E;letter-spacing:.18em;text-align:center;outline:none;transition:border-color .15s}
+.jb-in:focus{border-color:#FF6B35}
+.jb-in::placeholder{color:#D0CABC;letter-spacing:.1em;font-size:14px}
+.jb-btn{background:#FF6B35;color:white;border:none;border-radius:14px;padding:14px 22px;font-family:'Noto Sans TC',sans-serif;font-size:16px;font-weight:900;cursor:pointer;transition:background .15s;white-space:nowrap}
+.jb-btn:hover{background:#E85520}
+.jb-div{display:flex;align-items:center;gap:10px;margin-bottom:14px;color:#D0CABC;font-size:12px}
+.jb-div::before,.jb-div::after{content:'';flex:1;height:1px;background:#F0E8E0}
+.jb-host{width:100%;background:#1A1A2E;color:#FFD600;border:none;border-radius:14px;padding:14px;font-family:'Noto Sans TC',sans-serif;font-size:15px;font-weight:900;cursor:pointer;transition:opacity .15s}
+.jb-host:hover{opacity:.85}
+
+.hero-badge{display:flex;gap:16px;margin-top:28px;flex-wrap:wrap;justify-content:center}
+.hb{display:flex;align-items:center;gap:6px;font-size:12px;color:#B0AFBC;font-weight:700}
+.hb-dot{width:7px;height:7px;border-radius:50%;background:#00C896}
+
+/* ── HOW TO PLAY ── */
+.how{background:#1A1A2E;padding:100px 28px;position:relative;overflow:hidden}
+.how::before{content:'';position:absolute;top:-60px;left:-60px;width:300px;height:300px;
+  background:radial-gradient(circle,rgba(255,107,53,.12),transparent 70%);pointer-events:none}
+.how::after{content:'';position:absolute;bottom:-80px;right:-40px;width:360px;height:360px;
+  background:radial-gradient(circle,rgba(255,214,0,.08),transparent 70%);pointer-events:none}
+.how-inner{max-width:1100px;margin:0 auto}
+.how-ey{font-family:'DM Mono',monospace;font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:#FF6B35;margin-bottom:12px}
+.how h2{font-family:'Noto Sans TC',sans-serif;font-size:clamp(28px,4vw,48px);font-weight:900;color:white;
+  -webkit-text-stroke:clamp(1px,.1vw,1.5px) #FF6B35;paint-order:stroke fill;margin-bottom:48px;line-height:1.15}
+.steps{display:grid;grid-template-columns:repeat(3,1fr);gap:28px}
+.step{background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.07);border-radius:20px;padding:28px}
+.step-n{font-family:'Nunito',sans-serif;font-size:52px;font-weight:900;color:#FF6B35;opacity:.3;line-height:1;margin-bottom:16px}
+.step-ico{font-size:32px;margin-bottom:14px}
+.step-ti{font-family:'Noto Sans TC',sans-serif;font-size:18px;font-weight:900;color:white;margin-bottom:8px}
+.step-de{font-size:14px;color:#5C5478;line-height:1.7;font-family:'Noto Sans TC',sans-serif}
+.step-de b{color:#B0A8C8}
+
+/* ── PHONES PREVIEW ── */
+.preview{padding:100px 28px;background:#FFF9F5;overflow:hidden}
+.preview-inner{max-width:1100px;margin:0 auto}
+.prev-ey{font-family:'DM Mono',monospace;font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:#FF6B35;margin-bottom:10px}
+.prev-h2{font-family:'Noto Sans TC',sans-serif;font-size:clamp(26px,3.5vw,44px);font-weight:900;color:#1A1A2E;margin-bottom:8px}
+.prev-sub{font-size:15px;color:#7B7B9A;margin-bottom:52px;max-width:420px;line-height:1.65}
+.phones-scene{display:flex;gap:20px;align-items:flex-end;overflow-x:auto;padding-bottom:12px;scrollbar-width:none}
+.phones-scene::-webkit-scrollbar{display:none}
+
+/* phones reuse earlier frame pattern */
+.ph{flex:0 0 auto;width:220px;height:468px;background:#0F0C1A;border-radius:38px;padding:8px;
+  box-shadow:inset 0 0 0 1px rgba(255,255,255,.08),0 24px 48px rgba(0,0,0,.4)}
+.ph.hero-phone{width:248px;height:524px;border-radius:42px;padding:9px}
+.phs{width:100%;height:100%;border-radius:32px;overflow:hidden;background:#FFF9F5;display:flex;flex-direction:column;position:relative}
+.ph.hero-phone .phs{border-radius:36px}
+.ph-island{position:absolute;top:8px;left:50%;transform:translateX(-50%);width:64px;height:20px;background:#0F0C1A;border-radius:16px;z-index:10}
+.ph-sb{height:36px;display:flex;align-items:flex-end;padding:0 14px 6px;justify-content:space-between;flex-shrink:0}
+.ph-t{font-family:'DM Mono',monospace;font-size:9px;color:#1A1A2E}
+
+/* ── PHONE A: LOBBY ── */
+.ph-lobby{flex:1;background:#FFF9F5;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:0 16px 16px;gap:12px;position:relative}
+.lv-vinyl{width:110px;height:110px;border-radius:50%;
+  background:radial-gradient(circle,#FF6B35 0%,#E85520 36%,#1A1A2E 38%,#1A1A2E 44%,#E85520 46%,#1A1A2E 48%,#1A1A2E 58%,#E85520 60%,#1A1A2E 62%,#1A1A2E 100%);
+  box-shadow:0 6px 24px rgba(255,107,53,.35);animation:spin 8s linear infinite;flex-shrink:0}
+.lv-vinyl::after{content:'';position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:20px;height:20px;border-radius:50%;background:#FFF9F5}
+.lv-ttl{font-family:'Noto Sans TC',sans-serif;font-size:17px;font-weight:900;color:#1A1A2E;text-align:center;line-height:1.25;
+  -webkit-text-stroke:.8px #E85520;paint-order:stroke fill;color:#FF6B35}
+.lv-sub{font-size:9px;color:#B0AFBC;text-align:center;font-weight:700;font-family:'Noto Sans TC',sans-serif}
+.lv-in{width:100%;background:#FFF0E8;border:1.5px solid rgba(255,107,53,.25);border-radius:12px;padding:8px 12px;font-family:'DM Mono',monospace;font-size:13px;text-align:center;color:#1A1A2E;letter-spacing:.12em}
+.lv-btn{width:100%;background:#FF6B35;color:white;border:none;border-radius:12px;padding:10px;font-family:'Noto Sans TC',sans-serif;font-size:13px;font-weight:900}
+.lv-sec{font-size:10px;color:#B0AFBC;font-family:'Noto Sans TC',sans-serif;font-weight:700}
+.ph-bnav{display:flex;background:#1A1A2E;padding:6px 8px 10px;flex-shrink:0;border-radius:0 0 32px 32px}
+.ni2{flex:1;display:flex;flex-direction:column;align-items:center;gap:2px;padding:3px;border-radius:10px}
+.ni2.a{background:rgba(255,107,53,.15)}
+.ni2 span{font-size:13px}
+.ni2 b{font-size:7px;font-weight:700;color:#5C5480;font-family:'Noto Sans TC',sans-serif}
+.ni2.a b{color:#FF6B35}
+
+/* ── PHONE B: GUESSING ── */
+.ph-guess{flex:1;background:#FFF9F5;display:flex;flex-direction:column}
+.pg-top{padding:3px 12px 4px;display:flex;align-items:center;justify-content:space-between}
+.pg-chip{display:flex;align-items:center;gap:5px}
+.pg-av{width:22px;height:22px;border-radius:50%;background:#FF6B35;display:flex;align-items:center;justify-content:center;font-size:10px}
+.pg-sc{background:#1A1A2E;color:#FFD600;font-family:'DM Mono',monospace;font-size:9px;padding:2px 7px;border-radius:16px}
+.pg-rnd{font-family:'Noto Sans TC',sans-serif;font-size:8px;color:#B0AFBC;font-weight:700}
+.pg-card{margin:4px 10px;background:linear-gradient(135deg,#FF6B35,#E85520);border-radius:18px;padding:12px;position:relative;overflow:hidden}
+.pg-card::after{content:'✦';position:absolute;top:8px;right:10px;font-size:13px;color:rgba(255,255,255,.22)}
+.pg-ey{font-family:'Noto Sans TC',sans-serif;font-size:8px;color:rgba(255,255,255,.6);margin-bottom:3px;font-weight:700}
+.pg-hid{font-family:'Noto Sans TC',sans-serif;font-size:20px;font-weight:900;color:rgba(255,255,255,.18);margin-bottom:6px}
+.pg-tmr{position:absolute;top:8px;right:10px;background:rgba(0,0,0,.25);color:#FFD600;font-family:'DM Mono',monospace;font-size:9px;padding:1px 6px;border-radius:8px}
+.wvf2{display:flex;align-items:center;gap:2px;height:22px}
+.wb2{width:2.5px;border-radius:2px;background:rgba(255,255,255,.55);animation:wv .7s ease-in-out infinite alternate;animation-delay:var(--d,0s)}
+@keyframes wv{from{height:3px;opacity:.4}to{height:18px;opacity:.9}}
+.pg-tl{padding:7px 10px 4px;flex:1}
+.pg-tll{font-family:'Noto Sans TC',sans-serif;font-size:8px;color:#B0AFBC;margin-bottom:6px;font-weight:700}
+.pg-scroll{display:flex;gap:5px;overflow-x:auto;scrollbar-width:none;align-items:center;padding:2px}
+.pg-scroll::-webkit-scrollbar{display:none}
+.psc{flex:0 0 auto;background:#FFF9F5;border:1.5px solid rgba(255,107,53,.15);border-radius:11px;padding:6px 8px;min-width:62px}
+.psc-yr{font-family:'DM Mono',monospace;font-size:12px;color:#FF6B35;font-variant-numeric:tabular-nums}
+.psc-ti{font-size:8px;color:#7B7B9A;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:54px;margin-top:2px;font-weight:700;font-family:'Noto Sans TC',sans-serif}
+.pdz{flex:0 0 auto;width:30px;height:44px;border:1.5px dashed #FF6B35;border-radius:11px;
+  display:flex;align-items:center;justify-content:center;font-size:11px;color:#FF6B35;
+  animation:dzp 1.4s ease-in-out infinite}
+@keyframes dzp{0%,100%{background:transparent}50%{background:rgba(255,107,53,.08)}}
+.pg-cta{padding:6px 10px 8px}
+.pg-hint{font-size:8px;color:#B0AFBC;text-align:center;margin-bottom:5px;font-weight:700;font-family:'Noto Sans TC',sans-serif;line-height:1.4}
+.pg-btn{width:100%;padding:9px;background:#FF6B35;color:white;border:none;border-radius:14px;font-family:'Noto Sans TC',sans-serif;font-size:11px;font-weight:900}
+
+/* ── PHONE C: LEADERBOARD ── */
+.ph-board{flex:1;background:#FFF9F5;display:flex;flex-direction:column}
+.pb-ti{font-family:'Noto Sans TC',sans-serif;font-size:15px;font-weight:900;color:#1A1A2E;text-align:center;padding:4px 12px 3px}
+.pb-tabs{display:flex;gap:3px;padding:0 10px 6px;justify-content:center}
+.pb-tab{padding:3px 10px;border-radius:16px;font-size:8px;font-weight:700;color:#7B7B9A;font-family:'Noto Sans TC',sans-serif}
+.pb-tab.a{background:#FF6B35;color:white}
+.podium2{display:flex;align-items:flex-end;justify-content:center;gap:4px;padding:0 14px 8px}
+.pd2{display:flex;flex-direction:column;align-items:center;gap:3px}
+.pd2-av{width:30px;height:30px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:15px;border:2px solid white;box-shadow:0 2px 6px rgba(0,0,0,.1)}
+.pd2-nm{font-size:8px;font-weight:700;color:#1A1A2E;font-family:'Noto Sans TC',sans-serif}
+.pd2-blk{width:56px;border-radius:6px 6px 0 0;display:flex;align-items:center;justify-content:center;font-family:'Nunito',sans-serif;font-size:16px;font-weight:900;color:white}
+.pd2-1{height:52px;background:linear-gradient(180deg,#FF6B35,#E85520)}
+.pd2-2{height:40px;background:linear-gradient(180deg,#FFAA6B,#FF8040)}
+.pd2-3{height:30px;background:linear-gradient(180deg,#FFD600,#E8B800);color:#1A1A2E!important}
+.pb-list{flex:1;padding:0 10px;display:flex;flex-direction:column;gap:3px}
+.pb-row{display:flex;align-items:center;gap:6px;padding:6px 8px;background:white;border-radius:10px;box-shadow:0 1px 3px rgba(0,0,0,.04)}
+.pb-rk{font-family:'DM Mono',monospace;font-size:9px;color:#B0AFBC;width:12px;text-align:center}
+.pb-av{width:20px;height:20px;border-radius:50%;font-size:10px;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.pb-nm{font-size:10px;font-weight:700;color:#1A1A2E;flex:1;font-family:'Noto Sans TC',sans-serif}
+.pb-sc{font-family:'DM Mono',monospace;font-size:9px;color:#7B7B9A}
+.pb-row.you{background:rgba(255,107,53,.06);border:1.5px solid rgba(255,107,53,.2)}
+.pb-row.you .pb-nm,.pb-row.you .pb-rk{color:#FF6B35}
+.pb-badge{background:rgba(255,107,53,.1);color:#FF6B35;font-family:'DM Mono',monospace;font-size:9px;padding:1px 6px;border-radius:8px}
+
+/* ── FEATURES ── */
+.features{background:#1A1A2E;padding:100px 28px}
+.feat-inner{max-width:1100px;margin:0 auto}
+.feat-ey{font-family:'DM Mono',monospace;font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:#FFD600;margin-bottom:10px}
+.feat-h2{font-family:'Noto Sans TC',sans-serif;font-size:clamp(26px,3.5vw,44px);font-weight:900;color:white;margin-bottom:48px}
+.feat-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:20px}
+.feat-c{background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.07);border-radius:20px;padding:28px}
+.feat-ico{font-size:28px;margin-bottom:14px}
+.feat-ti{font-family:'Noto Sans TC',sans-serif;font-size:17px;font-weight:900;color:white;margin-bottom:8px}
+.feat-de{font-size:13px;color:#5C5478;line-height:1.7;font-family:'Noto Sans TC',sans-serif}
+.feat-de b{color:#9990B8}
+.feat-pill{display:inline-flex;align-items:center;gap:4px;background:rgba(255,107,53,.1);border:1px solid rgba(255,107,53,.2);border-radius:10px;padding:3px 10px;font-family:'DM Mono',monospace;font-size:10px;color:#FF6B35;margin-top:12px}
+
+/* ── CTA FOOTER ── */
+.cta-sec{padding:100px 28px;text-align:center;background:#FFF9F5;position:relative;overflow:hidden}
+.cta-sec::before{content:'';position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);
+  width:600px;height:600px;border-radius:50%;background:radial-gradient(circle,rgba(255,107,53,.06),transparent 70%);pointer-events:none}
+.cta-ey{font-family:'DM Mono',monospace;font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:#FF6B35;margin-bottom:14px}
+.cta-h2{font-family:'Noto Sans TC',sans-serif;font-size:clamp(36px,5vw,68px);font-weight:900;color:#FF6B35;
+  -webkit-text-stroke:clamp(1.5px,.15vw,2px) #1A1A2E;paint-order:stroke fill;line-height:1.1;margin-bottom:12px}
+.cta-sub{font-size:16px;color:#7B7B9A;max-width:440px;margin:0 auto 40px;line-height:1.65}
+.cta-btns{display:flex;gap:14px;justify-content:center;flex-wrap:wrap}
+.cta-join{background:#FF6B35;color:white;border:none;border-radius:16px;padding:16px 36px;font-family:'Noto Sans TC',sans-serif;font-size:16px;font-weight:900;cursor:pointer;box-shadow:0 6px 20px rgba(255,107,53,.3);transition:transform .15s,background .15s}
+.cta-join:hover{background:#E85520;transform:translateY(-2px)}
+.cta-create{background:#1A1A2E;color:#FFD600;border:none;border-radius:16px;padding:16px 36px;font-family:'Noto Sans TC',sans-serif;font-size:16px;font-weight:900;cursor:pointer;transition:opacity .15s}
+.cta-create:hover{opacity:.85}
+
+/* ── SITE FOOTER ── */
+footer{background:#0F0C1A;padding:40px 28px;text-align:center;border-top:1px solid rgba(255,107,53,.08)}
+.ft-logo{font-family:'Nunito',sans-serif;font-size:18px;font-weight:900;color:#FF6B35;margin-bottom:8px}
+.ft-note{font-size:12px;color:#3D3560;line-height:1.6;font-family:'Noto Sans TC',sans-serif}
+
+/* ── ACTIVE TAB INDICATOR ── */
+.tab-bar{display:flex;border-bottom:2px solid rgba(255,107,53,.1);margin-bottom:0}
+.tab{flex:1;padding:10px 6px;text-align:center;font-family:'Noto Sans TC',sans-serif;font-size:11px;font-weight:700;color:#B0AFBC;cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-2px;transition:color .15s,border-color .15s}
+.tab.a{color:#FF6B35;border-color:#FF6B35}
+.tab-panels{position:relative}
+.tp{display:none}
+.tp.a{display:flex;flex-direction:column;flex:1}
+
+@media(max-width:700px){
+  .steps,.feat-grid{grid-template-columns:1fr}
+  .phones-scene{gap:14px}
+}
+</style>
+
+<!-- ═══ NAV ═══ -->
+<nav>
+  <div class="nav-inner">
+    <div class="logo">HITSTER <span>Online</span></div>
+    <div class="nav-room">WXYZ</div>
+    <div class="nav-right">
+      <a class="nav-host" href="#">主持遊戲</a>
+      <button class="nav-join">加入房間</button>
+    </div>
+  </div>
+</nav>
+
+<!-- ═══ HERO ═══ -->
+<section class="hero">
+  <!-- decorative squiggles -->
+  <svg class="hero-deco d1" viewBox="0 0 300 300" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <path d="M20 200 Q60 20 100 120 Q140 220 180 80 Q220 -20 260 100" stroke="#FF6B35" stroke-width="6" stroke-linecap="round"/>
+    <circle cx="240" cy="50" r="12" fill="#FFD600"/>
+    <circle cx="30" cy="240" r="8" fill="#FF6B35"/>
+  </svg>
+  <svg class="hero-deco d2" viewBox="0 0 200 200" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <path d="M10 100 Q40 10 80 80 Q120 150 160 60" stroke="#FFD600" stroke-width="5" stroke-linecap="round"/>
+    <circle cx="170" cy="160" r="16" fill="#FF6B35" opacity=".4"/>
+  </svg>
+
+  <div class="vinyl-wrap">
+    <div class="orbit"></div>
+    <div class="vinyl-hero"></div>
+    <span class="sp" style="top:-30px;right:-40px;animation-delay:.2s">✦</span>
+    <span class="sp" style="bottom:-20px;left:-44px;font-size:14px;color:#FFD600;animation-delay:.9s">✦</span>
+    <span class="sp" style="top:20px;left:-50px;font-size:13px;animation-delay:1.4s">✦</span>
+  </div>
+
+  <div class="hero-tag">🎵 免費遊玩 · Fan-made</div>
+  <h1>猜猜發行年份<span class="sub">Guess the Year, Win the Game</span></h1>
+  <p class="hero-sub">聆聽歌曲，把它放進你的時間軸。答對了得分，答錯了學歷史。最多 10 人同時在線對戰。</p>
+
+  <div class="join-box">
+    <div class="jb-lbl">輸入房間代碼</div>
+    <div class="jb-row">
+      <input class="jb-in" placeholder="W X Y Z" maxlength="4">
+      <button class="jb-btn">加入 →</button>
+    </div>
+    <div class="jb-div">或</div>
+    <button class="jb-host">🎮 主持一場遊戲</button>
+  </div>
+
+  <div class="hero-badge">
+    <div class="hb"><div class="hb-dot"></div>無需帳號</div>
+    <div class="hb"><div class="hb-dot"></div>支援中英文歌單</div>
+    <div class="hb"><div class="hb-dot"></div>手機即可遊玩</div>
+  </div>
+</section>
+
+<!-- ═══ HOW TO PLAY ═══ -->
+<section class="how">
+  <div class="how-inner">
+    <div class="how-ey">How to Play</div>
+    <h2>三步驟，開始遊戲</h2>
+    <div class="steps">
+      <div class="step">
+        <div class="step-ico">🎵</div>
+        <div class="step-ti">聆聽歌曲</div>
+        <p class="step-de">主持人播放一首歌，<b>歌名和年份都是謎</b>。仔細聽旋律、歌詞、編曲風格——這些都是線索。</p>
+      </div>
+      <div class="step">
+        <div class="step-ico">📅</div>
+        <div class="step-ti">放進時間軸</div>
+        <p class="step-de">把這首歌拖進你的時間軸，<b>猜測它的發行年份</b>。你已有的歌就是參考點——越放越準確。</p>
+      </div>
+      <div class="step">
+        <div class="step-ico">🏆</div>
+        <div class="step-ti">得分、勝利</div>
+        <p class="step-de">放對了得分，<b>連續答對有加分</b>。主持人揭曉答案，全場一起尖叫。</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══ PHONE SCREENS ═══ -->
+<section class="preview">
+  <div class="preview-inner">
+    <div class="prev-ey">Player Screens</div>
+    <div class="prev-h2">手機畫面一覽</div>
+    <p class="prev-sub">加入房間、猜歌、查排名——單手操作，不需要下載 App。</p>
+
+    <div class="phones-scene">
+
+      <!-- Phone A: Join -->
+      <div class="ph hero-phone">
+        <div class="phs">
+          <div class="ph-island"></div>
+          <div class="ph-sb"><span class="ph-t">9:41</span></div>
+          <div class="ph-lobby">
+            <div style="position:relative;width:110px;height:110px;flex-shrink:0">
+              <div class="lv-vinyl"></div>
+            </div>
+            <div class="lv-ttl">猜猜發行年份<br>贏得勝利！</div>
+            <div class="lv-sub">聆聽 · 放置歌曲 · 得分</div>
+            <input class="lv-in" value="W X Y Z" readonly>
+            <button class="lv-btn">加入房間</button>
+            <div class="lv-sec">主持遊戲？建立房間</div>
+          </div>
+          <div class="ph-bnav">
+            <div class="ni2 a"><span>🎵</span><b>遊戲</b></div>
+            <div class="ni2"><span>🏆</span><b>分數</b></div>
+            <div class="ni2"><span>⚙️</span><b>設定</b></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Phone B: Guessing -->
+      <div class="ph" style="align-self:center">
+        <div class="phs" style="background:#FFF9F5">
+          <div class="ph-island"></div>
+          <div class="ph-sb"><span class="ph-t">9:41</span></div>
+          <div class="ph-guess">
+            <div class="pg-top">
+              <div class="pg-chip"><div class="pg-av">🎸</div><div class="pg-sc">940</div></div>
+              <div class="pg-rnd">第 3 回合 / 8</div>
+            </div>
+            <div class="pg-card">
+              <div class="pg-ey">♫ 正在播放 — 仔細聽</div>
+              <div class="pg-hid">???</div>
+              <div class="pg-tmr">0:38</div>
+              <div class="wvf2">
+                <div class="wb2" style="--d:0s;height:6px"></div>
+                <div class="wb2" style="--d:.1s;height:16px"></div>
+                <div class="wb2" style="--d:.05s;height:10px"></div>
+                <div class="wb2" style="--d:.2s;height:18px"></div>
+                <div class="wb2" style="--d:.15s;height:8px"></div>
+                <div class="wb2" style="--d:.08s;height:14px"></div>
+                <div class="wb2" style="--d:.25s;height:18px"></div>
+                <div class="wb2" style="--d:.12s;height:6px"></div>
+                <div class="wb2" style="--d:.18s;height:12px"></div>
+                <div class="wb2" style="--d:.22s;height:16px"></div>
+              </div>
+            </div>
+            <div class="pg-tl">
+              <div class="pg-tll">你的時間軸</div>
+              <div class="pg-scroll">
+                <div class="psc"><div class="psc-yr">1982</div><div class="psc-ti">Thriller</div></div>
+                <div class="pdz">↓</div>
+                <div class="psc"><div class="psc-yr">2000</div><div class="psc-ti">愛你</div></div>
+                <div class="pdz" style="background:rgba(255,107,53,.1);border-style:solid">▼</div>
+                <div class="psc"><div class="psc-yr">2016</div><div class="psc-ti">告白氣球</div></div>
+                <div class="pdz">↓</div>
+              </div>
+            </div>
+            <div class="pg-cta">
+              <div class="pg-hint">放在「愛你 (2000)」和<br>「告白氣球 (2016)」之間</div>
+              <button class="pg-btn">確認位置</button>
+            </div>
+          </div>
+          <div class="ph-bnav">
+            <div class="ni2 a"><span>🎵</span><b>遊戲</b></div>
+            <div class="ni2"><span>📋</span><b>時間軸</b></div>
+            <div class="ni2"><span>🏆</span><b>分數</b></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Phone C: Leaderboard -->
+      <div class="ph hero-phone">
+        <div class="phs">
+          <div class="ph-island"></div>
+          <div class="ph-sb"><span class="ph-t">9:41</span></div>
+          <div class="ph-board">
+            <div class="pb-ti">排行榜</div>
+            <div class="pb-tabs"><div class="pb-tab">本回合</div><div class="pb-tab a">總分</div></div>
+            <div class="podium2">
+              <div class="pd2">
+                <div class="pd2-av" style="background:#FFE5D0">🎵</div>
+                <div class="pd2-nm">小美</div>
+                <div class="pd2-blk pd2-2">2</div>
+              </div>
+              <div class="pd2">
+                <div class="pd2-av" style="background:#FF6B35">🎸</div>
+                <div class="pd2-nm" style="font-weight:900;color:#FF6B35">你</div>
+                <div class="pd2-blk pd2-1">1</div>
+              </div>
+              <div class="pd2">
+                <div class="pd2-av" style="background:#FFF0CC">🥁</div>
+                <div class="pd2-nm">阿豪</div>
+                <div class="pd2-blk pd2-3">3</div>
+              </div>
+            </div>
+            <div class="pb-list">
+              <div class="pb-row you">
+                <div class="pb-rk">#1</div>
+                <div class="pb-av" style="background:#FF6B35">🎸</div>
+                <div class="pb-nm">你</div>
+                <div class="pb-badge">1,240</div>
+              </div>
+              <div class="pb-row">
+                <div class="pb-rk">#2</div>
+                <div class="pb-av" style="background:#FFE5D0">🎵</div>
+                <div class="pb-nm">小美</div>
+                <div class="pb-sc">1,090</div>
+              </div>
+              <div class="pb-row">
+                <div class="pb-rk">#3</div>
+                <div class="pb-av" style="background:#FFF0CC">🥁</div>
+                <div class="pb-nm">阿豪</div>
+                <div class="pb-sc">940</div>
+              </div>
+              <div class="pb-row">
+                <div class="pb-rk">#4</div>
+                <div class="pb-av" style="background:#E8E8F0">🎤</div>
+                <div class="pb-nm">大衛</div>
+                <div class="pb-sc">650</div>
+              </div>
+            </div>
+          </div>
+          <div class="ph-bnav">
+            <div class="ni2"><span>🎵</span><b>遊戲</b></div>
+            <div class="ni2"><span>📋</span><b>時間軸</b></div>
+            <div class="ni2 a"><span>🏆</span><b>分數</b></div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</section>
+
+<!-- ═══ FEATURES ═══ -->
+<section class="features">
+  <div class="feat-inner">
+    <div class="feat-ey">Features</div>
+    <div class="feat-h2">為什麼選 HITSTER Online？</div>
+    <div class="feat-grid">
+      <div class="feat-c">
+        <div class="feat-ico">🎵</div>
+        <div class="feat-ti">任何 YouTube 歌單</div>
+        <p class="feat-de">貼上你的 YouTube 播放清單，<b>系統自動解析年份</b>。粵語、國語、英文歌單全支援，不限語言。</p>
+        <div class="feat-pill">AI 年份解析</div>
+      </div>
+      <div class="feat-c">
+        <div class="feat-ico">📱</div>
+        <div class="feat-ti">主機 + 手機分工</div>
+        <p class="feat-de">主持人用桌機操作，玩家用手機加入。<b>不需要安裝 App</b>，掃 QR Code 或輸入代碼即可進場。</p>
+        <div class="feat-pill">無需下載</div>
+      </div>
+      <div class="feat-c">
+        <div class="feat-ico">⚡</div>
+        <div class="feat-ti">即時同步</div>
+        <p class="feat-de">WebSocket 即時連線，所有玩家的答案同步顯示在主持人畫面。<b>揭曉瞬間，全場反應同步</b>。</p>
+        <div class="feat-pill">WebSocket</div>
+      </div>
+      <div class="feat-c">
+        <div class="feat-ico">🀄</div>
+        <div class="feat-ti">中文歌名完整顯示</div>
+        <p class="feat-de">載入 Noto Sans TC 900，確保「告白氣球」「小幸運」等中文歌名<b>不 fallback 到系統字型</b>，遊戲感全程保持。</p>
+        <div class="feat-pill">Noto Sans TC</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══ CTA ═══ -->
+<section class="cta-sec">
+  <div class="cta-ey">Ready to Play</div>
+  <div class="cta-h2">現在就開始</div>
+  <p class="cta-sub">找三五好友，一起猜歌、比拼音樂知識。完全免費，不需要帳號。</p>
+  <div class="cta-btns">
+    <button class="cta-join">加入房間</button>
+    <button class="cta-create">主持遊戲 →</button>
+  </div>
+</section>
+
+<!-- ═══ FOOTER ═══ -->
+<footer>
+  <div class="ft-logo">HITSTER Online</div>
+  <p class="ft-note">Fan-made web version of the HITSTER board game by Roxley Games.<br>Not affiliated with or endorsed by Roxley Games.</p>
+</footer>

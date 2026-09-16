@@ -213,7 +213,7 @@ export default function PlaylistEditor({ playlistId, songs, hostId, partyKitHost
             type="button"
             disabled={savingAll}
             onClick={() => void handleSaveAll()}
-            className="shrink-0 rounded-lg bg-yellow-400 px-3 py-1.5 text-xs font-bold text-black hover:bg-yellow-300 transition-colors disabled:opacity-40"
+            style={{ flexShrink: 0, borderRadius: 8, background: "#FF6B35", padding: "6px 12px", fontSize: 12, fontWeight: 900, color: "white", border: "none", cursor: "pointer" }}
           >
             {savingAll ? "Saving…" : `${playlistId ? "Save" : "Apply"} all (${dirtyCount})`}
           </button>
@@ -243,7 +243,7 @@ export default function PlaylistEditor({ playlistId, songs, hostId, partyKitHost
                       type="text"
                       value={draft.title}
                       onChange={(e) => setField(song.videoId, "title", e.target.value)}
-                      className="w-full bg-white/5 rounded px-2 py-1 text-white/90 outline-none focus:ring-1 focus:ring-yellow-400 placeholder-gray-600"
+                      className="w-full rounded px-2 py-1 outline-none placeholder-gray-600" style={{ background: "rgba(255,255,255,.06)", color: "rgba(255,255,255,.9)", border: "1.5px solid rgba(255,107,53,.15)" }}
                     />
                     {err && <p className="text-red-400 text-[10px] mt-0.5">{err}</p>}
                   </td>
@@ -252,7 +252,7 @@ export default function PlaylistEditor({ playlistId, songs, hostId, partyKitHost
                       type="text"
                       value={draft.artist}
                       onChange={(e) => setField(song.videoId, "artist", e.target.value)}
-                      className="w-full bg-white/5 rounded px-2 py-1 text-white/60 outline-none focus:ring-1 focus:ring-yellow-400"
+                      className="w-full rounded px-2 py-1 outline-none" style={{ background: "rgba(255,255,255,.06)", color: "rgba(255,255,255,.6)", border: "1.5px solid rgba(255,107,53,.15)" }}
                     />
                   </td>
                   <td className="px-2 py-1.5">
@@ -262,7 +262,7 @@ export default function PlaylistEditor({ playlistId, songs, hostId, partyKitHost
                       min={1900}
                       max={new Date().getFullYear() + 1}
                       onChange={(e) => setField(song.videoId, "year", parseInt(e.target.value, 10))}
-                      className="w-full bg-white/5 rounded px-2 py-1 font-mono text-yellow-400 outline-none focus:ring-1 focus:ring-yellow-400"
+                      className="w-full rounded px-2 py-1 outline-none" style={{ background: "rgba(255,255,255,.06)", fontFamily: "var(--font-mono)", color: "#FFD600", border: "1.5px solid rgba(255,107,53,.15)" }}
                     />
                   </td>
                   <td className="px-2 py-1.5">
@@ -272,7 +272,7 @@ export default function PlaylistEditor({ playlistId, songs, hostId, partyKitHost
                           type="button"
                           disabled={isSaving}
                           onClick={() => void handleSaveSong(song)}
-                          className="rounded px-2 py-1 bg-yellow-400/20 text-yellow-300 hover:bg-yellow-400/30 transition-colors disabled:opacity-40"
+                          style={{ borderRadius: 6, padding: "4px 8px", background: "rgba(255,107,53,.2)", color: "#FF6B35", border: "none", cursor: "pointer", fontSize: 12, fontWeight: 700 }}
                         >
                           {isSaving ? "…" : playlistId ? "Save" : "Apply"}
                         </button>
