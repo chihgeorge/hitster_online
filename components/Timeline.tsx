@@ -231,7 +231,7 @@ function DropZone({
         border: `2px dashed ${selected ? "#FF6B35" : "rgba(255,107,53,.35)"}`,
         borderRadius: 16, background: selected ? "rgba(255,107,53,.1)" : "transparent",
         cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center",
-        transition: "all .15s",
+        transition: "border-color .15s, background .15s",
       }}
     >
       <span style={{ fontSize: selected ? 18 : 16, color: selected ? "#FF6B35" : "rgba(255,107,53,.5)" }}>
