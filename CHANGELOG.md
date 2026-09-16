@@ -17,6 +17,8 @@
 - Join button and input row alignment fixed on mobile (flex `alignSelf: stretch`)
 - Host page header chip uses cream background to match the light theme
 - Drop-zone button `transition` now targets only `border-color, background` instead of `all`
+- Host page header: player count label hidden below 480 px via `.hide-xs` utility class — no more cramped header on 375 px phones
+- 404 page now uses the app's warm palette (`app/not-found.tsx`): vinyl-record graphic, 找不到這個頁面 heading, orange "回首頁 · Home" button — replaces the default Next.js white 404
 
 ## [0.2.0.0] — 2026-09-02
 
