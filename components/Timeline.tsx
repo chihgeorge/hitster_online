@@ -30,77 +30,150 @@ export default function Timeline({
   const canPlace = phase === "guessing" && isMyTurn && !hasPlaced && !tooLate;
 
   return (
-    <div className="flex flex-col gap-1 pb-24">
-      {/* Drop zone: before the first card */}
-      {canPlace && (
-        <DropZone
-          position={0}
-          selected={selectedPosition === 0}
-          onSelect={() => onSelectPosition(0)}
-        />
-      )}
+    <div style={{ display: "flex", flexDirection: "column", gap: 0, paddingBottom: 200 }}>
 
-      {timeline.map((card, idx) => (
-        <div key={card.id}>
-          <TimelineCard card={card} />
-          {/* Drop zone after this card */}
-          {canPlace && (
-            <DropZone
-              position={idx + 1}
-              selected={selectedPosition === idx + 1}
-              onSelect={() => onSelectPosition(idx + 1)}
-            />
-          )}
+      {/* Now-playing card — shown during guessing for my-turn player */}
+      {currentSong && phase === "guessing" && isMyTurn && (
+        <div style={{ marginBottom: 20 }}>
+          <div style={{
+            background: "#FF6B35", borderRadius: 20, padding: "18px 20px",
+            boxShadow: "0 8px 32px rgba(255,107,53,.35)",
+          }}>
+            <p style={{ fontSize: 11, color: "rgba(255,255,255,.7)", fontWeight: 700, textTransform: "uppercase", letterSpacing: ".1em", marginBottom: 8 }}>
+              🎵 現正播放 · Now Playing
+            </p>
+            {/* Waveform bars */}
+            <div style={{ display: "flex", alignItems: "flex-end", gap: 3, height: 28, marginBottom: 10 }}>
+              {[22, 14, 26, 18, 30, 12, 24, 16, 20, 28].map((h, i) => (
+                <div key={i} className="animate-wave" style={{
+                  ["--h" as string]: `${h}px`,
+                  width: 4, height: `${h}px`, borderRadius: 3,
+                  background: "rgba(255,255,255,.85)",
+                  animationDelay: `${i * 0.08}s`,
+                }} />
+              ))}
+            </div>
+            <p style={{ color: "white", fontWeight: 900, fontSize: 16, lineHeight: 1.2 }}>聆聽歌曲，然後放到時間線上</p>
+            <p style={{ color: "rgba(255,255,255,.7)", fontSize: 12, marginTop: 3 }}>Listen and place it on your timeline</p>
+          </div>
         </div>
-      ))}
-
-      {timeline.length === 0 && canPlace && (
-        <p className="text-xs text-gray-500 text-center py-2">Your timeline is empty — place this card anywhere</p>
       )}
 
-      {/* Spectator banner — shown when another player is guessing */}
+      {/* Spectator notice */}
       {currentSong && phase === "guessing" && !isMyTurn && (
-        <div className="fixed bottom-0 left-0 right-0 p-4 bg-[#1a1a2e]/95 backdrop-blur border-t border-white/10">
-          <p className="text-center text-gray-400 text-sm">
-            <span className="text-yellow-400 font-semibold">{activePlayerName ?? "Another player"}</span> is guessing…
+        <div style={{
+          background: "#FFF0E8", borderRadius: 16, padding: "14px 16px",
+          border: "2px solid rgba(255,107,53,.2)", marginBottom: 16, textAlign: "center",
+        }}>
+          <p style={{ color: "#7B7B9A", fontSize: 14 }}>
+            <span style={{ color: "#FF6B35", fontWeight: 900 }}>{activePlayerName ?? "玩家"}</span> 正在猜測中…
           </p>
         </div>
       )}
 
-      {/* Current song card at bottom */}
-      {currentSong && phase === "guessing" && isMyTurn && (
-        <div className="fixed bottom-0 left-0 right-0 p-4 bg-[#1a1a2e]/95 backdrop-blur border-t border-white/10">
-          <div className="flex items-center gap-3 mb-3">
-            <div className="flex-1 rounded-xl bg-yellow-400/10 border border-yellow-400/30 px-4 py-3">
-              <p className="text-xs text-yellow-400 uppercase tracking-widest">Now playing</p>
-              <p className="font-semibold text-yellow-300">🎵 Listening…</p>
-            </div>
-          </div>
-          {hasPlaced ? (
-            <p className="text-center text-green-400 font-medium">Placed ✓ — host will reveal the year</p>
-          ) : tooLate ? (
-            <p className="text-center text-red-400 font-medium">Too late!</p>
-          ) : selectedPosition !== null ? (
-            <button
-              onClick={onPlace}
-              className="w-full rounded-xl bg-yellow-400 py-3 font-bold text-black hover:bg-yellow-300 transition-colors"
-            >
-              Place here →
-            </button>
-          ) : (
-            <p className="text-center text-gray-400 text-sm">Tap a position on your timeline</p>
-          )}
+      {/* Reveal result card */}
+      {currentSong && phase === "reveal" && (
+        <div style={{
+          background: "#1A1A2E", borderRadius: 20, padding: "20px 20px",
+          boxShadow: "0 8px 32px rgba(26,26,46,.3)", marginBottom: 20, textAlign: "center",
+        }}>
+          <p style={{ color: "#7B7B9A", fontSize: 12, textTransform: "uppercase", letterSpacing: ".1em", marginBottom: 6 }}>答案 · The Answer</p>
+          <p style={{ fontFamily: "var(--font-mono)", fontSize: 44, color: "#FFD600", fontWeight: 700, lineHeight: 1 }}>{currentSong.year}</p>
+          <p style={{ color: "white", fontWeight: 700, fontSize: 15, marginTop: 6 }}>{currentSong.title}</p>
+          <p style={{ color: "#7B7B9A", fontSize: 13 }}>{currentSong.artist}</p>
         </div>
       )}
 
-      {/* Reveal result */}
-      {currentSong && phase === "reveal" && (
-        <div className="fixed bottom-0 left-0 right-0 p-4 bg-[#1a1a2e]/95 backdrop-blur border-t border-white/10">
-          <div className="rounded-xl bg-white/5 px-4 py-3 text-center">
-            <p className="text-sm text-gray-400">The answer was</p>
-            <p className="font-bold text-lg text-yellow-400">{currentSong.year}</p>
-            <p className="text-sm text-gray-300">{currentSong.title}</p>
-          </div>
+      {/* Timeline label */}
+      <p style={{ fontSize: 11, fontWeight: 700, color: "#B0AFBC", textTransform: "uppercase", letterSpacing: ".1em", marginBottom: 10 }}>
+        你的時間線 · Your Timeline ({timeline.length} cards)
+      </p>
+
+      {/* Horizontal scroll timeline */}
+      <div style={{ overflowX: "auto", paddingBottom: 4 }}>
+        <div style={{
+          display: "flex", flexDirection: "row", gap: 8, alignItems: "stretch",
+          minWidth: "max-content", paddingRight: 4,
+        }}>
+          {/* Drop zone before first card */}
+          {canPlace && (
+            <DropZone
+              position={0}
+              selected={selectedPosition === 0}
+              onSelect={() => onSelectPosition(0)}
+            />
+          )}
+
+          {timeline.map((card, idx) => (
+            <div key={card.id} style={{ display: "flex", alignItems: "stretch", gap: 8 }}>
+              <TimelineCard card={card} />
+              {canPlace && (
+                <DropZone
+                  position={idx + 1}
+                  selected={selectedPosition === idx + 1}
+                  onSelect={() => onSelectPosition(idx + 1)}
+                />
+              )}
+            </div>
+          ))}
+
+          {timeline.length === 0 && !canPlace && (
+            <div style={{
+              width: 160, background: "#FFF0E8", borderRadius: 16,
+              border: "2px dashed rgba(255,107,53,.2)",
+              display: "flex", alignItems: "center", justifyContent: "center",
+              padding: "16px 12px", minHeight: 100,
+            }}>
+              <p style={{ color: "#C0B8B0", fontSize: 12, textAlign: "center" }}>
+                時間線是空的<br/>Timeline empty
+              </p>
+            </div>
+          )}
+
+          {timeline.length === 0 && canPlace && (
+            <p style={{ color: "#B0AFBC", fontSize: 12, alignSelf: "center", padding: "0 8px" }}>
+              放在任何位置
+            </p>
+          )}
+        </div>
+      </div>
+
+      {/* CTA bar */}
+      {canPlace && (
+        <div style={{
+          position: "fixed", bottom: 0, left: 0, right: 0, padding: "16px 16px 24px",
+          background: "linear-gradient(to top, #FFF9F5 70%, transparent)",
+        }}>
+          {hasPlaced ? (
+            <div style={{
+              background: "#00C896", borderRadius: 16, padding: "15px", textAlign: "center",
+            }}>
+              <p style={{ color: "white", fontWeight: 900, fontSize: 16 }}>已放置 ✓ 等待主持人揭曉</p>
+            </div>
+          ) : tooLate ? (
+            <div style={{
+              background: "#FF3B5C", borderRadius: 16, padding: "15px", textAlign: "center",
+            }}>
+              <p style={{ color: "white", fontWeight: 900, fontSize: 16 }}>太晚了！</p>
+            </div>
+          ) : selectedPosition !== null ? (
+            <button onClick={onPlace} style={{
+              width: "100%", background: "#FF6B35", color: "white",
+              border: "none", borderRadius: 16, padding: "16px",
+              fontSize: 17, fontWeight: 900, cursor: "pointer",
+              fontFamily: "var(--font-zh)",
+              boxShadow: "0 4px 20px rgba(255,107,53,.4)",
+            }}>
+              確認放置 →
+            </button>
+          ) : (
+            <div style={{
+              background: "white", borderRadius: 16, padding: "15px", textAlign: "center",
+              border: "2px solid rgba(255,107,53,.2)",
+            }}>
+              <p style={{ color: "#B0AFBC", fontSize: 14 }}>← 滑動時間線，點選位置 →</p>
+            </div>
+          )}
         </div>
       )}
     </div>
@@ -109,14 +182,31 @@ export default function Timeline({
 
 function TimelineCard({ card }: { card: Card }) {
   return (
-    <div className="flex flex-col items-center justify-center rounded-2xl bg-white/8 border border-white/10 py-5 px-5 min-h-[96px] text-center gap-1">
-      <p className="font-mono text-yellow-400 font-bold text-3xl leading-none tracking-tight">
+    <div style={{
+      width: 92, flexShrink: 0, background: "white", borderRadius: 16,
+      border: "2px solid rgba(255,107,53,.15)",
+      padding: "14px 10px", textAlign: "center", minHeight: 100,
+      display: "flex", flexDirection: "column", justifyContent: "center", gap: 4,
+      boxShadow: "0 2px 10px rgba(255,107,53,.07)",
+    }}>
+      <p style={{
+        fontFamily: "var(--font-mono)", color: "#FF6B35", fontWeight: 700,
+        fontSize: 22, lineHeight: 1,
+      }}>
         {card.year}
       </p>
-      <p className="text-sm text-white/80 font-medium leading-tight w-full truncate">
+      <p style={{
+        fontWeight: 700, color: "#1A1A2E", fontSize: 11,
+        lineHeight: 1.3, overflow: "hidden", display: "-webkit-box",
+        WebkitLineClamp: 2, WebkitBoxOrient: "vertical",
+      }}>
         {card.artist}
       </p>
-      <p className="text-xs text-gray-500 leading-tight w-full truncate">
+      <p style={{
+        color: "#B0AFBC", fontSize: 10,
+        overflow: "hidden", display: "-webkit-box",
+        WebkitLineClamp: 2, WebkitBoxOrient: "vertical", lineHeight: 1.3,
+      }}>
         {card.title}
       </p>
     </div>
@@ -135,13 +225,18 @@ function DropZone({
   return (
     <button
       onClick={onSelect}
-      className={`w-full py-2 px-4 rounded-xl border-2 border-dashed text-sm font-medium transition-all ${
-        selected
-          ? "border-yellow-400 bg-yellow-400/10 text-yellow-400"
-          : "border-white/15 text-gray-600 hover:border-white/30 hover:text-gray-400"
-      }`}
+      className={selected ? "" : "animate-dz-pulse"}
+      style={{
+        width: 52, flexShrink: 0, minHeight: 100,
+        border: `2px dashed ${selected ? "#FF6B35" : "rgba(255,107,53,.35)"}`,
+        borderRadius: 16, background: selected ? "rgba(255,107,53,.1)" : "transparent",
+        cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center",
+        transition: "border-color .15s, background .15s",
+      }}
     >
-      {selected ? "▶ Place here" : "+ Place here"}
+      <span style={{ fontSize: selected ? 18 : 16, color: selected ? "#FF6B35" : "rgba(255,107,53,.5)" }}>
+        {selected ? "▶" : "+"}
+      </span>
     </button>
   );
 }

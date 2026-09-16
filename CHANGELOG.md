@@ -1,5 +1,23 @@
 # Changelog
 
+## [0.3.0.0] — 2026-09-16
+
+### Changed
+- **Complete UI redesign** — warm cream palette (`#FFF9F5` background, `#FF6B35` orange accent) replaces the dark theme across all pages
+- **Chinese-first interface** — join form, error messages, and in-game prompts are now in Traditional Chinese (繁體中文); Create a Room button and key labels keep English fallback for international hosts
+- **Landing page** — vinyl record hero with sparkle animation; join and create controls merged into one card layout; mobile-optimised at 390px+
+- **Host page** — new room-code chip with orange mono font; playlist load/status panel redesigned with progress bar and mint-green ready state
+- **Player timeline** — horizontal scrollable layout with orange drop-zones (pulse animation); "Now Playing" card redesigned; spectator notice shows active player name
+- **Winner and game-over screens** — dedicated WINNER! heading and full-page celebration state
+- **PlayerList** — score badges, active-player highlight chip, and turn-order indicators
+- **e2e test suite updated** — all 30 Playwright tests (Chromium + Mobile Safari) updated to match the new Chinese-language selectors; dev server port standardised to 3456
+
+### Fixed
+- Room-code input no longer overflows its card container on narrow viewports (`minWidth: 0` on flex child)
+- Join button and input row alignment fixed on mobile (flex `alignSelf: stretch`)
+- Host page header chip uses cream background to match the light theme
+- Drop-zone button `transition` now targets only `border-color, background` instead of `all`
+
 ## [0.2.0.0] — 2026-09-02
 
 ### Added

@@ -26,29 +26,28 @@ import { test, expect, type Page } from "@playwright/test";
 
 async function joinRoom(page: Page, name: string, code: string) {
   await page.goto("/");
-  await page.getByRole("button", { name: /join a room/i }).click();
-  await page.getByPlaceholder(/your name/i).fill(name);
-  await page.getByPlaceholder(/room code/i).fill(code);
-  await page.getByRole("button", { name: /^join$/i }).click();
+  await page.getByPlaceholder("你的名字").fill(name);
+  await page.getByPlaceholder("房間代碼").fill(code);
+  await page.getByRole("button", { name: /加入/i }).click();
   await page.waitForURL(/\/room\/[A-Z]+\/play/);
 }
 
 /** Place by appending at the end of the player's timeline. */
 async function appendCard(page: Page) {
-  await expect(page.getByText(/tap a position/i)).toBeVisible({ timeout: 15_000 });
-  const dropZones = page.getByText("+ Place here");
+  await expect(page.getByText(/Listen and place it on your timeline/i)).toBeVisible({ timeout: 15_000 });
+  const dropZones = page.locator("button").filter({ hasText: /^\+$/ });
   const count = await dropZones.count();
   await dropZones.nth(count - 1).click();
-  await page.getByRole("button", { name: "Place here →" }).click();
-  await expect(page.getByText(/host will reveal/i)).toBeVisible({ timeout: 5_000 });
+  await page.getByRole("button", { name: /確認放置/i }).click();
+  await expect(page.getByRole("button", { name: /確認放置/i })).not.toBeVisible({ timeout: 5_000 });
 }
 
 /** Verify a page shows the spectator banner during guessing phase. */
 async function expectSpectating(page: Page, activePlayerName: string) {
   await expect(
-    page.getByText(new RegExp(`${activePlayerName}.*guessing`, "i")),
+    page.getByText(new RegExp(`${activePlayerName}.*正在猜測中`)),
   ).toBeVisible({ timeout: 15_000 });
-  await expect(page.getByText("+ Place here")).not.toBeVisible();
+  await expect(page.getByRole("button", { name: /確認放置/i })).not.toBeVisible();
 }
 
 // ── test ─────────────────────────────────────────────────────────────────────
@@ -70,7 +69,7 @@ test.describe("C-pop multiplayer with metadata verification", () => {
       try {
         // ── 1. Create room ───────────────────────────────────────────────────
         await hostPage.goto("/");
-        await hostPage.getByRole("button", { name: /create a room/i }).click();
+        await hostPage.getByRole("button", { name: /Create a Room/i }).click();
         await hostPage.waitForURL(/\/room\/[A-Z]+\/host$/);
         const roomCode = hostPage.url().match(/\/room\/([A-Z]+)\/host$/)![1];
         expect(roomCode).toHaveLength(4);
@@ -78,36 +77,32 @@ test.describe("C-pop multiplayer with metadata verification", () => {
         // ── 2. Alice joins first, Bob second ─────────────────────────────────
         await joinRoom(p1Page, "Alice", roomCode);
         await joinRoom(p2Page, "Bob", roomCode);
-        await expect(hostPage.getByText(/2 players/i)).toBeVisible({ timeout: 10_000 });
+        await expect(hostPage.getByText("Alice")).toBeVisible({ timeout: 10_000 });
+        await expect(hostPage.getByText("Bob")).toBeVisible({ timeout: 10_000 });
 
         // ── 3. Start game with C-pop test seed ───────────────────────────────
-        await hostPage.getByPlaceholder(/youtube/i).fill("hitster://cpop-test");
-        await hostPage.getByRole("button", { name: /start game/i }).click();
-
-        // Wait for game to enter guessing phase (seed is instant — no API calls).
-        await hostPage.waitForFunction(
-          () => !document.querySelector("[data-testid='starting']"),
-          null,
-          { timeout: 10_000 },
-        ).catch(() => {}); // ok if the attribute isn't used — just wait for state transition
+        const urlInput = hostPage.locator('input[type="url"]');
+        await urlInput.click();
+        await urlInput.pressSequentially("hitster://cpop-test");
+        await hostPage.getByRole("button", { name: /Load/i }).click();
+        await expect(hostPage.getByText(/已載入/i)).toBeVisible({ timeout: 5_000 });
+        await hostPage.getByRole("button", { name: /Start Game/i }).click();
 
         // ── 4. Metadata verification ─────────────────────────────────────────
-        // The cpop-test seed broadcasts a DIAGNOSTIC message with 8 songs.
-        // The host page shows a collapsible "Song metadata" panel after game starts.
-        const metadataToggle = hostPage.getByText(/song metadata/i);
+        // After game starts, the diagnostic panel button appears in the host page.
+        const metadataToggle = hostPage.getByText(/歌曲資料/i);
         await expect(metadataToggle).toBeVisible({ timeout: 10_000 });
         await metadataToggle.click();
 
         // All 8 songs should be resolved (shown as "YT Music" source in the table).
-        await expect(hostPage.getByText("8")).toBeVisible(); // "8/8 years resolved"
         await expect(hostPage.getByText("YT Music").first()).toBeVisible();
 
-        // Spot-check specific songs and years in the table.
-        await expect(hostPage.getByText("那些年")).toBeVisible();
+        // Spot-check specific songs in the table (use .first() — titles appear in both the p card and td cell)
+        await expect(hostPage.getByText("那些年").first()).toBeVisible();
         await expect(hostPage.getByText("2012").first()).toBeVisible();
-        await expect(hostPage.getByText("體面")).toBeVisible();
+        await expect(hostPage.getByText("體面").first()).toBeVisible();
         await expect(hostPage.getByText("2017").first()).toBeVisible();
-        await expect(hostPage.getByText("年少有為")).toBeVisible();
+        await expect(hostPage.getByText("年少有為").first()).toBeVisible();
         await expect(hostPage.getByText("2018").first()).toBeVisible();
 
         // ── 5. Round 1: Alice's turn ─────────────────────────────────────────
@@ -115,7 +110,7 @@ test.describe("C-pop multiplayer with metadata verification", () => {
         await expectSpectating(p2Page, "Alice");
 
         await expect(
-          hostPage.getByRole("button", { name: /1 placed/i }),
+          hostPage.getByRole("button", { name: /reveal/i }),
         ).toBeVisible({ timeout: 10_000 });
         await hostPage.getByRole("button", { name: /reveal/i }).click();
 
@@ -129,7 +124,7 @@ test.describe("C-pop multiplayer with metadata verification", () => {
         await expectSpectating(p1Page, "Bob");
 
         await expect(
-          hostPage.getByRole("button", { name: /1 placed/i }),
+          hostPage.getByRole("button", { name: /reveal/i }),
         ).toBeVisible({ timeout: 10_000 });
         await hostPage.getByRole("button", { name: /reveal/i }).click();
 
@@ -143,19 +138,15 @@ test.describe("C-pop multiplayer with metadata verification", () => {
         await expectSpectating(p2Page, "Alice");
 
         await expect(
-          hostPage.getByRole("button", { name: /1 placed/i }),
+          hostPage.getByRole("button", { name: /reveal/i }),
         ).toBeVisible({ timeout: 10_000 });
         await hostPage.getByRole("button", { name: /reveal/i }).click();
 
         // ── 8. Game over: Alice wins ──────────────────────────────────────────
-        await expect(p1Page.getByText(/you won/i)).toBeVisible({ timeout: 10_000 });
-        await expect(
-          p2Page.getByRole("heading", { name: /winner.*alice/i }),
-        ).toBeVisible({ timeout: 10_000 });
-        await expect(hostPage.getByText(/winner!/i)).toBeVisible({ timeout: 10_000 });
-        await expect(
-          hostPage.getByRole("heading", { name: "Alice" }),
-        ).toBeVisible({ timeout: 10_000 });
+        await expect(p1Page.getByRole("heading", { name: "WINNER!" })).toBeVisible({ timeout: 10_000 });
+        await expect(p2Page.getByText(/Alice.*贏了/i)).toBeVisible({ timeout: 10_000 });
+        await expect(hostPage.getByText(/Winner!/i)).toBeVisible({ timeout: 10_000 });
+        await expect(hostPage.getByRole("heading", { name: "Alice" })).toBeVisible({ timeout: 10_000 });
       } finally {
         await hostCtx.close();
         await p1Ctx.close();

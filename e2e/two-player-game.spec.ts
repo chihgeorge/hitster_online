@@ -21,29 +21,32 @@ import { test, expect, type Page } from "@playwright/test";
 
 async function joinRoom(page: Page, name: string, code: string) {
   await page.goto("/");
-  await page.getByRole("button", { name: /join a room/i }).click();
-  await page.getByPlaceholder(/your name/i).fill(name);
-  await page.getByPlaceholder(/room code/i).fill(code);
-  await page.getByRole("button", { name: /^join$/i }).click();
+  await page.getByPlaceholder("你的名字").fill(name);
+  await page.getByPlaceholder("房間代碼").fill(code);
+  await page.getByRole("button", { name: /加入/i }).click();
   await page.waitForURL(/\/room\/[A-Z]+\/play/);
 }
 
 /** Place by appending to the end of the player's timeline (always correct with ascending years). */
 async function appendCard(page: Page) {
-  await expect(page.getByText(/tap a position/i)).toBeVisible({ timeout: 15_000 });
-  const dropZones = page.getByText("+ Place here");
+  // Wait for the "Now Playing" banner — signals it's this player's turn to guess
+  await expect(page.getByText(/Listen and place it on your timeline/i)).toBeVisible({ timeout: 15_000 });
+  // Click the last "+" drop-zone button (appending at the end)
+  const dropZones = page.locator("button").filter({ hasText: /^\+$/ });
   const count = await dropZones.count();
   await dropZones.nth(count - 1).click();
-  await page.getByRole("button", { name: "Place here →" }).click();
-  await expect(page.getByText(/host will reveal/i)).toBeVisible({ timeout: 5_000 });
+  // Confirm placement
+  await page.getByRole("button", { name: /確認放置/i }).click();
+  // CTA bar disappears when server ACKs placement (canPlace becomes false)
+  await expect(page.getByRole("button", { name: /確認放置/i })).not.toBeVisible({ timeout: 5_000 });
 }
 
-/** Verify a page shows the spectator banner (not the placement UI) during guessing. */
+/** Verify a page shows the spectator notice (not the placement UI) during guessing. */
 async function expectSpectating(page: Page, activePlayerName: string) {
   await expect(
-    page.getByText(new RegExp(`${activePlayerName}.*guessing`, "i")),
+    page.getByText(new RegExp(`${activePlayerName}.*正在猜測中`)),
   ).toBeVisible({ timeout: 15_000 });
-  await expect(page.getByText("+ Place here")).not.toBeVisible();
+  await expect(page.getByRole("button", { name: /確認放置/i })).not.toBeVisible();
 }
 
 // ── test ─────────────────────────────────────────────────────────────────────
@@ -65,7 +68,7 @@ test.describe("Two-player full game", () => {
       try {
         // ── 1. Create room ───────────────────────────────────────────────────
         await hostPage.goto("/");
-        await hostPage.getByRole("button", { name: /create a room/i }).click();
+        await hostPage.getByRole("button", { name: /Create a Room/i }).click();
         await hostPage.waitForURL(/\/room\/[A-Z]+\/host$/);
         const roomCode = hostPage.url().match(/\/room\/([A-Z]+)\/host$/)![1];
         expect(roomCode).toHaveLength(4);
@@ -73,40 +76,40 @@ test.describe("Two-player full game", () => {
         // ── 2. Alice joins first, then Bob (order determines starting cards) ─
         await joinRoom(p1Page, "Alice", roomCode);
         await joinRoom(p2Page, "Bob", roomCode);
-        await expect(hostPage.getByText(/2 players/i)).toBeVisible({ timeout: 10_000 });
+        await expect(hostPage.getByText("Alice")).toBeVisible({ timeout: 10_000 });
+        await expect(hostPage.getByText("Bob")).toBeVisible({ timeout: 10_000 });
 
         // ── 3. Start game with deterministic test seed ────────────────────────
-        await hostPage.getByPlaceholder(/youtube/i).fill("hitster://test");
-        await hostPage.getByRole("button", { name: /start game/i }).click();
+        const urlInput = hostPage.locator('input[type="url"]');
+        await urlInput.click();
+        await urlInput.pressSequentially("hitster://test");
+        await hostPage.getByRole("button", { name: /Load/i }).click();
+        await expect(hostPage.getByText(/已載入/i)).toBeVisible({ timeout: 5_000 });
+        await hostPage.getByRole("button", { name: /Start Game/i }).click();
 
         // ── Round 1: Alice's turn ─────────────────────────────────────────────
-        // Alice sees placement UI; Bob sees spectator banner
         await appendCard(p1Page);
         await expectSpectating(p2Page, "Alice");
 
-        // Host: 1 placement received — reveal enabled
         await expect(
-          hostPage.getByRole("button", { name: /1 placed/i }),
+          hostPage.getByRole("button", { name: /reveal/i }),
         ).toBeVisible({ timeout: 10_000 });
         await hostPage.getByRole("button", { name: /reveal/i }).click();
 
-        // Alice now has 2 cards; no winner yet
         await expect(
           hostPage.getByRole("button", { name: /next round/i }),
         ).toBeVisible({ timeout: 10_000 });
         await hostPage.getByRole("button", { name: /next round/i }).click();
 
         // ── Round 2: Bob's turn ───────────────────────────────────────────────
-        // Bob sees placement UI; Alice sees spectator banner
         await appendCard(p2Page);
         await expectSpectating(p1Page, "Bob");
 
         await expect(
-          hostPage.getByRole("button", { name: /1 placed/i }),
+          hostPage.getByRole("button", { name: /reveal/i }),
         ).toBeVisible({ timeout: 10_000 });
         await hostPage.getByRole("button", { name: /reveal/i }).click();
 
-        // Bob now has 2 cards; still no winner
         await expect(
           hostPage.getByRole("button", { name: /next round/i }),
         ).toBeVisible({ timeout: 10_000 });
@@ -117,19 +120,15 @@ test.describe("Two-player full game", () => {
         await expectSpectating(p2Page, "Alice");
 
         await expect(
-          hostPage.getByRole("button", { name: /1 placed/i }),
+          hostPage.getByRole("button", { name: /reveal/i }),
         ).toBeVisible({ timeout: 10_000 });
         await hostPage.getByRole("button", { name: /reveal/i }).click();
 
         // ── 4. Game over: Alice wins with 3 cards ─────────────────────────────
-        await expect(p1Page.getByText(/you won/i)).toBeVisible({ timeout: 10_000 });
-        await expect(
-          p2Page.getByRole("heading", { name: /winner.*alice/i }),
-        ).toBeVisible({ timeout: 10_000 });
-        await expect(hostPage.getByText(/winner!/i)).toBeVisible({ timeout: 10_000 });
-        await expect(
-          hostPage.getByRole("heading", { name: "Alice" }),
-        ).toBeVisible({ timeout: 10_000 });
+        await expect(p1Page.getByRole("heading", { name: "WINNER!" })).toBeVisible({ timeout: 10_000 });
+        await expect(p2Page.getByText(/Alice.*贏了/i)).toBeVisible({ timeout: 10_000 });
+        await expect(hostPage.getByText(/Winner!/i)).toBeVisible({ timeout: 10_000 });
+        await expect(hostPage.getByRole("heading", { name: "Alice" })).toBeVisible({ timeout: 10_000 });
       } finally {
         await hostCtx.close();
         await p1Ctx.close();

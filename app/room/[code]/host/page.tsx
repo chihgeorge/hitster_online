@@ -294,48 +294,63 @@ export default function HostPage() {
   const phase = state?.phase ?? "lobby";
   const playerCount = Object.keys(state?.players ?? {}).length;
 
+  const inp: React.CSSProperties = {
+    background: "#FFF0E8", border: "2px solid rgba(255,107,53,.2)", borderRadius: 14,
+    padding: "12px 16px", fontSize: 14, color: "#1A1A2E", outline: "none",
+    fontFamily: "var(--font-zh)",
+  };
+  const panel: React.CSSProperties = {
+    background: "white", borderRadius: 20, padding: 24,
+    boxShadow: "0 4px 24px rgba(255,107,53,.07), 0 1px 4px rgba(0,0,0,.04)",
+  };
+
   return (
-    <div className="min-h-screen flex flex-col gap-6 p-6 max-w-4xl mx-auto">
+    <div style={{ minHeight: "100vh", background: "#FFF9F5", display: "flex", flexDirection: "column", gap: 20, padding: 24, maxWidth: 960, margin: "0 auto" }}>
       {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <p className="text-xs uppercase tracking-widest text-gray-500">Room code</p>
-          <h1 className="text-4xl font-mono font-bold tracking-[0.3em] text-yellow-400">
-            {params.code}
-          </h1>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
+          <h1 className="title-outlined-sm" style={{ fontSize: 28, lineHeight: 1 }}>HITSTER!</h1>
+          <div style={{ background: "white", borderRadius: 16, padding: "10px 20px", boxShadow: "0 2px 12px rgba(255,107,53,.1)", border: "2px solid rgba(255,107,53,.15)" }}>
+            <p style={{ fontSize: 10, color: "#B0AFBC", fontWeight: 700, textTransform: "uppercase", letterSpacing: ".12em", marginBottom: 2 }}>
+              Room Code
+            </p>
+            <p style={{ fontFamily: "var(--font-mono)", fontSize: 26, letterSpacing: ".2em", color: "#FF6B35", fontWeight: 900, lineHeight: 1 }}>
+              {params.code}
+            </p>
+          </div>
         </div>
-        <div className="text-right text-sm text-gray-400 flex flex-col items-end gap-0.5">
+        <div style={{ textAlign: "right", fontSize: 13, display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 3 }}>
           {Object.values(state?.players ?? {}).length === 0 ? (
-            <span className="text-gray-600">No players yet</span>
+            <span style={{ color: "#B0AFBC" }}>No players yet</span>
           ) : (
             Object.values(state?.players ?? {}).map((p) => (
-              <span key={p.name}>{p.name}</span>
+              <span key={p.name} style={{ color: "#7B7B9A", fontWeight: 600 }}>{p.name}</span>
             ))
           )}
         </div>
       </div>
 
-      {/* Starting spinner (after Start Game is clicked) */}
+      {/* Starting spinner */}
       {phase === "lobby" && starting && (
-        <div className="flex flex-col items-center justify-center gap-4 py-16">
-          <div className="relative w-14 h-14">
-            <div className="absolute inset-0 rounded-full border-4 border-white/10" />
-            <div className="absolute inset-0 rounded-full border-4 border-yellow-400 border-t-transparent animate-spin" />
+        <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 16, padding: "64px 0" }}>
+          <div style={{ position: "relative", width: 56, height: 56 }}>
+            <div style={{ position: "absolute", inset: 0, borderRadius: "50%", border: "4px solid rgba(255,107,53,.15)" }} />
+            <div className="animate-spin" style={{ position: "absolute", inset: 0, borderRadius: "50%", border: "4px solid transparent", borderTopColor: "#FF6B35" }} />
           </div>
-          <p className="text-lg font-semibold text-white">Starting game…</p>
+          <p style={{ fontSize: 16, fontWeight: 700, color: "#1A1A2E" }}>Starting game…</p>
         </div>
       )}
 
       {/* Lobby setup */}
       {phase === "lobby" && !starting && (
         <>
-        <form onSubmit={handleStartGame} className="flex flex-col gap-5 bg-white/5 rounded-2xl p-6">
-          <h2 className="font-semibold text-lg">Set up the game</h2>
+        <form onSubmit={handleStartGame} style={{ ...panel, display: "flex", flexDirection: "column", gap: 18 }}>
+          <h2 style={{ fontWeight: 900, fontSize: 17, color: "#1A1A2E" }}>設定遊戲 · Set Up Game</h2>
 
           {/* URL input + Load button */}
-          <div>
-            <label className="text-sm text-gray-400 mb-1 block">YouTube playlist URL</label>
-            <div className="flex gap-2">
+          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+            <label style={{ fontSize: 12, fontWeight: 700, color: "#7B7B9A" }}>YouTube 播放清單 URL</label>
+            <div style={{ display: "flex", gap: 10 }}>
               <input
                 type="url"
                 placeholder="https://www.youtube.com/playlist?list=..."
@@ -343,7 +358,6 @@ export default function HostPage() {
                 onChange={(e) => {
                   setPlaylistUrl(e.target.value);
                   setError("");
-                  // Reset load state if URL changes after a load
                   if (loadStatus !== "idle") {
                     setLoadStatus("idle");
                     setDiagnostic(null);
@@ -351,76 +365,74 @@ export default function HostPage() {
                     setDiagnosticStatus(null);
                   }
                 }}
-                className="flex-1 rounded-xl bg-white/10 px-4 py-3 text-white placeholder-gray-500 outline-none focus:ring-2 focus:ring-yellow-400"
+                style={{ ...inp, flex: 1 }}
               />
               <button
                 type="button"
                 onClick={handleLoadPlaylist}
                 disabled={!playlistUrl.trim() || loadStatus === "loading"}
-                className="shrink-0 rounded-xl bg-white/10 px-5 py-3 font-semibold text-white hover:bg-white/20 transition-colors disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-2"
+                style={{
+                  flexShrink: 0, background: "#FF6B35", color: "white", border: "none", borderRadius: 14,
+                  padding: "12px 20px", fontSize: 14, fontWeight: 900, cursor: "pointer",
+                  fontFamily: "var(--font-zh)", opacity: (!playlistUrl.trim() || loadStatus === "loading") ? 0.45 : 1,
+                  display: "flex", alignItems: "center", gap: 8, alignSelf: "stretch", boxSizing: "border-box",
+                }}
               >
                 {loadStatus === "loading" ? (
                   <>
-                    <span className="inline-block w-4 h-4 rounded-full border-2 border-white/30 border-t-white animate-spin" />
-                    Loading…
+                    <span className="animate-spin" style={{ display: "inline-block", width: 14, height: 14, borderRadius: "50%", border: "2px solid rgba(255,255,255,.3)", borderTopColor: "white" }} />
+                    載入中…
                   </>
-                ) : "Load"}
+                ) : "載入 Load"}
               </button>
             </div>
           </div>
 
           {/* Loading progress */}
           {loadStatus === "loading" && (
-            <div className="flex flex-col gap-3">
-              <div className="rounded-xl border border-white/10 bg-white/5 px-4 py-3 flex flex-col gap-2">
-                <div className="flex items-center justify-between text-sm">
-                  <span className="text-gray-300 font-medium">Looking up release years…</span>
+            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+              <div style={{ background: "#FFF0E8", borderRadius: 14, border: "2px solid rgba(255,107,53,.15)", padding: "14px 16px", display: "flex", flexDirection: "column", gap: 8 }}>
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", fontSize: 13 }}>
+                  <span style={{ fontWeight: 700, color: "#1A1A2E" }}>查找發行年份中…</span>
                   {diagnostic && (
-                    <span className="text-gray-500">
-                      <span className="text-yellow-400 font-semibold">{diagnostic.filter((s) => s.year !== null).length}</span>
-                      {" / "}{diagnostic.length} resolved
+                    <span style={{ color: "#B0AFBC" }}>
+                      <span style={{ color: "#FF6B35", fontWeight: 900 }}>{diagnostic.filter((s) => s.year !== null).length}</span>
+                      {" / "}{diagnostic.length}
                     </span>
                   )}
                 </div>
                 {diagnostic && (
-                  <div className="w-full bg-white/10 rounded-full h-1.5 overflow-hidden">
-                    <div
-                      className="h-full bg-yellow-400 rounded-full transition-all duration-500"
-                      style={{ width: `${Math.round((diagnostic.filter((s) => s.year !== null).length / Math.max(diagnostic.length, 1)) * 100)}%` }}
-                    />
+                  <div style={{ width: "100%", background: "rgba(255,107,53,.12)", borderRadius: 99, height: 6, overflow: "hidden" }}>
+                    <div style={{
+                      height: "100%", background: "#FF6B35", borderRadius: 99, transition: "width .5s",
+                      width: `${Math.round((diagnostic.filter((s) => s.year !== null).length / Math.max(diagnostic.length, 1)) * 100)}%`,
+                    }} />
                   </div>
                 )}
               </div>
               {showContinuePrompt && (() => {
                 const resolvedCount = diagnostic?.filter((s) => s.year !== null).length ?? 0;
                 return (
-                  <div className="rounded-xl border border-yellow-400/40 bg-yellow-400/10 px-4 py-4 flex flex-col gap-3">
-                    <p className="text-yellow-300 text-sm font-semibold">Still searching for years…</p>
-                    <p className="text-gray-300 text-xs">
-                      Found <span className="text-yellow-400 font-semibold">{resolvedCount}</span> songs so far. Keep searching for more, or play now with what&apos;s been found?
+                  <div style={{ background: "#FFF0E8", border: "2px solid rgba(255,107,53,.35)", borderRadius: 14, padding: "16px", display: "flex", flexDirection: "column", gap: 10 }}>
+                    <p style={{ fontWeight: 900, fontSize: 13, color: "#E85520" }}>仍在搜索年份中… Still searching</p>
+                    <p style={{ fontSize: 12, color: "#7B7B9A" }}>
+                      已找到 <span style={{ color: "#FF6B35", fontWeight: 900 }}>{resolvedCount}</span> 首歌曲。繼續搜索或立即開始？
                     </p>
-                    <div className="flex gap-2">
+                    <div style={{ display: "flex", gap: 8 }}>
                       <button
                         type="button"
-                        onClick={() => {
-                          setShowContinuePrompt(false);
-                          nextPromptAtRef.current = Date.now() + 5 * 60 * 1000;
-                        }}
-                        className="flex-1 rounded-lg bg-white/10 py-2 text-sm font-medium text-white hover:bg-white/20 transition-colors"
+                        onClick={() => { setShowContinuePrompt(false); nextPromptAtRef.current = Date.now() + 5 * 60 * 1000; }}
+                        style={{ flex: 1, background: "#FFF0E8", border: "2px solid rgba(255,107,53,.2)", borderRadius: 10, padding: "10px", fontSize: 13, fontWeight: 700, color: "#1A1A2E", cursor: "pointer", fontFamily: "var(--font-zh)" }}
                       >
-                        Keep searching
+                        繼續搜索
                       </button>
                       <button
                         type="button"
                         disabled={resolvedCount < 2}
-                        onClick={() => {
-                          setShowContinuePrompt(false);
-                          pendingStartAfterAbortRef.current = true;
-                          send({ type: "ABORT_LOAD", hostId: hostIdRef.current });
-                        }}
-                        className="flex-1 rounded-lg bg-yellow-400 py-2 text-sm font-bold text-black hover:bg-yellow-300 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                        onClick={() => { setShowContinuePrompt(false); pendingStartAfterAbortRef.current = true; send({ type: "ABORT_LOAD", hostId: hostIdRef.current }); }}
+                        style={{ flex: 1, background: resolvedCount < 2 ? "rgba(255,107,53,.35)" : "#FF6B35", border: "none", borderRadius: 10, padding: "10px", fontSize: 13, fontWeight: 900, color: "white", cursor: resolvedCount < 2 ? "not-allowed" : "pointer", fontFamily: "var(--font-zh)" }}
                       >
-                        Play now ({resolvedCount})
+                        立即開始 ({resolvedCount})
                       </button>
                     </div>
                   </div>
@@ -431,218 +443,149 @@ export default function HostPage() {
 
           {/* Ready state */}
           {loadStatus === "ready" && (
-            <div className="rounded-xl border border-green-500/30 bg-green-500/10 px-4 py-3 flex flex-col gap-3">
-              <div className="flex items-center justify-between gap-2">
-                <div className="flex items-center gap-2">
-                  <span className="text-green-400 text-lg">✓</span>
-                  <p className="text-green-400 font-semibold text-sm">
-                    Playlist loaded — {readySongCount} songs with known years
+            <div style={{ background: "rgba(0,200,150,.06)", border: "2px solid rgba(0,200,150,.25)", borderRadius: 14, padding: "14px 16px", display: "flex", flexDirection: "column", gap: 10 }}>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <span style={{ color: "#00C896", fontSize: 16 }}>✓</span>
+                  <p style={{ color: "#00C896", fontWeight: 700, fontSize: 13 }}>
+                    已載入 — {readySongCount} 首歌曲有確認年份
                   </p>
                 </div>
                 {savedId ? (
-                  <div className="flex items-center gap-2 shrink-0">
-                    <span className="text-xs text-green-400">Saved ✓</span>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        void navigator.clipboard.writeText(savedId);
-                        setCopied(true);
-                        setTimeout(() => setCopied(false), 2000);
-                      }}
-                      className="text-xs text-gray-400 hover:text-white transition-colors font-mono"
-                      title={savedId}
-                    >
-                      {copied ? "Copied!" : "Copy ID"}
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
+                    <span style={{ fontSize: 11, color: "#00C896" }}>已儲存 ✓</span>
+                    <button type="button" onClick={() => { void navigator.clipboard.writeText(savedId); setCopied(true); setTimeout(() => setCopied(false), 2000); }}
+                      style={{ fontSize: 11, color: "#7B7B9A", background: "none", border: "none", cursor: "pointer", fontFamily: "var(--font-mono)" }} title={savedId}>
+                      {copied ? "已複製!" : "複製 ID"}
                     </button>
                   </div>
                 ) : (
-                  <button
-                    type="button"
-                    onClick={() => setShowSavePanel((v) => !v)}
-                    className="text-xs text-gray-400 hover:text-white transition-colors shrink-0"
-                  >
-                    Save playlist
+                  <button type="button" onClick={() => setShowSavePanel((v) => !v)}
+                    style={{ fontSize: 11, color: "#7B7B9A", background: "none", border: "none", cursor: "pointer", flexShrink: 0 }}>
+                    儲存播放清單
                   </button>
                 )}
               </div>
               {skippedEmbeddingCount > 0 && (
-                <div className="flex items-start gap-2 text-xs text-orange-300/80">
-                  <span className="text-orange-400 mt-0.5">⚠</span>
-                  <span>
-                    {skippedEmbeddingCount} video{skippedEmbeddingCount === 1 ? "" : "s"} skipped — embedding disabled by the uploader. These songs won&apos;t play in the game.
-                  </span>
+                <div style={{ display: "flex", alignItems: "flex-start", gap: 6, fontSize: 12, color: "#E85520" }}>
+                  <span style={{ marginTop: 1 }}>⚠</span>
+                  <span>{skippedEmbeddingCount} 個影片已跳過 — 上傳者停用了嵌入功能，這些歌曲無法播放。</span>
                 </div>
               )}
               {diagnosticStatus && (diagnosticStatus.spotifyRateLimited || diagnosticStatus.kgBlocked) && (
-                <div className="flex flex-col gap-2">
+                <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
                   {diagnosticStatus.spotifyRateLimited && (
-                    <div className="flex items-start gap-2 text-xs text-yellow-300/80">
-                      <span className="text-yellow-400 mt-0.5">⚠</span>
-                      <span>Spotify rate-limited — some years may be missing. Try again in a minute for better coverage.</span>
+                    <div style={{ display: "flex", alignItems: "flex-start", gap: 6, fontSize: 12, color: "#E85520" }}>
+                      <span>⚠</span><span>Spotify 請求過於頻繁 — 部分年份可能遺失，請稍後再試。</span>
                     </div>
                   )}
                   {diagnosticStatus.kgBlocked && (
-                    <div className="flex items-start gap-2 text-xs text-orange-300/80">
-                      <span className="text-orange-400 mt-0.5">⚠</span>
-                      <span>Google Knowledge Graph not enabled — enable it in Google Cloud Console for better coverage.</span>
+                    <div style={{ display: "flex", alignItems: "flex-start", gap: 6, fontSize: 12, color: "#E85520" }}>
+                      <span>⚠</span><span>Google Knowledge Graph 未啟用 — 請在 Google Cloud Console 中啟用以獲得更好的覆蓋率。</span>
                     </div>
                   )}
                 </div>
               )}
-              {/* Save panel */}
               {showSavePanel && (
-                <div className="flex flex-col gap-1.5 pt-1">
-                  <div className="flex gap-2">
-                    <input
-                      type="text"
-                      placeholder="Playlist name"
-                      value={savePlaylistName}
+                <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                  <div style={{ display: "flex", gap: 8 }}>
+                    <input type="text" placeholder="播放清單名稱" value={savePlaylistName}
                       onChange={(e) => { setSavePlaylistName(e.target.value); setSaveError(""); }}
                       onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); void handleSavePlaylist(); } }}
-                      className="flex-1 rounded-lg bg-white/10 px-3 py-2 text-sm text-white placeholder-gray-500 outline-none focus:ring-2 focus:ring-yellow-400"
-                    />
-                    <button
-                      type="button"
-                      disabled={!savePlaylistName.trim() || saving}
-                      onClick={() => void handleSavePlaylist()}
-                      className="shrink-0 rounded-lg bg-yellow-400 px-4 py-2 text-sm font-bold text-black hover:bg-yellow-300 transition-colors disabled:opacity-40"
-                    >
-                      {saving ? "Saving…" : `Save ${readySongs.length > 0 ? `(${readySongs.length})` : ""}`}
+                      style={{ ...inp, flex: 1, padding: "10px 14px", fontSize: 13 }} />
+                    <button type="button" disabled={!savePlaylistName.trim() || saving} onClick={() => void handleSavePlaylist()}
+                      style={{ flexShrink: 0, background: "#FF6B35", color: "white", border: "none", borderRadius: 10, padding: "10px 16px", fontSize: 13, fontWeight: 900, cursor: "pointer", fontFamily: "var(--font-zh)", opacity: (!savePlaylistName.trim() || saving) ? 0.45 : 1, alignSelf: "stretch", display: "flex", alignItems: "center" }}>
+                      {saving ? "儲存中…" : `儲存 ${readySongs.length > 0 ? `(${readySongs.length})` : ""}`}
                     </button>
                   </div>
-                  {saveError && (
-                    <p className="text-xs text-red-400">{saveError}</p>
-                  )}
+                  {saveError && <p style={{ fontSize: 12, color: "#FF3B5C" }}>{saveError}</p>}
                 </div>
               )}
-              {/* Edit playlist */}
               {readySongs.length > 0 && (
-                <button
-                  type="button"
-                  onClick={() => setShowEditor((v) => !v)}
-                  className="w-full rounded-lg bg-white/10 px-4 py-2 text-sm font-medium text-white hover:bg-white/20 transition-colors text-left"
-                >
-                  {showEditor ? "▲ Hide song editor" : "✎ Edit song metadata"}
+                <button type="button" onClick={() => setShowEditor((v) => !v)}
+                  style={{ background: "#FFF0E8", border: "2px solid rgba(255,107,53,.2)", borderRadius: 10, padding: "10px 14px", fontSize: 13, fontWeight: 700, color: "#1A1A2E", cursor: "pointer", textAlign: "left", fontFamily: "var(--font-zh)" }}>
+                  {showEditor ? "▲ 隱藏歌曲編輯器" : "✎ 編輯歌曲資訊"}
                 </button>
               )}
               {showEditor && readySongs.length > 0 && (
-                <PlaylistEditor
-                  playlistId={savedId}
-                  songs={readySongs}
-                  hostId={hostIdRef.current}
-                  partyKitHost={PARTYKIT_HOST}
-                  onSongsChange={setReadySongs}
-                />
+                <PlaylistEditor playlistId={savedId} songs={readySongs} hostId={hostIdRef.current} partyKitHost={PARTYKIT_HOST} onSongsChange={setReadySongs} />
               )}
             </div>
           )}
 
           {/* Error from load */}
           {loadStatus === "error" && error && (
-            <div className="flex flex-col gap-2">
+            <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
               <ErrorBanner code={error} />
-              <p className="text-xs text-gray-500">Fix the URL above and click <strong className="text-white">Load</strong> again.</p>
+              <p style={{ fontSize: 12, color: "#B0AFBC" }}>修正上方 URL 後再次點擊<strong style={{ color: "#1A1A2E" }}>「載入」</strong>。</p>
             </div>
           )}
 
-          {/* Card count slider — only shown after URL is loaded or idle */}
+          {/* Card count slider */}
           {loadStatus !== "loading" && (
-            <div>
-              <label className="text-sm text-gray-400 mb-1 block">
-                Cards to win: <span className="text-yellow-400 font-bold">{targetCount}</span>
+            <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+              <label style={{ fontSize: 12, fontWeight: 700, color: "#7B7B9A" }}>
+                勝利所需卡牌數：<span style={{ color: "#FF6B35", fontWeight: 900 }}>{targetCount}</span>
               </label>
-              <input
-                type="range"
-                min={5}
-                max={20}
-                value={targetCount}
-                onChange={(e) => setTargetCount(Number(e.target.value))}
-                className="w-full"
-              />
+              <input type="range" min={5} max={20} value={targetCount}
+                onChange={(e) => setTargetCount(Number(e.target.value))} className="w-full" />
             </div>
           )}
 
-          {/* Start Game — only enabled when playlist is ready and players are in */}
+          {/* Start Game */}
           {loadStatus === "ready" && (
-            <button
-              type="submit"
-              disabled={playerCount === 0}
-              className="rounded-xl bg-yellow-400 py-3 font-bold text-black hover:bg-yellow-300 transition-colors disabled:opacity-50"
-            >
-              Start Game
+            <button type="submit" disabled={playerCount === 0}
+              style={{ background: playerCount === 0 ? "rgba(255,107,53,.35)" : "#FF6B35", color: "white", border: "none", borderRadius: 14, padding: "15px", fontSize: 16, fontWeight: 900, cursor: playerCount === 0 ? "not-allowed" : "pointer", fontFamily: "var(--font-zh)", boxShadow: playerCount > 0 ? "0 4px 16px rgba(255,107,53,.3)" : "none" }}>
+              🎮 開始遊戲 · Start Game
             </button>
           )}
 
           {playerCount === 0 && (
-            <p className="text-xs text-gray-500 text-center">
-              Share code <span className="font-mono text-yellow-400">{params.code}</span> — waiting for players to join
+            <p style={{ fontSize: 12, color: "#B0AFBC", textAlign: "center" }}>
+              分享代碼 <span style={{ fontFamily: "var(--font-mono)", color: "#FF6B35", fontWeight: 900 }}>{params.code}</span> — 等待玩家加入
             </p>
           )}
         </form>
 
-        {/* Saved playlists panel — always visible so hosts can load by ID from any device */}
-        <div className="flex flex-col gap-3 bg-white/5 rounded-2xl p-5">
-          <h3 className="font-semibold text-sm text-gray-300">Saved playlists</h3>
-
-          {/* Load by ID */}
-          <div className="flex gap-2">
-            <input
-              type="text"
-              placeholder="Paste playlist ID to load from any device…"
+        {/* Saved playlists panel */}
+        <div style={{ ...panel, display: "flex", flexDirection: "column", gap: 14 }}>
+          <h3 style={{ fontWeight: 900, fontSize: 14, color: "#1A1A2E" }}>已儲存的播放清單 · Saved Playlists</h3>
+          <div style={{ display: "flex", gap: 10 }}>
+            <input type="text" placeholder="貼上播放清單 ID 以從任何裝置載入…"
               value={loadById}
               onChange={(e) => setLoadById(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" && loadById.trim()) {
-                  e.preventDefault();
-                  void handleLoadSavedPlaylist(loadById.trim());
-                  setLoadById("");
-                }
-              }}
-              className="flex-1 rounded-xl bg-white/10 px-4 py-2 text-sm text-white placeholder-gray-500 outline-none focus:ring-2 focus:ring-yellow-400 font-mono"
-            />
-            <button
-              type="button"
-              disabled={!loadById.trim() || loadStatus === "loading"}
+              onKeyDown={(e) => { if (e.key === "Enter" && loadById.trim()) { e.preventDefault(); void handleLoadSavedPlaylist(loadById.trim()); setLoadById(""); } }}
+              style={{ ...inp, flex: 1, fontFamily: "var(--font-mono)", fontSize: 13, padding: "10px 14px" }} />
+            <button type="button" disabled={!loadById.trim() || loadStatus === "loading"}
               onClick={() => { void handleLoadSavedPlaylist(loadById.trim()); setLoadById(""); }}
-              className="shrink-0 rounded-xl bg-white/10 px-4 py-2 text-sm font-semibold text-white hover:bg-white/20 transition-colors disabled:opacity-40"
-            >
-              Load
+              style={{ flexShrink: 0, background: "#FF6B35", color: "white", border: "none", borderRadius: 14, padding: "10px 18px", fontSize: 13, fontWeight: 900, cursor: "pointer", fontFamily: "var(--font-zh)", opacity: (!loadById.trim() || loadStatus === "loading") ? 0.45 : 1, alignSelf: "stretch", display: "flex", alignItems: "center" }}>
+              載入
             </button>
           </div>
-
-          {/* localStorage index */}
           {savedPlaylists.length > 0 && (
-            <div className="flex flex-col gap-2">
+            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
               {savedPlaylists.map((p) => (
-                <div key={p.id} className="flex items-center justify-between gap-3 rounded-xl border border-white/10 px-4 py-3">
-                  <div className="min-w-0">
-                    <p className="text-sm font-medium text-white">{p.name}</p>
-                    <p className="text-xs text-gray-500 font-mono truncate">{p.id}</p>
+                <div key={p.id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, background: "#FFF9F5", border: "2px solid rgba(255,107,53,.12)", borderRadius: 14, padding: "12px 14px" }}>
+                  <div style={{ minWidth: 0 }}>
+                    <p style={{ fontWeight: 700, fontSize: 14, color: "#1A1A2E" }}>{p.name}</p>
+                    <p style={{ fontSize: 10, color: "#B0AFBC", fontFamily: "var(--font-mono)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{p.id}</p>
                   </div>
-                  <div className="flex gap-2 shrink-0">
-                    <button
-                      type="button"
-                      disabled={loadStatus === "loading"}
-                      onClick={() => void handleLoadSavedPlaylist(p.id)}
-                      className="rounded-lg bg-yellow-400/20 px-3 py-1.5 text-xs font-semibold text-yellow-300 hover:bg-yellow-400/30 transition-colors disabled:opacity-40"
-                    >
-                      Load
+                  <div style={{ display: "flex", gap: 8, flexShrink: 0 }}>
+                    <button type="button" disabled={loadStatus === "loading"} onClick={() => void handleLoadSavedPlaylist(p.id)}
+                      style={{ background: "rgba(255,107,53,.12)", border: "none", borderRadius: 10, padding: "7px 14px", fontSize: 12, fontWeight: 900, color: "#FF6B35", cursor: "pointer", opacity: loadStatus === "loading" ? 0.45 : 1 }}>
+                      載入
                     </button>
-                    <button
-                      type="button"
-                      onClick={() => void handleDeleteSavedPlaylist(p.id)}
-                      className="rounded-lg bg-white/5 px-3 py-1.5 text-xs text-gray-500 hover:text-red-400 hover:bg-white/10 transition-colors"
-                    >
-                      Delete
+                    <button type="button" onClick={() => void handleDeleteSavedPlaylist(p.id)}
+                      style={{ background: "#FFF0E8", border: "none", borderRadius: 10, padding: "7px 12px", fontSize: 12, color: "#B0AFBC", cursor: "pointer" }}>
+                      ✕
                     </button>
                   </div>
                 </div>
               ))}
             </div>
           )}
-
           {savedPlaylists.length === 0 && (
-            <p className="text-xs text-gray-500">No saved playlists on this device yet. Load a playlist, then click &ldquo;Save playlist&rdquo; to store it.</p>
+            <p style={{ fontSize: 12, color: "#B0AFBC" }}>此裝置尚無儲存的播放清單。載入後點擊「儲存播放清單」即可儲存。</p>
           )}
         </div>
         </>
@@ -650,7 +593,7 @@ export default function HostPage() {
 
       {/* Game in progress */}
       {(phase === "guessing" || phase === "reveal") && (
-        <div className="grid grid-cols-1 gap-6 lg:grid-cols-[1fr_480px]">
+        <div style={{ ...panel, display: "grid", gridTemplateColumns: "1fr", gap: 24 }} className="lg:grid-cols-[1fr_480px]">
           <MusicPlayer
             currentSong={state?.currentSong ?? null}
             phase={phase}
@@ -659,8 +602,8 @@ export default function HostPage() {
             onNextRound={handleNextRound}
           />
           <div>
-            <p className="text-xs uppercase tracking-widest text-gray-500 mb-3">
-              Round {state?.currentRound}
+            <p style={{ fontSize: 11, color: "#B0AFBC", textTransform: "uppercase", letterSpacing: ".1em", marginBottom: 12 }}>
+              第 {state?.currentRound} 回合 · Round
             </p>
             <PlayerList
               players={state?.players ?? {}}
@@ -675,46 +618,35 @@ export default function HostPage() {
 
       {/* Game ended */}
       {phase === "ended" && state && (
-        <div className="flex flex-col items-center gap-6 py-12">
-          <p className="text-gray-400 uppercase tracking-widest text-sm">Winner!</p>
-          <h2 className="text-4xl font-bold text-yellow-400">
+        <div style={{ ...panel, display: "flex", flexDirection: "column", alignItems: "center", gap: 20, padding: "48px 24px" }}>
+          <p style={{ fontSize: 11, color: "#B0AFBC", textTransform: "uppercase", letterSpacing: ".12em" }}>遊戲結束 · Winner!</p>
+          <h2 className="title-outlined" style={{ fontSize: 40, lineHeight: 1.05 }}>
             {state.players[state.winner ?? ""]?.name ?? "Unknown"}
           </h2>
-          <div className="w-full">
-            <PlayerList
-              players={state.players}
-              placements={{}}
-              targetCardCount={state.targetCardCount}
-              activePlayerId={null}
-            />
+          <div style={{ width: "100%" }}>
+            <PlayerList players={state.players} placements={{}} targetCardCount={state.targetCardCount} activePlayerId={null} />
           </div>
-          <button
-            onClick={handleResetGame}
-            className="rounded-xl bg-white/10 px-8 py-3 font-semibold hover:bg-white/20 transition-colors"
-          >
-            Play again
+          <button onClick={handleResetGame}
+            style={{ background: "#FF6B35", color: "white", border: "none", borderRadius: 14, padding: "14px 32px", fontSize: 15, fontWeight: 900, cursor: "pointer", fontFamily: "var(--font-zh)" }}>
+            再玩一次 · Play Again
           </button>
         </div>
       )}
 
-      {/* Persistent song metadata panel */}
+      {/* Song metadata panel */}
       {diagnostic && phase !== "lobby" && (
-        <div className="border border-white/10 rounded-2xl overflow-hidden">
-          <button
-            onClick={() => setShowDiagnostic((v) => !v)}
-            className="w-full flex items-center justify-between px-5 py-3 text-sm text-gray-400 hover:bg-white/5 transition-colors"
-          >
+        <div style={{ background: "white", border: "2px solid rgba(255,107,53,.12)", borderRadius: 20, overflow: "hidden" }}>
+          <button onClick={() => setShowDiagnostic((v) => !v)}
+            style={{ width: "100%", display: "flex", alignItems: "center", justifyContent: "space-between", padding: "14px 20px", fontSize: 13, color: "#7B7B9A", background: "none", border: "none", cursor: "pointer" }}>
             <span>
-              Song metadata{" "}
-              <span className="text-yellow-400 font-semibold">
-                {diagnostic.filter((s) => s.year !== null).length}
-              </span>
-              <span className="text-gray-500">/{diagnostic.length} years resolved</span>
+              歌曲資料 ·{" "}
+              <span style={{ color: "#FF6B35", fontWeight: 900 }}>{diagnostic.filter((s) => s.year !== null).length}</span>
+              <span style={{ color: "#B0AFBC" }}>/{diagnostic.length} 年份已解析</span>
             </span>
-            <span className="text-gray-500 text-xs">{showDiagnostic ? "▲ hide" : "▼ show"}</span>
+            <span style={{ fontSize: 11, color: "#B0AFBC" }}>{showDiagnostic ? "▲ 收起" : "▼ 展開"}</span>
           </button>
           {showDiagnostic && (
-            <div className="px-5 pb-5">
+            <div style={{ padding: "0 20px 20px" }}>
               <DiagnosticTable songs={diagnostic} />
             </div>
           )}
@@ -728,46 +660,39 @@ function DiagnosticTable({ songs, compact, hideYears }: { songs: SongDiagnostic[
   const resolved = songs.filter((s) => s.year !== null).length;
   const total = songs.length;
   return (
-    <div className="flex flex-col gap-2">
+    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
       {!compact && (
-        <p className="text-xs text-gray-400">
-          Resolved <span className="text-yellow-400 font-semibold">{resolved}</span> of{" "}
-          <span className="font-semibold">{total}</span> songs
+        <p style={{ fontSize: 12, color: "#7B7B9A" }}>
+          已解析 <span style={{ color: "#FF6B35", fontWeight: 900 }}>{resolved}</span> / <span style={{ fontWeight: 700, color: "#1A1A2E" }}>{total}</span> 首
         </p>
       )}
-      <div className="overflow-x-auto rounded-xl border border-white/10">
-        <table className="w-full text-xs">
+      <div style={{ overflowX: "auto", borderRadius: 14, border: "2px solid rgba(255,107,53,.1)" }}>
+        <table style={{ width: "100%", fontSize: 12, borderCollapse: "collapse" }}>
           <thead>
-            <tr className="text-left text-gray-500 border-b border-white/10">
-              <th className="px-3 py-2 font-medium">Title</th>
-              <th className="px-3 py-2 font-medium">Artist</th>
-              {!hideYears && <th className="px-3 py-2 font-medium">Year</th>}
-              <th className="px-3 py-2 font-medium">Source</th>
+            <tr style={{ textAlign: "left", borderBottom: "2px solid rgba(255,107,53,.1)" }}>
+              <th style={{ padding: "8px 12px", fontWeight: 700, color: "#B0AFBC" }}>Title</th>
+              <th style={{ padding: "8px 12px", fontWeight: 700, color: "#B0AFBC" }}>Artist</th>
+              {!hideYears && <th style={{ padding: "8px 12px", fontWeight: 700, color: "#B0AFBC" }}>Year</th>}
+              <th style={{ padding: "8px 12px", fontWeight: 700, color: "#B0AFBC" }}>Source</th>
             </tr>
           </thead>
           <tbody>
             {songs.map((s, i) => (
-              <tr key={i} className={`border-b border-white/5 last:border-0 ${s.year ? "" : "opacity-40"}`}>
-                <td className="px-3 py-2 max-w-[200px] truncate text-white/80" title={s.title}>
-                  {s.title}
-                </td>
-                <td className="px-3 py-2 max-w-[120px] truncate text-white/60" title={s.artist}>
-                  {s.artist}
-                </td>
+              <tr key={i} style={{ borderBottom: "1px solid rgba(255,107,53,.06)", opacity: s.year ? 1 : 0.4 }}>
+                <td style={{ padding: "7px 12px", maxWidth: 200, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: "#1A1A2E" }} title={s.title}>{s.title}</td>
+                <td style={{ padding: "7px 12px", maxWidth: 120, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: "#7B7B9A" }} title={s.artist}>{s.artist}</td>
                 {!hideYears && (
-                  <td className="px-3 py-2 font-mono text-yellow-400">
-                    {s.year ?? "—"}
-                  </td>
+                  <td style={{ padding: "7px 12px", fontFamily: "var(--font-mono)", color: "#FF6B35", fontWeight: 700 }}>{s.year ?? "—"}</td>
                 )}
-                <td className="px-3 py-2">
-                  {s.yearSource === "description" && <span className="text-green-400">YouTube</span>}
-                  {s.yearSource === "title" && <span className="text-blue-400">title</span>}
-                  {s.yearSource === "ytmusic" && <span className="text-red-400">YT Music</span>}
-                  {s.yearSource === "spotify" && <span className="text-purple-400">Spotify</span>}
-                  {s.yearSource === "itunes" && <span className="text-pink-400">iTunes</span>}
-                  {s.yearSource === "google" && <span className="text-sky-400">Google</span>}
-                  {s.yearSource === "ai" && <span className="text-violet-400">AI</span>}
-                  {s.yearSource === null && <span className="text-gray-500">not found</span>}
+                <td style={{ padding: "7px 12px" }}>
+                  {s.yearSource === "description" && <span style={{ color: "#00C896" }}>YouTube</span>}
+                  {s.yearSource === "title" && <span style={{ color: "#5B8DEF" }}>title</span>}
+                  {s.yearSource === "ytmusic" && <span style={{ color: "#FF3B5C" }}>YT Music</span>}
+                  {s.yearSource === "spotify" && <span style={{ color: "#8B5CF6" }}>Spotify</span>}
+                  {s.yearSource === "itunes" && <span style={{ color: "#EC4899" }}>iTunes</span>}
+                  {s.yearSource === "google" && <span style={{ color: "#0EA5E9" }}>Google</span>}
+                  {s.yearSource === "ai" && <span style={{ color: "#7C3AED" }}>AI</span>}
+                  {s.yearSource === null && <span style={{ color: "#B0AFBC" }}>not found</span>}
                 </td>
               </tr>
             ))}
@@ -781,12 +706,12 @@ function DiagnosticTable({ songs, compact, hideYears }: { songs: SongDiagnostic[
 function ErrorBanner({ code }: { code: string }) {
   const info = errorInfo(code);
   return (
-    <div className="rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 flex flex-col gap-1">
-      <p className="text-red-400 text-sm font-semibold">{info.message}</p>
-      {info.detail && <p className="text-red-300/70 text-xs">{info.detail}</p>}
+    <div style={{ background: "rgba(255,59,92,.06)", border: "2px solid rgba(255,59,92,.25)", borderRadius: 14, padding: "14px 16px", display: "flex", flexDirection: "column", gap: 4 }}>
+      <p style={{ color: "#FF3B5C", fontSize: 14, fontWeight: 700 }}>{info.message}</p>
+      {info.detail && <p style={{ color: "#E85520", fontSize: 12 }}>{info.detail}</p>}
       {info.hint && (
-        <p className="text-gray-400 text-xs mt-1">
-          <span className="text-yellow-400">Hint:</span> {info.hint}
+        <p style={{ fontSize: 12, color: "#7B7B9A", marginTop: 2 }}>
+          <span style={{ color: "#FF6B35", fontWeight: 700 }}>提示：</span> {info.hint}
         </p>
       )}
     </div>

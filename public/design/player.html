@@ -1,0 +1,570 @@
+<title>HITSTER — 玩家</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;700;900&family=DM+Mono:wght@400;500&display=swap">
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%;overflow:hidden}
+body{font-family:'Noto Sans TC',system-ui,sans-serif;background:#0F0C1A;display:flex;align-items:center;justify-content:center;-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility}
+
+/* ── PHONE SHELL ── */
+.shell{width:390px;height:844px;background:#0F0C1A;border-radius:54px;padding:12px;
+  box-shadow:inset 0 0 0 1.5px rgba(255,255,255,.1),
+             0 0 0 1px rgba(0,0,0,.6),
+             0 40px 100px rgba(0,0,0,.7),
+             0 8px 24px rgba(0,0,0,.5);
+  position:relative;flex-shrink:0}
+/* side buttons */
+.shell::before{content:'';position:absolute;left:-3px;top:120px;width:3px;height:40px;background:#1A1628;border-radius:3px 0 0 3px}
+.shell::after{content:'';position:absolute;right:-3px;top:160px;width:3px;height:70px;background:#1A1628;border-radius:0 3px 3px 0}
+.screen{width:100%;height:100%;border-radius:44px;overflow:hidden;position:relative;background:#FFF9F5;display:flex;flex-direction:column}
+
+/* ── STATUS BAR ── */
+.sbar{height:50px;display:flex;align-items:flex-end;padding:0 24px 10px;justify-content:space-between;flex-shrink:0;z-index:20;position:relative}
+.sbar-t{font-family:'DM Mono',monospace;font-size:14px;font-weight:500;color:#1A1A2E}
+.sbar-icons{display:flex;align-items:center;gap:5px;font-size:11px;color:#7B7B9A}
+/* Dynamic island */
+.island{position:absolute;top:14px;left:50%;transform:translateX(-50%);width:120px;height:34px;
+  background:#0F0C1A;border-radius:20px;z-index:30;display:flex;align-items:center;justify-content:center;gap:6px}
+.isl-dot{width:10px;height:10px;border-radius:50%;background:#1A1A2E}
+.isl-dot.green{background:#00C896;box-shadow:0 0 6px rgba(0,200,150,.5)}
+
+/* ── PAGES ── */
+.page{position:absolute;inset:0;display:flex;flex-direction:column;transition:opacity .3s,transform .3s;opacity:0;pointer-events:none;transform:translateY(12px)}
+.page.active{opacity:1;pointer-events:all;transform:translateY(0)}
+
+/* ── PAGE: LOBBY ── */
+#pg-lobby{background:#FFF9F5}
+.lobby-body{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:0 28px;gap:16px;position:relative;overflow:hidden}
+/* orange arc bg */
+.lobby-body::before{content:'';position:absolute;bottom:-120px;left:50%;transform:translateX(-50%);width:500px;height:500px;border-radius:50%;background:radial-gradient(circle at center,rgba(255,107,53,.08),transparent 65%);pointer-events:none}
+.vinyl-lg{width:160px;height:160px;border-radius:50%;flex-shrink:0;position:relative;
+  background:radial-gradient(circle,#FF6B35 0%,#E85520 34%,#1A1A2E 36%,#1A1A2E 42%,#E85520 44%,#1A1A2E 46%,#1A1A2E 56%,#E85520 58%,#1A1A2E 60%,#1A1A2E 100%);
+  box-shadow:0 12px 48px rgba(255,107,53,.4),0 4px 12px rgba(0,0,0,.2);
+  animation:spin 9s linear infinite}
+.vinyl-lg::after{content:'';position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);
+  width:32px;height:32px;border-radius:50%;background:#FFF9F5;box-shadow:0 0 0 8px rgba(255,107,53,.18)}
+@keyframes spin{to{transform:rotate(360deg)}}
+.sp{position:absolute;animation:sparkle 2.2s ease-in-out infinite alternate;pointer-events:none}
+@keyframes sparkle{from{opacity:.3;transform:scale(.7) rotate(-10deg)}to{opacity:1;transform:scale(1.15) rotate(10deg)}}
+.lobby-ttl{font-family:'Nunito',sans-serif;font-size:52px;font-weight:900;color:#FF6B35;text-align:center;line-height:1.1;letter-spacing:-.5px;
+  -webkit-text-stroke:2px #1A1A2E;paint-order:stroke fill}
+.lobby-room{display:flex;align-items:center;gap:10px;background:#1A1A2E;border-radius:16px;padding:12px 20px}
+.lr-lbl{font-family:'DM Mono',monospace;font-size:11px;color:#5C5480;letter-spacing:.08em}
+.lr-code{font-family:'DM Mono',monospace;font-size:28px;font-weight:500;color:#FFD600;letter-spacing:.2em}
+.lobby-waiting{display:flex;align-items:center;gap:8px;font-size:13px;color:#B0AFBC;font-weight:700}
+.pulse-dot{width:8px;height:8px;border-radius:50%;background:#FFD600;animation:pdot 1.4s ease-in-out infinite}
+@keyframes pdot{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.4;transform:scale(.7)}}
+.lobby-players{width:100%;background:white;border-radius:16px;padding:14px 16px;box-shadow:0 2px 8px rgba(0,0,0,.05)}
+.lp-title{font-size:11px;font-weight:700;color:#B0AFBC;margin-bottom:10px}
+.lp-list{display:flex;flex-direction:column;gap:6px}
+.lp-row{display:flex;align-items:center;gap:10px}
+.lp-av{width:28px;height:28px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:14px;flex-shrink:0}
+.lp-nm{font-size:13px;font-weight:700;color:#1A1A2E;flex:1}
+.lp-nm.you{color:#FF6B35}
+.lp-rdy{font-size:10px;font-weight:700;color:#00C896}
+
+/* ── PAGE: GUESSING ── */
+#pg-guess{background:#FFF9F5}
+.g-header{padding:8px 20px 6px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0}
+.g-score-chip{display:flex;align-items:center;gap:7px}
+.g-av{width:32px;height:32px;border-radius:50%;background:#FF6B35;display:flex;align-items:center;justify-content:center;font-size:16px}
+.g-score{background:#1A1A2E;color:#FFD600;font-family:'DM Mono',monospace;font-size:13px;padding:4px 10px;border-radius:20px;font-weight:500}
+.g-rnd{font-size:11px;font-weight:700;color:#B0AFBC}
+
+/* Now playing card */
+.np{margin:6px 16px;background:linear-gradient(135deg,#FF6B35 0%,#E85520 100%);border-radius:26px;padding:18px;
+  position:relative;overflow:hidden;box-shadow:0 10px 32px rgba(255,107,53,.35),0 2px 8px rgba(0,0,0,.12)}
+.np::before{content:'✦';position:absolute;top:14px;right:18px;font-size:20px;color:rgba(255,255,255,.18)}
+.np::after{content:'';position:absolute;bottom:-30px;right:-30px;width:120px;height:120px;border-radius:50%;background:rgba(255,255,255,.04)}
+.np-tag{font-size:11px;font-weight:700;color:rgba(255,255,255,.65);margin-bottom:6px;display:flex;align-items:center;gap:6px}
+.np-tag-dot{width:6px;height:6px;border-radius:50%;background:#FFD600;box-shadow:0 0 6px rgba(255,214,0,.6)}
+.np-title{font-size:28px;font-weight:900;color:rgba(255,255,255,.18);margin-bottom:12px;line-height:1.2}
+.np-title.revealed{color:white;-webkit-text-stroke:.5px rgba(255,255,255,.3);paint-order:stroke fill}
+.np-artist{font-size:14px;color:rgba(255,255,255,.55);margin-top:-8px;margin-bottom:12px;display:none}
+.np-artist.revealed{display:block}
+.np-timer{position:absolute;top:16px;right:18px;background:rgba(0,0,0,.3);color:#FFD600;
+  font-family:'DM Mono',monospace;font-size:14px;padding:3px 10px;border-radius:10px}
+/* waveform */
+.wvf{display:flex;align-items:center;gap:3px;height:36px}
+.wb{width:3.5px;border-radius:3px;background:rgba(255,255,255,.55);animation:wv .65s ease-in-out infinite alternate}
+@keyframes wv{from{height:4px;opacity:.35}to{height:var(--h,24px);opacity:.95}}
+
+/* timeline */
+.tl-wrap{flex:1;padding:10px 16px 6px;overflow:hidden;display:flex;flex-direction:column}
+.tl-label{font-size:11px;font-weight:700;color:#B0AFBC;margin-bottom:10px}
+.tl-scroll{flex:1;overflow-x:auto;display:flex;align-items:center;gap:8px;padding:8px 4px;scrollbar-width:none;position:relative}
+.tl-scroll::-webkit-scrollbar{display:none}
+
+/* song card */
+.sc{flex:0 0 auto;background:white;border:2px solid rgba(255,107,53,.12);border-radius:16px;
+  padding:10px 12px;min-width:86px;max-width:100px;box-shadow:0 2px 8px rgba(0,0,0,.06);transition:border-color .2s}
+.sc.dim{opacity:.55}
+.sc-yr{font-family:'DM Mono',monospace;font-size:15px;font-weight:500;color:#FF6B35;font-variant-numeric:tabular-nums}
+.sc-ti{font-size:9px;color:#7B7B9A;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:76px;margin-top:3px;font-weight:700}
+
+/* drop zone */
+.dz{flex:0 0 auto;width:44px;min-height:64px;border:2px dashed rgba(255,107,53,.35);border-radius:16px;
+  display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;cursor:pointer;
+  transition:all .18s;color:rgba(255,107,53,.45);font-size:18px;position:relative}
+.dz:hover,.dz:active{border-color:#FF6B35;background:rgba(255,107,53,.06);color:#FF6B35}
+.dz.selected{border-style:solid;border-color:#FF6B35;background:#FF6B35;color:white;animation:none}
+.dz.selected .dz-lbl{color:white}
+.dz-lbl{font-size:8px;font-weight:700;color:rgba(255,107,53,.4);font-family:'DM Mono',monospace}
+@keyframes dzpulse{0%,100%{border-color:rgba(255,107,53,.35)}50%{border-color:rgba(255,107,53,.7);background:rgba(255,107,53,.04)}}
+.dz:not(.selected){animation:dzpulse 2s ease-in-out infinite}
+
+/* hint & CTA */
+.g-hint{padding:4px 16px 6px}
+.g-hint-txt{font-size:11px;color:#B0AFBC;text-align:center;font-weight:700;line-height:1.5;min-height:30px;transition:opacity .2s}
+.g-cta{padding:8px 16px 14px;flex-shrink:0}
+.g-btn{width:100%;padding:15px;border:none;border-radius:20px;font-family:'Noto Sans TC',sans-serif;font-size:16px;font-weight:900;cursor:pointer;transition:all .18s}
+.g-btn.ready{background:#FF6B35;color:white;box-shadow:0 4px 16px rgba(255,107,53,.35)}
+.g-btn.ready:active{transform:scale(.97)}
+.g-btn.disabled{background:#EDE8E3;color:#C0BAB4;cursor:default}
+
+/* ── PAGE: REVEAL ── */
+#pg-reveal{background:#FFF9F5}
+.rv-header{padding:8px 20px 6px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0}
+.rv-body{flex:1;display:flex;flex-direction:column;padding:0 16px}
+/* result card */
+.rv-card{border-radius:26px;padding:20px;margin-bottom:16px;position:relative;overflow:hidden}
+.rv-card.correct{background:linear-gradient(135deg,#00C896,#00A87A);box-shadow:0 10px 32px rgba(0,200,150,.3)}
+.rv-card.wrong{background:linear-gradient(135deg,#FF3B5C,#D4002F);box-shadow:0 10px 32px rgba(255,59,92,.3)}
+.rv-result-icon{font-size:36px;margin-bottom:8px}
+.rv-result-lbl{font-size:16px;font-weight:900;color:rgba(255,255,255,.8);margin-bottom:4px}
+.rv-song-name{font-size:26px;font-weight:900;color:white;line-height:1.2;margin-bottom:4px}
+.rv-song-artist{font-size:14px;color:rgba(255,255,255,.65);margin-bottom:12px}
+.rv-year-row{display:flex;align-items:center;gap:8px}
+.rv-yr-badge{background:rgba(0,0,0,.2);color:white;font-family:'DM Mono',monospace;font-size:22px;padding:6px 16px;border-radius:12px;font-weight:500}
+.rv-yr-lbl{font-size:12px;color:rgba(255,255,255,.6);font-weight:700}
+/* delta badge */
+.rv-delta{position:absolute;top:16px;right:18px;background:rgba(255,255,255,.2);
+  font-family:'DM Mono',monospace;font-size:18px;font-weight:500;color:white;padding:4px 12px;border-radius:10px}
+/* mini timeline */
+.rv-tl-lbl{font-size:11px;font-weight:700;color:#B0AFBC;margin-bottom:10px}
+.rv-tl{display:flex;gap:7px;overflow-x:auto;padding:4px 2px;scrollbar-width:none;align-items:center}
+.rv-tl::-webkit-scrollbar{display:none}
+.rv-sc{flex:0 0 auto;background:white;border:2px solid rgba(255,107,53,.12);border-radius:14px;padding:8px 10px;min-width:80px}
+.rv-sc.new-correct{border-color:#00C896;background:rgba(0,200,150,.06)}
+.rv-sc.new-wrong{border-color:#FF3B5C;background:rgba(255,59,92,.06)}
+.rv-sc .sc-yr{font-size:13px}
+.rv-sc .sc-ti{font-size:8px}
+/* score bump */
+.rv-score-bump{background:white;border-radius:20px;padding:14px 18px;
+  display:flex;align-items:center;justify-content:space-between;box-shadow:0 2px 8px rgba(0,0,0,.05);margin-top:12px}
+.rsb-lbl{font-size:12px;font-weight:700;color:#B0AFBC}
+.rsb-pts{font-family:'DM Mono',monospace;font-size:24px;color:#FF6B35;font-weight:500}
+.rsb-new{font-size:13px;font-weight:700;color:#1A1A2E}
+.rv-next{margin-top:auto;padding:0 0 14px}
+.rv-next-btn{width:100%;padding:15px;border:none;border-radius:20px;background:#1A1A2E;color:#FFD600;
+  font-family:'Noto Sans TC',sans-serif;font-size:16px;font-weight:900;cursor:pointer;transition:opacity .15s}
+.rv-next-btn:active{opacity:.8}
+
+/* ── PAGE: LEADERBOARD ── */
+#pg-board{background:#FFF9F5}
+.lb-header{padding:10px 20px 6px;text-align:center;flex-shrink:0}
+.lb-ti{font-size:22px;font-weight:900;color:#1A1A2E}
+.lb-tabs{display:flex;gap:5px;justify-content:center;margin-top:6px;margin-bottom:0}
+.lb-tab{padding:5px 14px;border-radius:20px;font-size:11px;font-weight:700;color:#B0AFBC;cursor:pointer;transition:all .15s}
+.lb-tab.a{background:#FF6B35;color:white}
+.lb-podium{display:flex;align-items:flex-end;justify-content:center;gap:7px;padding:10px 24px 14px;flex-shrink:0}
+.pd{display:flex;flex-direction:column;align-items:center;gap:5px}
+.pd-av{width:44px;height:44px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:22px;border:3px solid white;box-shadow:0 3px 10px rgba(0,0,0,.12)}
+.pd-nm{font-size:11px;font-weight:700;color:#1A1A2E;text-align:center}
+.pd-blk{width:80px;border-radius:10px 10px 0 0;display:flex;align-items:center;justify-content:center;font-size:24px;font-weight:900;color:white;font-family:'DM Mono',monospace}
+.pd-1{height:76px;background:linear-gradient(180deg,#FF6B35,#D84A20);box-shadow:0 -4px 20px rgba(255,107,53,.25)}
+.pd-2{height:57px;background:linear-gradient(180deg,#FFAA6B,#FF7030)}
+.pd-3{height:43px;background:linear-gradient(180deg,#FFD600,#D4A800);color:#1A1A2E!important}
+.lb-list{flex:1;overflow-y:auto;padding:0 20px 16px;display:flex;flex-direction:column;gap:6px;scrollbar-width:none}
+.lb-list::-webkit-scrollbar{display:none}
+.lb-row{display:flex;align-items:center;gap:10px;padding:10px 14px;background:white;border-radius:16px;
+  box-shadow:0 1px 4px rgba(0,0,0,.05);transition:transform .15s}
+.lb-row.you{background:rgba(255,107,53,.06);border:2px solid rgba(255,107,53,.2)}
+.lb-rk{font-family:'DM Mono',monospace;font-size:12px;color:#B0AFBC;width:18px;text-align:center}
+.lb-av{width:28px;height:28px;border-radius:50%;font-size:14px;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.lb-nm{font-size:13px;font-weight:700;color:#1A1A2E;flex:1}
+.lb-row.you .lb-nm,.lb-row.you .lb-rk{color:#FF6B35}
+.lb-sc{font-family:'DM Mono',monospace;font-size:13px;color:#7B7B9A}
+.lb-sc.you-sc{color:#FF6B35;font-weight:500}
+.lb-badge{background:rgba(255,107,53,.1);color:#FF6B35;font-family:'DM Mono',monospace;font-size:11px;padding:2px 8px;border-radius:8px}
+.lb-next-round{margin:0 20px 16px;padding:15px;background:#FF6B35;color:white;border:none;border-radius:20px;
+  font-family:'Noto Sans TC',sans-serif;font-size:15px;font-weight:900;cursor:pointer;width:calc(100% - 40px);
+  display:flex;align-items:center;justify-content:center;gap:8px}
+.lb-next-round:active{opacity:.85}
+
+/* ── BOTTOM NAV ── */
+.bnav{display:flex;background:#1A1A2E;padding:10px 8px 22px;flex-shrink:0;z-index:10}
+.ni{flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;padding:4px;border-radius:14px;cursor:pointer;transition:background .15s}
+.ni.a{background:rgba(255,107,53,.15)}
+.ni-ico{font-size:20px}
+.ni-lbl{font-size:9px;font-weight:700;color:#5C5480}
+.ni.a .ni-lbl{color:#FF6B35}
+
+/* ── MISC UTILS ── */
+.hidden{display:none!important}
+</style>
+
+<div class="shell">
+  <div class="screen">
+    <div class="island">
+      <div class="isl-dot"></div>
+      <div class="isl-dot green"></div>
+    </div>
+    <div class="sbar">
+      <span class="sbar-t">9:41</span>
+      <div class="sbar-icons"><span>●●●</span><span>WiFi</span><span>🔋</span></div>
+    </div>
+
+    <!-- ══ LOBBY PAGE ══ -->
+    <div class="page active" id="pg-lobby">
+      <div class="lobby-body">
+        <div style="position:relative;width:160px;height:160px;flex-shrink:0">
+          <div class="vinyl-lg"></div>
+          <span class="sp" style="top:-24px;right:-28px;font-size:18px;color:#FF6B35;animation-delay:.2s">✦</span>
+          <span class="sp" style="bottom:-12px;left:-32px;font-size:13px;color:#FFD600;animation-delay:.9s">✦</span>
+          <span class="sp" style="top:16px;left:-38px;font-size:15px;color:#FF6B35;animation-delay:1.5s">✦</span>
+        </div>
+        <div class="lobby-ttl">HITSTER!</div>
+        <div class="lobby-room">
+          <div>
+            <div class="lr-lbl">ROOM CODE</div>
+            <div class="lr-code">WXYZ</div>
+          </div>
+        </div>
+        <div class="lobby-waiting">
+          <div class="pulse-dot"></div>
+          等待主持人開始…
+        </div>
+        <div class="lobby-players">
+          <div class="lp-title">已加入玩家</div>
+          <div class="lp-list">
+            <div class="lp-row"><div class="lp-av" style="background:#FFE5D0">🎵</div><div class="lp-nm">小美</div><div class="lp-rdy">就緒</div></div>
+            <div class="lp-row"><div class="lp-av" style="background:#FF6B35">🎸</div><div class="lp-nm you">你</div><div class="lp-rdy">就緒</div></div>
+            <div class="lp-row"><div class="lp-av" style="background:#FFF0CC">🥁</div><div class="lp-nm">阿豪</div><div class="lp-rdy">就緒</div></div>
+          </div>
+        </div>
+        <!-- CTA to demo: tap to start -->
+        <button onclick="goTo('pg-guess')" style="background:#FF6B35;color:white;border:none;border-radius:16px;padding:14px 32px;font-family:'Noto Sans TC',sans-serif;font-size:15px;font-weight:900;cursor:pointer;box-shadow:0 4px 16px rgba(255,107,53,.3)">🎮 試玩：開始猜歌</button>
+      </div>
+      <div class="bnav">
+        <div class="ni a" onclick="goTo('pg-lobby')"><div class="ni-ico">🎵</div><div class="ni-lbl">遊戲</div></div>
+        <div class="ni" onclick="goTo('pg-board')"><div class="ni-ico">🏆</div><div class="ni-lbl">分數</div></div>
+        <div class="ni"><div class="ni-ico">⚙️</div><div class="ni-lbl">設定</div></div>
+      </div>
+    </div>
+
+    <!-- ══ GUESSING PAGE ══ -->
+    <div class="page" id="pg-guess">
+      <div class="g-header">
+        <div class="g-score-chip">
+          <div class="g-av">🎸</div>
+          <div class="g-score" id="score-display">940</div>
+        </div>
+        <div class="g-rnd">第 3 回合 / 8</div>
+      </div>
+
+      <!-- Now playing card -->
+      <div class="np">
+        <div class="np-tag"><div class="np-tag-dot"></div>正在播放 — 仔細聽</div>
+        <div class="np-title" id="np-title">???</div>
+        <div class="np-artist" id="np-artist">周杰倫 Jay Chou</div>
+        <div class="np-timer" id="np-timer">0:38</div>
+        <div class="wvf" id="wvf">
+          <div class="wb" style="--h:8px;animation-delay:.0s;height:8px"></div>
+          <div class="wb" style="--h:22px;animation-delay:.06s;height:22px"></div>
+          <div class="wb" style="--h:14px;animation-delay:.12s;height:14px"></div>
+          <div class="wb" style="--h:30px;animation-delay:.08s;height:30px"></div>
+          <div class="wb" style="--h:18px;animation-delay:.18s;height:18px"></div>
+          <div class="wb" style="--h:6px;animation-delay:.04s;height:6px"></div>
+          <div class="wb" style="--h:26px;animation-delay:.22s;height:26px"></div>
+          <div class="wb" style="--h:10px;animation-delay:.14s;height:10px"></div>
+          <div class="wb" style="--h:28px;animation-delay:.10s;height:28px"></div>
+          <div class="wb" style="--h:16px;animation-delay:.26s;height:16px"></div>
+          <div class="wb" style="--h:20px;animation-delay:.02s;height:20px"></div>
+          <div class="wb" style="--h:8px;animation-delay:.20s;height:8px"></div>
+        </div>
+      </div>
+
+      <!-- Timeline -->
+      <div class="tl-wrap">
+        <div class="tl-label">你的時間軸 — 點選插入位置</div>
+        <div class="tl-scroll" id="timeline">
+          <!-- populated by JS -->
+        </div>
+      </div>
+
+      <div class="g-hint">
+        <div class="g-hint-txt" id="hint-txt">選擇一個插入位置</div>
+      </div>
+      <div class="g-cta">
+        <button class="g-btn disabled" id="confirm-btn" onclick="confirmPlacement()">確認位置</button>
+      </div>
+
+      <div class="bnav">
+        <div class="ni a"><div class="ni-ico">🎵</div><div class="ni-lbl">遊戲</div></div>
+        <div class="ni"><div class="ni-ico">📋</div><div class="ni-lbl">時間軸</div></div>
+        <div class="ni" onclick="goTo('pg-board')"><div class="ni-ico">🏆</div><div class="ni-lbl">分數</div></div>
+      </div>
+    </div>
+
+    <!-- ══ REVEAL PAGE ══ -->
+    <div class="page" id="pg-reveal">
+      <div class="rv-header">
+        <div class="g-score-chip">
+          <div class="g-av">🎸</div>
+          <div class="g-score" id="rv-score">940</div>
+        </div>
+        <div class="g-rnd">第 3 回合 / 8</div>
+      </div>
+      <div class="rv-body">
+        <div class="rv-card" id="rv-card">
+          <div class="rv-result-icon" id="rv-icon">✓</div>
+          <div class="rv-result-lbl" id="rv-result-lbl">答對了！</div>
+          <div class="rv-song-name" id="rv-song-name">告白氣球</div>
+          <div class="rv-song-artist" id="rv-song-artist">周杰倫 Jay Chou</div>
+          <div class="rv-year-row">
+            <div class="rv-yr-badge" id="rv-year">2016</div>
+            <div class="rv-yr-lbl" id="rv-year-lbl">發行年份</div>
+          </div>
+          <div class="rv-delta" id="rv-delta">+150</div>
+        </div>
+
+        <div class="rv-tl-lbl">更新後的時間軸</div>
+        <div class="rv-tl" id="rv-timeline"></div>
+
+        <div class="rv-score-bump">
+          <div>
+            <div class="rsb-lbl">得分更新</div>
+            <div class="rsb-new" id="rsb-new">940 → 1,090</div>
+          </div>
+          <div class="rsb-pts" id="rsb-pts">+150</div>
+        </div>
+
+        <div class="rv-next">
+          <button class="rv-next-btn" onclick="goTo('pg-board')">查看排行榜 →</button>
+        </div>
+      </div>
+      <div class="bnav">
+        <div class="ni"><div class="ni-ico">🎵</div><div class="ni-lbl">遊戲</div></div>
+        <div class="ni"><div class="ni-ico">📋</div><div class="ni-lbl">時間軸</div></div>
+        <div class="ni a" onclick="goTo('pg-board')"><div class="ni-ico">🏆</div><div class="ni-lbl">分數</div></div>
+      </div>
+    </div>
+
+    <!-- ══ LEADERBOARD PAGE ══ -->
+    <div class="page" id="pg-board">
+      <div class="lb-header">
+        <div class="lb-ti">排行榜</div>
+        <div class="lb-tabs">
+          <div class="lb-tab" onclick="lbTab(this,'round')">本回合</div>
+          <div class="lb-tab a" onclick="lbTab(this,'total')">總分</div>
+        </div>
+      </div>
+      <div class="lb-podium">
+        <div class="pd">
+          <div class="pd-av" style="background:#FFE5D0">🎵</div>
+          <div class="pd-nm">小美</div>
+          <div class="pd-blk pd-2">2</div>
+        </div>
+        <div class="pd">
+          <div class="pd-av" style="background:#FF6B35">🎸</div>
+          <div class="pd-nm" style="color:#FF6B35;font-weight:900">你</div>
+          <div class="pd-blk pd-1">1</div>
+        </div>
+        <div class="pd">
+          <div class="pd-av" style="background:#FFF0CC">🥁</div>
+          <div class="pd-nm">阿豪</div>
+          <div class="pd-blk pd-3">3</div>
+        </div>
+      </div>
+      <div class="lb-list">
+        <div class="lb-row you">
+          <div class="lb-rk">#1</div>
+          <div class="lb-av" style="background:#FF6B35">🎸</div>
+          <div class="lb-nm">你</div>
+          <div class="lb-badge">1,090</div>
+        </div>
+        <div class="lb-row">
+          <div class="lb-rk">#2</div>
+          <div class="lb-av" style="background:#FFE5D0">🎵</div>
+          <div class="lb-nm">小美</div>
+          <div class="lb-sc">1,040</div>
+        </div>
+        <div class="lb-row">
+          <div class="lb-rk">#3</div>
+          <div class="lb-av" style="background:#FFF0CC">🥁</div>
+          <div class="lb-nm">阿豪</div>
+          <div class="lb-sc">780</div>
+        </div>
+        <div class="lb-row">
+          <div class="lb-rk">#4</div>
+          <div class="lb-av" style="background:#E8E0FF">🎤</div>
+          <div class="lb-nm">大衛</div>
+          <div class="lb-sc">640</div>
+        </div>
+      </div>
+      <button class="lb-next-round" onclick="nextRound()">下一回合 ▶</button>
+      <div class="bnav">
+        <div class="ni" onclick="goTo('pg-guess')"><div class="ni-ico">🎵</div><div class="ni-lbl">遊戲</div></div>
+        <div class="ni"><div class="ni-ico">📋</div><div class="ni-lbl">時間軸</div></div>
+        <div class="ni a"><div class="ni-ico">🏆</div><div class="ni-lbl">分數</div></div>
+      </div>
+    </div>
+
+  </div><!-- /screen -->
+</div><!-- /shell -->
+
+<script>
+// ── STATE ──
+const songs = [
+  {yr:1982, title:'Thriller'},
+  {yr:2000, title:'愛你'},
+  {yr:2016, title:'告白氣球'},
+];
+const MYSTERY = {yr:2003, title:'七里香', artist:'周杰倫 Jay Chou'};
+let selected = null; // index into drop zones (0 = before first, etc.)
+let score = 940;
+let timerSec = 38;
+let timerInterval = null;
+
+// ── NAVIGATION ──
+function goTo(id){
+  document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
+  document.getElementById(id).classList.add('active');
+  if(id==='pg-guess') startTimer();
+  else stopTimer();
+}
+
+// ── TIMER ──
+function startTimer(){
+  stopTimer();
+  timerSec = 38;
+  updateTimerDisplay();
+  timerInterval = setInterval(()=>{
+    timerSec = Math.max(0, timerSec - 1);
+    updateTimerDisplay();
+    if(timerSec===0) stopTimer();
+  }, 1000);
+}
+function stopTimer(){ if(timerInterval){ clearInterval(timerInterval); timerInterval=null; } }
+function updateTimerDisplay(){
+  const el = document.getElementById('np-timer');
+  const m = Math.floor(timerSec/60);
+  const s = timerSec%60;
+  el.textContent = `${m}:${s.toString().padStart(2,'0')}`;
+  el.style.color = timerSec <= 10 ? '#FF3B5C' : '#FFD600';
+}
+
+// ── TIMELINE RENDERING ──
+function buildTimeline(){
+  const tl = document.getElementById('timeline');
+  tl.innerHTML = '';
+  // interleave: dz | sc | dz | sc | dz ...
+  for(let i=0;i<=songs.length;i++){
+    const dz = document.createElement('div');
+    dz.className = 'dz' + (selected===i ? ' selected' : '');
+    dz.innerHTML = selected===i ? '<span>✓</span>' : '<span>↓</span><span class="dz-lbl">'+(i===0?'最前':'此處')+'</span>';
+    dz.dataset.idx = i;
+    dz.addEventListener('click', ()=>selectZone(i));
+    tl.appendChild(dz);
+    if(i<songs.length){
+      const sc = document.createElement('div');
+      sc.className = 'sc';
+      sc.innerHTML = `<div class="sc-yr">${songs[i].yr}</div><div class="sc-ti">${songs[i].title}</div>`;
+      tl.appendChild(sc);
+    }
+  }
+  updateHint();
+}
+
+function selectZone(idx){
+  selected = idx;
+  buildTimeline();
+  // scroll to the selected zone
+  const tl = document.getElementById('timeline');
+  const dz = tl.querySelectorAll('.dz')[idx];
+  if(dz) dz.scrollIntoView({inline:'center',behavior:'smooth'});
+  // enable confirm
+  const btn = document.getElementById('confirm-btn');
+  btn.className = 'g-btn ready';
+}
+
+function updateHint(){
+  const el = document.getElementById('hint-txt');
+  if(selected===null){
+    el.textContent = '選擇一個插入位置';
+    return;
+  }
+  const prev = selected > 0 ? songs[selected-1] : null;
+  const next = selected < songs.length ? songs[selected] : null;
+  if(!prev && next) el.textContent = `放在「${next.title} (${next.yr})」之前`;
+  else if(prev && !next) el.textContent = `放在「${prev.title} (${prev.yr})」之後`;
+  else el.textContent = `放在「${prev.title} (${prev.yr})」和「${next.title} (${next.yr})」之間`;
+}
+
+function confirmPlacement(){
+  if(selected===null) return;
+  stopTimer();
+  // determine if correct
+  const prev = selected>0 ? songs[selected-1].yr : 0;
+  const next = selected<songs.length ? songs[selected].yr : 9999;
+  const correct = MYSTERY.yr >= prev && MYSTERY.yr <= next;
+  const pts = correct ? 150 : 0;
+  const newScore = score + pts;
+
+  // fill reveal page
+  const card = document.getElementById('rv-card');
+  card.className = 'rv-card ' + (correct ? 'correct' : 'wrong');
+  document.getElementById('rv-icon').textContent = correct ? '✓' : '✗';
+  document.getElementById('rv-result-lbl').textContent = correct ? '答對了！' : '答錯了…';
+  document.getElementById('rv-song-name').textContent = MYSTERY.title;
+  document.getElementById('rv-song-artist').textContent = MYSTERY.artist;
+  document.getElementById('rv-year').textContent = MYSTERY.yr;
+  document.getElementById('rv-year-lbl').textContent = correct ? '正確年份' : '正確年份（你猜的不對）';
+  document.getElementById('rv-delta').textContent = correct ? `+${pts}` : '±0';
+  document.getElementById('rv-delta').style.display = correct ? '' : 'none';
+  document.getElementById('rsb-pts').textContent = correct ? `+${pts}` : '±0';
+  document.getElementById('rsb-pts').style.color = correct ? '#FF6B35' : '#B0AFBC';
+  document.getElementById('rsb-new').textContent = `${score.toLocaleString()} → ${newScore.toLocaleString()}`;
+  document.getElementById('rv-score').textContent = newScore.toLocaleString();
+
+  // insert song into timeline (possibly)
+  const withNew = [...songs];
+  withNew.splice(selected, 0, {yr:MYSTERY.yr, title:MYSTERY.title, isNew:true, correct});
+  const rvTl = document.getElementById('rv-timeline');
+  rvTl.innerHTML = '';
+  withNew.forEach(s=>{
+    const div = document.createElement('div');
+    div.className = 'rv-sc' + (s.isNew ? (s.correct ? ' new-correct' : ' new-wrong') : '');
+    div.innerHTML = `<div class="sc-yr">${s.yr}</div><div class="sc-ti">${s.title}</div>`;
+    rvTl.appendChild(div);
+  });
+
+  score = newScore;
+  document.getElementById('score-display').textContent = newScore.toLocaleString();
+  goTo('pg-reveal');
+}
+
+function nextRound(){
+  // insert the mystery song into timeline for next round
+  const withNew = [...songs];
+  const prev = selected>0 ? songs[selected-1].yr : 0;
+  const next = selected<songs.length ? songs[selected].yr : 9999;
+  const correct = MYSTERY.yr>=prev && MYSTERY.yr<=next;
+  if(correct){
+    songs.splice(selected,0,{yr:MYSTERY.yr, title:MYSTERY.title});
+  }
+  selected = null;
+  buildTimeline();
+  document.getElementById('confirm-btn').className='g-btn disabled';
+  goTo('pg-guess');
+}
+
+function lbTab(el, tab){
+  document.querySelectorAll('.lb-tab').forEach(t=>t.classList.remove('a'));
+  el.classList.add('a');
+}
+
+// ── INIT ──
+buildTimeline();
+</script>
