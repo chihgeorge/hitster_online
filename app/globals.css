@@ -59,3 +59,8 @@ body {
 
 /* ── mono util ── */
 .font-mono-custom { font-family: var(--font-mono); }
+
+/* ── responsive utils ── */
+@media (max-width: 479px) {
+  .hide-xs { display: none !important; }
+}
