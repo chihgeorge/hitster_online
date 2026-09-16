@@ -80,3 +80,15 @@
 - [ ] **P3** Install `gstack-cso` for formal security audit  
   `gstack-cso` launcher not found — formal CSO audit was blocked. Run `cd ~/.claude/skills/gstack && ./setup` to install, then re-run `/cso` for an evidence-backed security report.  
   _Surfaced by /cso on 2026-09-16_
+
+- [ ] **P3** Fix keyboard focus indicators on all text inputs  
+  All `<input type="text">` elements use `outline: "none"` as inline style with no `:focus-visible` CSS fallback. JS `onFocus/onBlur` border-color change provides visual feedback but bypasses CSS. Fix: move `outline: none` to CSS class and add `:focus-visible { outline: 2px solid var(--orange); }`. Touches `app/page.tsx` and `app/room/[code]/host/page.tsx`.  
+  _Surfaced by /design-review on 2026-09-16_
+
+- [ ] **P3** Extract Vinyl component — duplicated between homepage and play page  
+  `app/page.tsx:7–25` (Vinyl) and `app/room/[code]/play/page.tsx:19–33` (SmallVinyl) copy-paste the same `radial-gradient` string verbatim. Extract to `components/Vinyl.tsx` with a `size` prop.  
+  _Surfaced by /design-review on 2026-09-16_
+
+- [ ] **P3** Replace hardcoded hex values with CSS variables  
+  CSS tokens (`--orange`, `--ink`, `--bg`, `--text2`, etc.) are defined in `globals.css` `:root` but all component files use raw hex strings inline (`#FF6B35`, `#1A1A2E`, etc.). A palette change requires grep-and-replace across 4 files. Migrate to `var(--orange)` etc. at call sites.  
+  _Surfaced by /design-review on 2026-09-16_
