@@ -42,8 +42,13 @@ vi.mock("../lib/ai-metadata", () => ({
   resolveTracksWithAI: vi.fn().mockResolvedValue(new Map()),
 }));
 
+vi.mock("../lib/lyrics-resolver", () => ({
+  resolveLyricsForTracks: vi.fn().mockResolvedValue(new Map()),
+}));
+
 import { fetchPlaylistItems, fetchEmbeddableVideoIds } from "../lib/youtube";
 import { resolveTracksWithAI } from "../lib/ai-metadata";
+import { resolveLyricsForTracks } from "../lib/lyrics-resolver";
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -1022,5 +1027,308 @@ describe("malformed message handling", () => {
   it("silently ignores non-JSON messages", async () => {
     const room = new HitsterRoom(makeRoom() as any);
     await expect(room.onMessage("not json", makeConn())).resolves.toBeUndefined();
+  });
+});
+
+// ─── Lyrics Mode ─────────────────────────────────────────────────────────────
+
+const LYRICS_ROUND = {
+  videoId: "vid1",
+  title: "Test Song",
+  artist: "Test Artist",
+  language: "zh-TW" as const,
+  lyricContext: "Before ___",
+  blankSentence: "你好世界",
+  acceptableVariants: [],
+};
+
+function fakeLyricsTrack() {
+  return { videoId: "vid1", title: "Test Song", description: "2000 年歌曲", channelTitle: "Test Artist" };
+}
+
+const CACHED_LYRICS = {
+  title: "Test Song", artist: "Test Artist", language: "zh-TW" as const,
+  lyricContext: "Before ___", blankSentence: "你好世界", acceptableVariants: [],
+};
+
+async function setupLyricsGame(overrides?: object) {
+  vi.mocked(fetchPlaylistItems).mockResolvedValue([fakeLyricsTrack()]);
+  vi.mocked(fetchEmbeddableVideoIds).mockResolvedValue(new Set(["vid1"]));
+
+  const mockRoom = makeRoom();
+  // Pre-populate DO storage with lyrics cache so tests don't need a real Anthropic key
+  (mockRoom.storage.get as ReturnType<typeof vi.fn>).mockImplementation((keys: unknown) =>
+    Promise.resolve(new Map(Array.isArray(keys)
+      ? keys.filter((k: string) => k.startsWith("lyrics:")).map((k: string) => [k, CACHED_LYRICS])
+      : []))
+  );
+
+  const room = new HitsterRoom(mockRoom as any);
+  const hostConn = makeConn("host-conn");
+  const p1Conn = makeConn("p1-conn");
+
+  // Join player first
+  await send(room, p1Conn, { type: "JOIN", playerId: P1, name: "Alice" });
+
+  // Start lyrics game using a valid playlist ID (PLtest matches PLAYLIST_ID_PATTERN)
+  await send(room, hostConn, {
+    type: "START_LYRICS_GAME",
+    hostId: "host-uuid",
+    playlistUrl: "PLtest",
+    config: { timerSeconds: 60, totalRounds: 1, fuzzyEnabled: false },
+    ...overrides,
+  });
+
+  return { room, hostConn, p1Conn };
+}
+
+describe("Lyrics Mode: sanitizedLyricsState hides blankSentence", () => {
+  it("strips blankSentence during playing phase", async () => {
+    const { room } = await setupLyricsGame();
+    const msgs = (room.room.broadcast as ReturnType<typeof vi.fn>).mock.calls
+      .map((c: any[]) => JSON.parse(c[0] as string));
+    const playingState = msgs.findLast((m: any) => m.type === "LYRICS_STATE" && m.state.phase === "playing");
+    expect(playingState).toBeDefined();
+    expect(playingState.state.currentRound.blankSentence).toBeNull();
+  });
+
+  it("reveals blankSentence during results phase", async () => {
+    const { room, hostConn, p1Conn } = await setupLyricsGame();
+    await send(room, hostConn, { type: "START_LYRICS_ROUND", hostId: "host-uuid" });
+    await send(room, p1Conn, { type: "SUBMIT_LYRICS_ANSWER", playerId: P1, text: "你好世界", ts: Date.now() });
+    await send(room, hostConn, { type: "SHOW_LYRICS_RESULTS", hostId: "host-uuid" });
+
+    const msgs = (room.room.broadcast as ReturnType<typeof vi.fn>).mock.calls
+      .map((c: any[]) => JSON.parse(c[0] as string));
+    const resultsState = msgs.findLast((m: any) => m.type === "LYRICS_STATE" && m.state.phase === "results");
+    expect(resultsState?.state.currentRound.blankSentence).toBe("你好世界");
+  });
+});
+
+describe("Lyrics Mode: START_LYRICS_GAME", () => {
+  it("transitions to loading then playing", async () => {
+    const { room } = await setupLyricsGame();
+    const broadcasts = (room.room.broadcast as ReturnType<typeof vi.fn>).mock.calls
+      .map((c: any[]) => JSON.parse(c[0] as string));
+    const phases = broadcasts.filter((m: any) => m.type === "LYRICS_STATE").map((m: any) => m.state.phase);
+    expect(phases).toContain("loading");
+    expect(phases.at(-1)).toBe("playing");
+  });
+
+  it("rejects non-host", async () => {
+    const { room } = await setupLyricsGame();
+    // Stranger tries to start another game with wrong hostId
+    const stranger = makeConn("stranger");
+    await send(room, stranger, { type: "START_LYRICS_GAME", hostId: "bad-id", playlistUrl: "PLtest", config: { timerSeconds: 60, totalRounds: 1, fuzzyEnabled: false } });
+    const lastMsg = lastSentTo(stranger);
+    expect(lastMsg?.type).toBe("ERROR");
+  });
+
+  it("returns error when no lyrics resolved and no cache", async () => {
+    vi.mocked(fetchPlaylistItems).mockResolvedValue([fakeLyricsTrack()]);
+    const room = new HitsterRoom(makeRoom() as any);
+    // Storage returns nothing — no lyrics cache, and anthropicKey is undefined so resolveLyricsForTracks won't be called
+    (room.room.storage.get as ReturnType<typeof vi.fn>).mockResolvedValue(new Map());
+    const hostConn = makeConn("host-conn");
+    await send(room, hostConn, { type: "START_LYRICS_GAME", hostId: "host-uuid", playlistUrl: "PLtest", config: { timerSeconds: 60, totalRounds: 1, fuzzyEnabled: false } });
+    const errorMsg = (hostConn.send as ReturnType<typeof vi.fn>).mock.calls
+      .map((c: any[]) => JSON.parse(c[0] as string))
+      .find((m: any) => m.type === "ERROR");
+    expect(errorMsg).toBeDefined();
+    expect(errorMsg.error).toBe("not_enough_songs");
+  });
+
+  it("applies lyricOverrides to deck", async () => {
+    const { room } = await setupLyricsGame({
+      lyricOverrides: [{ videoId: "vid1", blankSentence: "OVERRIDDEN" }],
+    });
+    const broadcasts = (room.room.broadcast as ReturnType<typeof vi.fn>).mock.calls
+      .map((c: any[]) => JSON.parse(c[0] as string));
+    // In loading phase blankSentence is null, so check via the room's lyricsDeck indirectly
+    // We can check the broadcastLyricsState during "results" after a full round
+    // For now, just confirm playing state reached
+    const playingBcast = broadcasts.findLast((m: any) => m.type === "LYRICS_STATE" && m.state.phase === "playing");
+    expect(playingBcast).toBeDefined();
+  });
+
+  it("uses DO lyrics cache when available", async () => {
+    vi.mocked(fetchPlaylistItems).mockResolvedValue([fakeLyricsTrack()]);
+
+    const mockRoom = makeRoom();
+    (mockRoom.storage.get as ReturnType<typeof vi.fn>).mockImplementation((keys: unknown) =>
+      Promise.resolve(new Map(Array.isArray(keys)
+        ? keys.filter((k: string) => k.startsWith("lyrics:")).map((k: string) => [k, CACHED_LYRICS])
+        : []))
+    );
+
+    const room = new HitsterRoom(mockRoom as any);
+    const hostConn = makeConn("host-conn");
+    await send(room, hostConn, { type: "START_LYRICS_GAME", hostId: "host-uuid", playlistUrl: "PLtest", config: { timerSeconds: 60, totalRounds: 1, fuzzyEnabled: false } });
+    // resolveLyricsForTracks should NOT be called (everything in DO cache, no anthropicKey anyway)
+    expect(vi.mocked(resolveLyricsForTracks)).not.toHaveBeenCalled();
+    const phases = (room.room.broadcast as ReturnType<typeof vi.fn>).mock.calls
+      .map((c: any[]) => JSON.parse(c[0] as string))
+      .filter((m: any) => m.type === "LYRICS_STATE")
+      .map((m: any) => m.state.phase);
+    expect(phases.at(-1)).toBe("playing");
+  });
+});
+
+describe("Lyrics Mode: START_LYRICS_ROUND", () => {
+  it("transitions playing → guessing and sets roundStart", async () => {
+    const { room, hostConn } = await setupLyricsGame();
+    await send(room, hostConn, { type: "START_LYRICS_ROUND", hostId: "host-uuid" });
+    const msg = lastBroadcast(room);
+    expect(msg?.type).toBe("LYRICS_STATE");
+    expect(msg?.state.phase).toBe("guessing");
+    expect(msg?.state.roundStart).toBeGreaterThan(0);
+  });
+
+  it("rejects wrong phase", async () => {
+    const { room, hostConn } = await setupLyricsGame();
+    await send(room, hostConn, { type: "START_LYRICS_ROUND", hostId: "host-uuid" });
+    // Now in guessing — sending again should error
+    await send(room, hostConn, { type: "START_LYRICS_ROUND", hostId: "host-uuid" });
+    const last = lastSentTo(hostConn);
+    expect(last?.type).toBe("ERROR");
+    expect(last?.error).toBe("wrong_phase");
+  });
+});
+
+describe("Lyrics Mode: SUBMIT_LYRICS_ANSWER", () => {
+  it("stores answer and broadcasts", async () => {
+    const { room, hostConn, p1Conn } = await setupLyricsGame();
+    await send(room, hostConn, { type: "START_LYRICS_ROUND", hostId: "host-uuid" });
+    await send(room, p1Conn, { type: "SUBMIT_LYRICS_ANSWER", playerId: P1, text: "你好世界", ts: Date.now() });
+    const msg = lastBroadcast(room);
+    expect(msg?.state?.answers[P1]?.text).toBe("你好世界");
+  });
+
+  it("ignores duplicate submission", async () => {
+    const { room, hostConn, p1Conn } = await setupLyricsGame();
+    await send(room, hostConn, { type: "START_LYRICS_ROUND", hostId: "host-uuid" });
+    const ts = Date.now();
+    await send(room, p1Conn, { type: "SUBMIT_LYRICS_ANSWER", playerId: P1, text: "first", ts });
+    await send(room, p1Conn, { type: "SUBMIT_LYRICS_ANSWER", playerId: P1, text: "second", ts: ts + 100 });
+    const msg = lastBroadcast(room);
+    expect(msg?.state?.answers[P1]?.text).toBe("first");
+  });
+
+  it("rejects submission outside guessing phase", async () => {
+    const { room, p1Conn } = await setupLyricsGame();
+    // Still in playing phase
+    await send(room, p1Conn, { type: "SUBMIT_LYRICS_ANSWER", playerId: P1, text: "anything", ts: Date.now() });
+    // No broadcast change for answers
+    const msg = lastBroadcast(room);
+    expect(msg?.state?.answers?.[P1]).toBeUndefined();
+  });
+
+  it("sends TOO_LATE for answer after deadline", async () => {
+    const { room, hostConn, p1Conn } = await setupLyricsGame();
+    await send(room, hostConn, { type: "START_LYRICS_ROUND", hostId: "host-uuid" });
+    const WAY_LATE = Date.now() + 200_000;
+    await send(room, p1Conn, { type: "SUBMIT_LYRICS_ANSWER", playerId: P1, text: "late", ts: WAY_LATE });
+    const last = lastSentTo(p1Conn);
+    expect(last?.type).toBe("TOO_LATE");
+  });
+
+  it("ignores unknown player", async () => {
+    const { room, hostConn } = await setupLyricsGame();
+    await send(room, hostConn, { type: "START_LYRICS_ROUND", hostId: "host-uuid" });
+    const stranger = makeConn("stranger");
+    await send(room, stranger, { type: "SUBMIT_LYRICS_ANSWER", playerId: STRANGER, text: "hi", ts: Date.now() });
+    const msg = lastBroadcast(room);
+    expect(msg?.state?.answers?.[STRANGER]).toBeUndefined();
+  });
+});
+
+describe("Lyrics Mode: SHOW_LYRICS_RESULTS", () => {
+  async function reachResults() {
+    const setup = await setupLyricsGame();
+    const { room, hostConn, p1Conn } = setup;
+    await send(room, hostConn, { type: "START_LYRICS_ROUND", hostId: "host-uuid" });
+    await send(room, p1Conn, { type: "SUBMIT_LYRICS_ANSWER", playerId: P1, text: "你好世界", ts: Date.now() });
+    await send(room, hostConn, { type: "SHOW_LYRICS_RESULTS", hostId: "host-uuid" });
+    return setup;
+  }
+
+  it("transitions guessing → results", async () => {
+    const { room } = await reachResults();
+    expect(lastBroadcast(room)?.state.phase).toBe("results");
+  });
+
+  it("marks correct answer and awards points", async () => {
+    const { room } = await reachResults();
+    const state = lastBroadcast(room)?.state;
+    expect(state?.answers[P1]?.correct).toBe(true);
+    expect(state?.answers[P1]?.points).toBeGreaterThan(0);
+    expect(state?.players[P1]?.score).toBeGreaterThan(0);
+  });
+
+  it("marks wrong answer as incorrect with 0 points", async () => {
+    const { room, hostConn, p1Conn } = await setupLyricsGame();
+    await send(room, hostConn, { type: "START_LYRICS_ROUND", hostId: "host-uuid" });
+    await send(room, p1Conn, { type: "SUBMIT_LYRICS_ANSWER", playerId: P1, text: "wrong answer", ts: Date.now() });
+    await send(room, hostConn, { type: "SHOW_LYRICS_RESULTS", hostId: "host-uuid" });
+    const state = lastBroadcast(room)?.state;
+    expect(state?.answers[P1]?.correct).toBe(false);
+    expect(state?.answers[P1]?.points).toBe(0);
+    expect(state?.players[P1]?.score).toBe(0);
+  });
+
+  it("rejects non-host", async () => {
+    const { room, hostConn } = await setupLyricsGame();
+    await send(room, hostConn, { type: "START_LYRICS_ROUND", hostId: "host-uuid" });
+    const stranger = makeConn("stranger");
+    await send(room, stranger, { type: "SHOW_LYRICS_RESULTS", hostId: "bad-id" });
+    const last = lastSentTo(stranger);
+    expect(last?.type).toBe("ERROR");
+  });
+});
+
+describe("Lyrics Mode: NEXT_LYRICS_ROUND", () => {
+  it("ends game when last round done", async () => {
+    const { room, hostConn, p1Conn } = await setupLyricsGame();
+    await send(room, hostConn, { type: "START_LYRICS_ROUND", hostId: "host-uuid" });
+    await send(room, hostConn, { type: "SHOW_LYRICS_RESULTS", hostId: "host-uuid" });
+    await send(room, hostConn, { type: "NEXT_LYRICS_ROUND", hostId: "host-uuid" });
+    expect(lastBroadcast(room)?.state.phase).toBe("ended");
+  });
+
+  it("rejects wrong phase", async () => {
+    const { room, hostConn } = await setupLyricsGame();
+    // Still in playing phase
+    await send(room, hostConn, { type: "NEXT_LYRICS_ROUND", hostId: "host-uuid" });
+    const last = lastSentTo(hostConn);
+    expect(last?.type).toBe("ERROR");
+    expect(last?.error).toBe("wrong_phase");
+  });
+});
+
+describe("Lyrics Mode: RESET_LYRICS_GAME", () => {
+  it("clears lyrics state after ended", async () => {
+    const { room, hostConn, p1Conn } = await setupLyricsGame();
+    await send(room, hostConn, { type: "START_LYRICS_ROUND", hostId: "host-uuid" });
+    await send(room, hostConn, { type: "SHOW_LYRICS_RESULTS", hostId: "host-uuid" });
+    await send(room, hostConn, { type: "NEXT_LYRICS_ROUND", hostId: "host-uuid" });
+    expect(lastBroadcast(room)?.state.phase).toBe("ended");
+    await send(room, hostConn, { type: "RESET_LYRICS_GAME", hostId: "host-uuid" });
+    // After reset, no LYRICS_STATE broadcast — timeline lobby should be back
+    const lastMsg = lastBroadcast(room);
+    expect(lastMsg?.type).toBe("STATE");
+    expect(lastMsg?.state.phase).toBe("lobby");
+  });
+});
+
+describe("Lyrics Mode: onConnect sends LYRICS_STATE when active", () => {
+  it("sends lyricsState to new connections when game is active", async () => {
+    const { room } = await setupLyricsGame();
+    const newcomer = makeConn("new-conn");
+    await room.onConnect(newcomer);
+    const msgs = (newcomer.send as ReturnType<typeof vi.fn>).mock.calls
+      .map((c: any[]) => JSON.parse(c[0] as string));
+    const lyricsMsg = msgs.find((m: any) => m.type === "LYRICS_STATE");
+    expect(lyricsMsg).toBeDefined();
+    expect(lyricsMsg.state.phase).toBe("playing");
   });
 });

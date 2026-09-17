@@ -1,7 +1,7 @@
 // Lyrics Mode answer matching: exact, variant, and optional fuzzy (Levenshtein).
 // fuzzyEnabled is OFF by default — host opt-in only (寬鬆模式).
 
-import { levenshtein } from "fastest-levenshtein";
+import { distance as levenshtein } from "fastest-levenshtein";
 import type { LyricsRound, LyricsGameConfig } from "./game";
 
 export function normCJK(s: string): string {
