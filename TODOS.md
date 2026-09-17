@@ -63,25 +63,25 @@
 - [x] **P2** Invalid room code silently creates orphaned waiting room  
   Fixed by /qa on feat/initial-scaffold, 2026-08-28 — commit ed7449a. Shows yellow warning banner after 90s: "Still waiting after 90 seconds — double-check your room code."
 
-## Lyrics Mode — implementation required (from /plan-eng-review 2026-09-17)
+## Lyrics Mode — completed (from /plan-eng-review 2026-09-17)
 
-- [ ] **P1** `npm install fastest-levenshtein` before any Lyrics Mode code  
+- [x] **P1** `npm install fastest-levenshtein` before any Lyrics Mode code  
   The design imports `levenshtein` from `'fastest-levenshtein'` but it is not in `package.json`. Install first or the fuzzy module won't compile in Workers.  
   _Surfaced by /plan-eng-review on 2026-09-17_
 
-- [ ] **P1** Add `SHOW_LYRICS_RESULTS` to `ClientMessage` in `lib/game.ts`  
+- [x] **P1** Add `SHOW_LYRICS_RESULTS` to `ClientMessage` in `lib/game.ts`  
   Missing message for the `guessing → results` phase transition. Without it the state machine can never leave `guessing`. Shape: `{ type: 'SHOW_LYRICS_RESULTS', hostId: string }`.  
   _Surfaced by /plan-eng-review on 2026-09-17_
 
-- [ ] **P1** Fix `isCorrect()` fuzzy path to check all variants, not just target  
+- [x] **P1** Fix `isCorrect()` fuzzy path to check all variants, not just target  
   Design code: `return levenshtein(answer, target) <= threshold`. Bug: if the answer is 1 char off a variant but not off the primary sentence, it wrongly fails. Fix: `return [target, ...variants].some(v => levenshtein(answer, v) <= threshold)`.  
   _Surfaced by /plan-eng-review on 2026-09-17_
 
-- [ ] **P2** Extract `resolvePlaylistToCards()` before adding Lyrics Mode handlers  
+- [x] **P2** Extract `resolvePlaylistToCards()` before adding Lyrics Mode handlers  
   `handleLoadPlaylist` and `handleStartGame` share ~100 lines of identical AI pipeline. Lyrics Mode would be a third copy. Extract to `private async resolvePlaylistToCards()` first — zero behavior change, pure refactor.  
   _Surfaced by /plan-eng-review on 2026-09-17_
 
-- [ ] **P2** Add `lyricOverrides` to `START_GAME` message for host preview edits  
+- [x] **P2** Add `lyricOverrides` to `START_GAME` message for host preview edits  
   Host edits on the lyrics preview screen (blankSentence, lyricContext, skip) must flow as `lyricOverrides: Record<videoId, Partial<LyricsRound>>` in `START_GAME`. Server applies per-round without DO cache write-back (mirrors `songOverrides`).  
   _Surfaced by /plan-eng-review on 2026-09-17_
 
