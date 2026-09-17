@@ -536,7 +536,7 @@ export default function HostPage() {
               {skippedEmbeddingCount > 0 && (
                 <div style={{ display: "flex", alignItems: "flex-start", gap: 6, fontSize: 12, color: "#E85520" }}>
                   <span style={{ marginTop: 1 }}>⚠</span>
-                  <span>{skippedEmbeddingCount} 個影片已跳過 — 上傳者停用了嵌入功能，這些歌曲無法播放。</span>
+                  <span>{skippedEmbeddingCount} 個影片已跳過 — 版權持有人停用了嵌入播放，這些歌曲在本遊戲中無法播放。這是 YouTube 的限制，與 API 金鑰無關。</span>
                 </div>
               )}
               {diagnosticStatus && (diagnosticStatus.spotifyRateLimited || diagnosticStatus.kgBlocked) && (
@@ -771,11 +771,24 @@ export default function HostPage() {
               第 {lyricsState.currentRoundIndex + 1} / {lyricsState.totalRounds} 回合 · 結果
             </p>
           </div>
-          <div style={{ background: "#FFF0E8", borderRadius: 14, padding: "14px 18px", border: "2px solid rgba(255,107,53,.15)" }}>
-            <p style={{ fontSize: 11, color: "#B0AFBC", marginBottom: 6, fontWeight: 700 }}>正確答案</p>
-            <p style={{ fontSize: 20, fontWeight: 900, color: "#FF6B35", fontFamily: "var(--font-zh)" }}>
-              {lyricsState.currentRound.blankSentence ?? "（已揭曉）"}
-            </p>
+          <div style={{ background: "#FFF0E8", borderRadius: 14, border: "2px solid rgba(255,107,53,.15)", overflow: "hidden" }}>
+            <table style={{ width: "100%", fontSize: 12, borderCollapse: "collapse" }}>
+              <thead>
+                <tr style={{ borderBottom: "1px solid rgba(255,107,53,.15)" }}>
+                  {(["Title", "Artist", "Lyric Question", "Answer"] as const).map((h) => (
+                    <th key={h} style={{ padding: "8px 14px", textAlign: "left", fontWeight: 700, color: "#B0AFBC", whiteSpace: "nowrap" }}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td style={{ padding: "10px 14px", fontWeight: 700, color: "#1A1A2E", maxWidth: 160, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{lyricsState.currentRound.title}</td>
+                  <td style={{ padding: "10px 14px", color: "#7B7B9A", maxWidth: 120, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{lyricsState.currentRound.artist}</td>
+                  <td style={{ padding: "10px 14px", color: "#7B7B9A", fontFamily: "var(--font-zh)", maxWidth: 200, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{lyricsState.currentRound.lyricContext ?? "—"}</td>
+                  <td style={{ padding: "10px 14px", fontWeight: 900, color: "#FF6B35", fontFamily: "var(--font-zh)", whiteSpace: "nowrap" }}>{lyricsState.currentRound.blankSentence ?? "（已揭曉）"}</td>
+                </tr>
+              </tbody>
+            </table>
           </div>
           <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
             {Object.entries(lyricsState.players).sort(([,a],[,b]) => b.score - a.score).map(([id, p]) => {
