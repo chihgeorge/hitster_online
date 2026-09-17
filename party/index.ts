@@ -9,6 +9,10 @@ import {
   type SongDiagnostic,
   type Card,
   type EditableSong,
+  type LyricsGameState,
+  type LyricsGameConfig,
+  type LyricsRound,
+  type PublicLyricsGameState,
 } from "../lib/game";
 import { isValidYear, sanitizeText } from "../lib/utils";
 import {
@@ -20,11 +24,19 @@ import {
   extractYearFromTitle,
 } from "../lib/youtube";
 import { resolveTracksWithAI, type AITrackMeta } from "../lib/ai-metadata";
+import { resolveLyricsForTracks, type LyricsResult } from "../lib/lyrics-resolver";
+import { isCorrect, computePoints } from "../lib/fuzzy";
 
 const DEFAULT_TARGET_CARD_COUNT = 10;
 const MAX_TARGET_CARD_COUNT = 20;
 const MAX_PLAYERS_SOFT = 8;
 const PLAYLIST_ID_PATTERN = /^[A-Za-z0-9_-]{5,64}$/;
+
+// Lyrics Mode defaults
+const LYRICS_DEFAULT_TIMER = 60;
+const LYRICS_DEFAULT_ROUNDS = 10;
+const LYRICS_ANSWER_GRACE_MS = 500;
+const LYRICS_MAX_CONSECUTIVE_SKIPS = 3;
 
 // Player name constraints
 const MAX_NAME_LENGTH = 20;
@@ -89,6 +101,9 @@ function buildCardsFromAI(
 
 export default class HitsterRoom implements Party.Server {
   state: GameState;
+  lyricsState: LyricsGameState | null = null;
+  private lyricsConfig: LyricsGameConfig = { timerSeconds: LYRICS_DEFAULT_TIMER, totalRounds: LYRICS_DEFAULT_ROUNDS, fuzzyEnabled: false };
+  private lyricsDeck: (LyricsRound & { failed?: boolean })[] = [];
   private pendingPlaylist: PendingPlaylist | null = null;
   private abortLoad = false;
   private loadSeq = 0;
@@ -144,6 +159,8 @@ export default class HitsterRoom implements Party.Server {
   onConnect(conn: Party.Connection) {
     if (!this.hostConnId) this.hostConnId = conn.id;
     this.sendTo(conn, { type: "STATE", state: this.sanitizedState() });
+    const ls = this.sanitizedLyricsState();
+    if (ls) this.sendTo(conn, { type: "LYRICS_STATE", state: ls });
   }
 
   async onMessage(message: string, sender: Party.Connection) {
@@ -184,6 +201,25 @@ export default class HitsterRoom implements Party.Server {
         break;
       case "RESET_GAME":
         this.handleResetGame(sender, msg.hostId);
+        break;
+      // ── Lyrics Mode ──────────────────────────────────────────────────────
+      case "START_LYRICS_GAME":
+        await this.handleStartLyricsGame(sender, msg.hostId, msg.playlistUrl, msg.config, msg.lyricOverrides);
+        break;
+      case "START_LYRICS_ROUND":
+        this.handleStartLyricsRound(sender, msg.hostId);
+        break;
+      case "SUBMIT_LYRICS_ANSWER":
+        this.handleSubmitLyricsAnswer(sender, msg.playerId, msg.text, msg.ts);
+        break;
+      case "SHOW_LYRICS_RESULTS":
+        this.handleShowLyricsResults(sender, msg.hostId);
+        break;
+      case "NEXT_LYRICS_ROUND":
+        this.handleNextLyricsRound(sender, msg.hostId);
+        break;
+      case "RESET_LYRICS_GAME":
+        this.handleResetLyricsGame(sender, msg.hostId);
         break;
     }
   }
@@ -672,6 +708,272 @@ export default class HitsterRoom implements Party.Server {
     this.state.phase = "guessing";
     this.state.currentRound += 1;
 
+    this.broadcastState();
+  }
+
+  // ── Lyrics Mode ─────────────────────────────────────────────────────────────
+
+  private sanitizedLyricsState(): PublicLyricsGameState | null {
+    if (!this.lyricsState) return null;
+    const ls = this.lyricsState;
+    const round = ls.currentRound;
+    const publicRound = round
+      ? {
+          videoId: round.videoId,
+          title: round.title,
+          artist: round.artist,
+          language: round.language,
+          lyricContext: round.lyricContext,
+          // blankSentence revealed only after guessing phase ends
+          blankSentence: ls.phase === "guessing" || ls.phase === "loading" || ls.phase === "playing" ? null : round.blankSentence,
+        }
+      : null;
+    return { ...ls, currentRound: publicRound };
+  }
+
+  private broadcastLyricsState() {
+    const state = this.sanitizedLyricsState();
+    if (state) this.broadcast({ type: "LYRICS_STATE", state });
+  }
+
+  private async handleStartLyricsGame(
+    conn: Party.Connection,
+    hostId: string,
+    playlistUrl: string,
+    config: LyricsGameConfig,
+    lyricOverrides?: { videoId: string; lyricContext?: string; blankSentence?: string; acceptableVariants?: string[]; skip?: boolean }[]
+  ) {
+    if (this.state.phase !== "lobby") {
+      this.sendTo(conn, { type: "ERROR", error: "wrong_phase" });
+      return;
+    }
+    if (this.state.hostId === "") {
+      if (this.hostConnId !== "" && conn.id !== this.hostConnId) {
+        this.sendTo(conn, { type: "ERROR", error: "unauthorized" });
+        return;
+      }
+      this.state.hostId = hostId;
+      this.hostConnId = conn.id;
+    } else if (!this.isValidHostId(hostId)) {
+      this.sendTo(conn, { type: "ERROR", error: "unauthorized" });
+      return;
+    }
+
+    this.lyricsConfig = {
+      timerSeconds: Math.max(10, Math.min(config.timerSeconds ?? LYRICS_DEFAULT_TIMER, 300)),
+      totalRounds: Math.max(1, Math.min(config.totalRounds ?? LYRICS_DEFAULT_ROUNDS, 30)),
+      fuzzyEnabled: config.fuzzyEnabled === true,
+    };
+
+    const playlistId = extractPlaylistId(playlistUrl);
+    const players: LyricsGameState["players"] = {};
+    for (const [pid, p] of Object.entries(this.state.players)) {
+      players[pid] = { name: p.name, score: 0, connected: p.connected };
+    }
+
+    this.lyricsState = {
+      mode: "lyrics",
+      phase: "loading",
+      players,
+      currentRound: null,
+      roundStart: null,
+      timerSeconds: this.lyricsConfig.timerSeconds,
+      answers: {},
+      totalRounds: this.lyricsConfig.totalRounds,
+      currentRoundIndex: 0,
+      consecutiveSkips: 0,
+    };
+    this.broadcastLyricsState();
+
+    try {
+      const { anthropicKey, youtubeKey } = this.resolveEnv();
+
+      // Resolve playlist songs (reuse cached AI metadata)
+      let tracks: TrackItem[] = [];
+      if (playlistUrl === "hitster://test" || playlistUrl === "hitster://cpop-test") {
+        const pending = this.pendingPlaylist;
+        tracks = (pending?.songs ?? []).map((s) => ({ videoId: s.videoId, title: s.title, description: "", channelTitle: s.artist }));
+      } else if (this.pendingPlaylist?.playlistId === playlistId) {
+        tracks = this.pendingPlaylist.songs.map((s) => ({ videoId: s.videoId, title: s.title, description: "", channelTitle: s.artist }));
+      } else if (PLAYLIST_ID_PATTERN.test(playlistId)) {
+        tracks = await fetchPlaylistItems(playlistId, youtubeKey);
+      } else {
+        this.sendTo(conn, { type: "ERROR", error: "playlist_load_failed" });
+        this.lyricsState = null;
+        return;
+      }
+
+      if (tracks.length === 0) {
+        this.sendTo(conn, { type: "ERROR", error: "not_enough_songs" });
+        this.lyricsState = null;
+        return;
+      }
+
+      // Resolve AI metadata for title/artist cleanup (needed for lyrics prompt quality)
+      const aiMeta = await this.resolveAIWithCache(tracks, anthropicKey);
+      const enrichedTracks = tracks.map((t) => {
+        const meta = aiMeta.get(t.videoId);
+        return {
+          videoId: t.videoId,
+          title: meta?.title ?? t.title,
+          artist: meta?.artist ?? t.channelTitle,
+          year: meta?.year ?? 0,
+        };
+      });
+
+      // Check DO lyrics cache
+      const lyricsCacheRaw = await this.room.storage.get<LyricsResult>(
+        enrichedTracks.map((t) => `lyrics:${t.videoId}`)
+      ) as Map<string, LyricsResult>;
+      const cachedLyrics = new Map<string, LyricsResult>(
+        [...lyricsCacheRaw].map(([k, v]) => [k.slice(7), v])
+      );
+      const uncachedTracks = enrichedTracks.filter((t) => !cachedLyrics.has(t.videoId));
+
+      // Resolve fresh lyrics
+      const freshLyrics = anthropicKey && uncachedTracks.length > 0
+        ? await resolveLyricsForTracks(uncachedTracks, anthropicKey)
+        : new Map<string, LyricsResult>();
+
+      if (freshLyrics.size > 0) {
+        const toStore = Object.fromEntries([...freshLyrics].map(([id, l]) => [`lyrics:${id}`, l]));
+        this.room.storage.put(toStore).catch(() => {});
+      }
+
+      const allLyrics = new Map([...cachedLyrics, ...freshLyrics]);
+
+      // Build deck: apply lyricOverrides, filter skipped songs
+      const overrideMap = new Map((lyricOverrides ?? []).map((o) => [o.videoId, o]));
+      const deck: LyricsRound[] = [];
+      for (const t of enrichedTracks) {
+        const ov = overrideMap.get(t.videoId);
+        if (ov?.skip) continue;
+        const base = allLyrics.get(t.videoId);
+        if (!base) continue;
+        deck.push({
+          videoId: t.videoId,
+          title: base.title,
+          artist: base.artist,
+          language: base.language,
+          lyricContext: ov?.lyricContext ?? base.lyricContext,
+          blankSentence: ov?.blankSentence ?? base.blankSentence,
+          acceptableVariants: ov?.acceptableVariants ?? base.acceptableVariants,
+        });
+      }
+
+      if (deck.length === 0) {
+        this.sendTo(conn, { type: "ERROR", error: "not_enough_songs" });
+        this.lyricsState = null;
+        return;
+      }
+
+      this.lyricsDeck = deck.sort(() => Math.random() - 0.5).slice(0, this.lyricsConfig.totalRounds);
+      this.lyricsState.totalRounds = this.lyricsDeck.length;
+      this.lyricsState.phase = "playing";
+      this.lyricsState.currentRound = this.lyricsDeck[0];
+      this.lyricsState.answers = {};
+      this.broadcastLyricsState();
+    } catch (err) {
+      this.sendTo(conn, { type: "ERROR", error: this.parseErrorCode(err) });
+      this.lyricsState = null;
+    }
+  }
+
+  private handleStartLyricsRound(conn: Party.Connection, hostId: string) {
+    if (!this.isValidHostId(hostId) || !this.lyricsState) {
+      this.sendTo(conn, { type: "ERROR", error: "unauthorized" });
+      return;
+    }
+    if (this.lyricsState.phase !== "playing") {
+      this.sendTo(conn, { type: "ERROR", error: "wrong_phase" });
+      return;
+    }
+    this.lyricsState.phase = "guessing";
+    this.lyricsState.roundStart = Date.now();
+    this.lyricsState.answers = {};
+    this.broadcastLyricsState();
+  }
+
+  private handleSubmitLyricsAnswer(conn: Party.Connection, playerId: string, text: string, ts: number) {
+    if (!isValidPlayerId(playerId)) return;
+    const ls = this.lyricsState;
+    if (!ls || ls.phase !== "guessing" || !ls.currentRound || ls.roundStart === null) return;
+    if (!ls.players[playerId]) return;
+    if (ls.answers[playerId]) return; // already answered
+
+    const deadline = ls.roundStart + ls.timerSeconds * 1000 + LYRICS_ANSWER_GRACE_MS;
+    if (ts > deadline) {
+      this.sendTo(conn, { type: "TOO_LATE" });
+      return;
+    }
+
+    // Store answer — correctness computed at SHOW_LYRICS_RESULTS time
+    ls.answers[playerId] = { text: sanitizeText(text, 200), ts, correct: false, points: 0 };
+    this.broadcastLyricsState();
+  }
+
+  private handleShowLyricsResults(conn: Party.Connection, hostId: string) {
+    if (!this.isValidHostId(hostId) || !this.lyricsState) {
+      this.sendTo(conn, { type: "ERROR", error: "unauthorized" });
+      return;
+    }
+    if (this.lyricsState.phase !== "guessing") {
+      this.sendTo(conn, { type: "ERROR", error: "wrong_phase" });
+      return;
+    }
+    const ls = this.lyricsState;
+    const round = ls.currentRound!;
+
+    // Evaluate all submitted answers
+    for (const [pid, ans] of Object.entries(ls.answers)) {
+      const correct = isCorrect(ans.text, round, this.lyricsConfig);
+      const points = correct ? computePoints(ls.roundStart!, ans.ts, ls.timerSeconds) : 0;
+      ls.answers[pid] = { ...ans, correct, points };
+      if (correct && ls.players[pid]) {
+        ls.players[pid].score += points;
+      }
+    }
+
+    ls.phase = "results";
+    ls.consecutiveSkips = 0;
+    this.broadcastLyricsState();
+  }
+
+  private handleNextLyricsRound(conn: Party.Connection, hostId: string) {
+    if (!this.isValidHostId(hostId) || !this.lyricsState) {
+      this.sendTo(conn, { type: "ERROR", error: "unauthorized" });
+      return;
+    }
+    if (this.lyricsState.phase !== "results") {
+      this.sendTo(conn, { type: "ERROR", error: "wrong_phase" });
+      return;
+    }
+    const ls = this.lyricsState;
+    ls.currentRoundIndex += 1;
+
+    if (ls.currentRoundIndex >= this.lyricsDeck.length) {
+      ls.phase = "ended";
+      ls.currentRound = null;
+    } else {
+      ls.phase = "playing";
+      ls.currentRound = this.lyricsDeck[ls.currentRoundIndex];
+      ls.roundStart = null;
+      ls.answers = {};
+    }
+    this.broadcastLyricsState();
+  }
+
+  private handleResetLyricsGame(conn: Party.Connection, hostId: string) {
+    if (!this.isValidHostId(hostId)) {
+      this.sendTo(conn, { type: "ERROR", error: "unauthorized" });
+      return;
+    }
+    if (!this.lyricsState || this.lyricsState.phase !== "ended") {
+      this.sendTo(conn, { type: "ERROR", error: "wrong_phase" });
+      return;
+    }
+    this.lyricsState = null;
+    this.lyricsDeck = [];
     this.broadcastState();
   }
 
