@@ -6,7 +6,7 @@ import usePartySocket from "partysocket/react";
 import MusicPlayer from "@/components/MusicPlayer";
 import PlayerList from "@/components/PlayerList";
 import PlaylistEditor from "@/components/PlaylistEditor";
-import type { GameState, ServerMessage, ClientMessage, SongDiagnostic, DiagnosticStatus, EditableSong } from "@/lib/game";
+import type { GameState, ServerMessage, ClientMessage, SongDiagnostic, DiagnosticStatus, EditableSong, PublicLyricsGameState, LyricsGameConfig } from "@/lib/game";
 
 const PARTYKIT_HOST = process.env.NEXT_PUBLIC_PARTYKIT_HOST || "localhost:1999";
 
@@ -63,6 +63,11 @@ export default function HostPage() {
   const [copied, setCopied] = useState(false);
   const [saveError, setSaveError] = useState("");
   const [skippedEmbeddingCount, setSkippedEmbeddingCount] = useState(0);
+  // Lyrics Mode
+  const [gameMode, setGameMode] = useState<"timeline" | "lyrics">("timeline");
+  const [lyricsState, setLyricsState] = useState<PublicLyricsGameState | null>(null);
+  const [lyricsConfig, setLyricsConfig] = useState<LyricsGameConfig>({ timerSeconds: 60, totalRounds: 10, fuzzyEnabled: false });
+  const [lyricsTimerLeft, setLyricsTimerLeft] = useState<number | null>(null);
   const hostIdRef = useRef<string>("");
   const loadedUrlRef = useRef<string>("");
   const readySongsRef = useRef<EditableSong[]>([]);
@@ -149,8 +154,30 @@ export default function HostPage() {
         setError(msg.error);
         setLoadStatus("error");
       }
+      if (msg.type === "LYRICS_STATE") {
+        setLyricsState(msg.state);
+        if (msg.state.phase === "lobby" || msg.state.phase === "ended") {
+          setLyricsTimerLeft(null);
+        }
+      }
     },
   });
+
+  // Lyrics countdown timer (client-side display only)
+  useEffect(() => {
+    if (lyricsState?.phase !== "guessing" || lyricsState.roundStart === null) {
+      setLyricsTimerLeft(null);
+      return;
+    }
+    const deadline = lyricsState.roundStart + lyricsState.timerSeconds * 1000;
+    const tick = () => {
+      const left = Math.max(0, Math.ceil((deadline - Date.now()) / 1000));
+      setLyricsTimerLeft(left);
+    };
+    tick();
+    const id = setInterval(tick, 200);
+    return () => clearInterval(id);
+  }, [lyricsState?.phase, lyricsState?.roundStart, lyricsState?.timerSeconds]);
 
   function send(msg: ClientMessage) {
     socket.send(JSON.stringify(msg));
@@ -175,6 +202,15 @@ export default function HostPage() {
   function handleStartGame(e: React.FormEvent) {
     e.preventDefault();
     setError("");
+    if (gameMode === "lyrics") {
+      send({
+        type: "START_LYRICS_GAME",
+        hostId: hostIdRef.current,
+        playlistUrl: loadedUrlRef.current,
+        config: lyricsConfig,
+      });
+      return;
+    }
     setStarting(true);
     send({
       type: "START_GAME",
@@ -183,6 +219,23 @@ export default function HostPage() {
       targetCardCount: targetCount,
       songs: readySongsRef.current,
     });
+  }
+
+  function handleStartLyricsRound() {
+    send({ type: "START_LYRICS_ROUND", hostId: hostIdRef.current });
+  }
+
+  function handleShowLyricsResults() {
+    send({ type: "SHOW_LYRICS_RESULTS", hostId: hostIdRef.current });
+  }
+
+  function handleNextLyricsRound() {
+    send({ type: "NEXT_LYRICS_ROUND", hostId: hostIdRef.current });
+  }
+
+  function handleResetLyricsGame() {
+    send({ type: "RESET_LYRICS_GAME", hostId: hostIdRef.current });
+    setLyricsState(null);
   }
 
   function handleReveal() {
@@ -346,6 +399,20 @@ export default function HostPage() {
         <>
         <form onSubmit={handleStartGame} style={{ ...panel, display: "flex", flexDirection: "column", gap: 18 }}>
           <h2 style={{ fontWeight: 900, fontSize: 17, color: "#1A1A2E" }}>設定遊戲 · Set Up Game</h2>
+
+          {/* Mode picker */}
+          <div style={{ display: "flex", gap: 0, background: "#FFF0E8", borderRadius: 12, padding: 4 }}>
+            {(["timeline", "lyrics"] as const).map((m) => (
+              <button key={m} type="button" onClick={() => setGameMode(m)}
+                style={{ flex: 1, padding: "10px 0", borderRadius: 10, border: "none", cursor: "pointer", fontWeight: 900, fontSize: 13, fontFamily: "var(--font-zh)", transition: "all .15s",
+                  background: gameMode === m ? "#FF6B35" : "transparent",
+                  color: gameMode === m ? "white" : "#B0AFBC",
+                  boxShadow: gameMode === m ? "0 2px 8px rgba(255,107,53,.3)" : "none",
+                }}>
+                {m === "timeline" ? "📅 時間軸模式" : "🎵 歌詞模式"}
+              </button>
+            ))}
+          </div>
 
           {/* URL input + Load button */}
           <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
@@ -521,8 +588,8 @@ export default function HostPage() {
             </div>
           )}
 
-          {/* Card count slider */}
-          {loadStatus !== "loading" && (
+          {/* Card count slider (timeline mode only) */}
+          {loadStatus !== "loading" && gameMode === "timeline" && (
             <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
               <label style={{ fontSize: 12, fontWeight: 700, color: "#7B7B9A" }}>
                 勝利所需卡牌數：<span style={{ color: "#FF6B35", fontWeight: 900 }}>{targetCount}</span>
@@ -532,11 +599,37 @@ export default function HostPage() {
             </div>
           )}
 
+          {/* Lyrics config (lyrics mode only) */}
+          {loadStatus !== "loading" && gameMode === "lyrics" && (
+            <div style={{ display: "flex", flexDirection: "column", gap: 10, background: "#FFF0E8", borderRadius: 14, padding: 14, border: "2px solid rgba(255,107,53,.15)" }}>
+              <p style={{ fontSize: 12, fontWeight: 700, color: "#7B7B9A", marginBottom: 2 }}>歌詞模式設定</p>
+              <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                <label style={{ fontSize: 12, fontWeight: 700, color: "#7B7B9A" }}>
+                  回答時間：<span style={{ color: "#FF6B35", fontWeight: 900 }}>{lyricsConfig.timerSeconds}秒</span>
+                </label>
+                <input type="range" min={20} max={120} step={10} value={lyricsConfig.timerSeconds}
+                  onChange={(e) => setLyricsConfig((c) => ({ ...c, timerSeconds: Number(e.target.value) }))} className="w-full" />
+              </div>
+              <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                <label style={{ fontSize: 12, fontWeight: 700, color: "#7B7B9A" }}>
+                  回合數：<span style={{ color: "#FF6B35", fontWeight: 900 }}>{lyricsConfig.totalRounds}</span>
+                </label>
+                <input type="range" min={3} max={20} value={lyricsConfig.totalRounds}
+                  onChange={(e) => setLyricsConfig((c) => ({ ...c, totalRounds: Number(e.target.value) }))} className="w-full" />
+              </div>
+              <label style={{ display: "flex", alignItems: "center", gap: 10, cursor: "pointer" }}>
+                <input type="checkbox" checked={lyricsConfig.fuzzyEnabled}
+                  onChange={(e) => setLyricsConfig((c) => ({ ...c, fuzzyEnabled: e.target.checked }))} />
+                <span style={{ fontSize: 13, fontWeight: 700, color: "#1A1A2E" }}>寬鬆模式（允許拼字錯誤）</span>
+              </label>
+            </div>
+          )}
+
           {/* Start Game */}
           {loadStatus === "ready" && (
             <button type="submit" disabled={playerCount === 0}
               style={{ background: playerCount === 0 ? "rgba(255,107,53,.35)" : "#FF6B35", color: "white", border: "none", borderRadius: 14, padding: "15px", fontSize: 16, fontWeight: 900, cursor: playerCount === 0 ? "not-allowed" : "pointer", fontFamily: "var(--font-zh)", boxShadow: playerCount > 0 ? "0 4px 16px rgba(255,107,53,.3)" : "none" }}>
-              🎮 開始遊戲 · Start Game
+              {gameMode === "lyrics" ? "🎵 開始歌詞模式 · Start Lyrics" : "🎮 開始遊戲 · Start Game"}
             </button>
           )}
 
@@ -589,6 +682,148 @@ export default function HostPage() {
           )}
         </div>
         </>
+      )}
+
+      {/* Lyrics Mode: loading */}
+      {lyricsState?.phase === "loading" && (
+        <div style={{ ...panel, display: "flex", flexDirection: "column", alignItems: "center", gap: 16, padding: "48px 24px" }}>
+          <div style={{ position: "relative", width: 56, height: 56 }}>
+            <div style={{ position: "absolute", inset: 0, borderRadius: "50%", border: "4px solid rgba(255,107,53,.15)" }} />
+            <div className="animate-spin" style={{ position: "absolute", inset: 0, borderRadius: "50%", border: "4px solid transparent", borderTopColor: "#FF6B35" }} />
+          </div>
+          <p style={{ fontSize: 16, fontWeight: 700, color: "#1A1A2E" }}>AI 正在準備歌詞…</p>
+          <p style={{ fontSize: 12, color: "#B0AFBC" }}>Preparing lyrics with AI — this takes about 15–30 seconds</p>
+        </div>
+      )}
+
+      {/* Lyrics Mode: playing (show lyric context, ready to cut) */}
+      {lyricsState?.phase === "playing" && lyricsState.currentRound && (
+        <div style={{ ...panel, display: "flex", flexDirection: "column", gap: 20 }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+            <p style={{ fontSize: 11, color: "#B0AFBC", textTransform: "uppercase", letterSpacing: ".1em" }}>
+              第 {lyricsState.currentRoundIndex + 1} / {lyricsState.totalRounds} 回合
+            </p>
+            <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+              {Object.entries(lyricsState.players).sort(([,a],[,b]) => b.score - a.score).map(([id, p]) => (
+                <span key={id} style={{ fontSize: 12, color: "#7B7B9A", fontWeight: 600 }}>{p.name}: <span style={{ color: "#FF6B35" }}>{p.score}</span></span>
+              ))}
+            </div>
+          </div>
+          <div style={{ background: "#FFF0E8", borderRadius: 16, padding: "20px 24px", border: "2px solid rgba(255,107,53,.15)" }}>
+            <p style={{ fontSize: 11, color: "#B0AFBC", marginBottom: 8, fontWeight: 700, textTransform: "uppercase", letterSpacing: ".1em" }}>
+              {lyricsState.currentRound.title} · {lyricsState.currentRound.artist}
+            </p>
+            <p style={{ fontSize: 20, fontWeight: 700, color: "#1A1A2E", lineHeight: 1.7, fontFamily: "var(--font-zh)", whiteSpace: "pre-wrap" }}>
+              {lyricsState.currentRound.lyricContext}
+            </p>
+          </div>
+          <button onClick={handleStartLyricsRound}
+            style={{ background: "#FF6B35", color: "white", border: "none", borderRadius: 14, padding: "15px", fontSize: 16, fontWeight: 900, cursor: "pointer", fontFamily: "var(--font-zh)", boxShadow: "0 4px 16px rgba(255,107,53,.3)" }}>
+            ✂️ 切歌！Cut!
+          </button>
+        </div>
+      )}
+
+      {/* Lyrics Mode: guessing (timer + answer count + reveal button) */}
+      {lyricsState?.phase === "guessing" && lyricsState.currentRound && (
+        <div style={{ ...panel, display: "flex", flexDirection: "column", gap: 20 }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+            <p style={{ fontSize: 11, color: "#B0AFBC", textTransform: "uppercase", letterSpacing: ".1em" }}>
+              第 {lyricsState.currentRoundIndex + 1} / {lyricsState.totalRounds} 回合 · 搶答中
+            </p>
+            <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+              {Object.entries(lyricsState.players).sort(([,a],[,b]) => b.score - a.score).map(([id, p]) => (
+                <span key={id} style={{ fontSize: 12, color: "#7B7B9A", fontWeight: 600 }}>{p.name}: <span style={{ color: "#FF6B35" }}>{p.score}</span></span>
+              ))}
+            </div>
+          </div>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16 }}>
+            <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+              <p style={{ fontSize: 12, color: "#7B7B9A" }}>倒數計時</p>
+              <p style={{ fontSize: 48, fontWeight: 900, color: (lyricsTimerLeft ?? 99) <= 5 ? "#FF3B5C" : "#FF6B35", fontFamily: "var(--font-mono)", lineHeight: 1 }}>
+                {lyricsTimerLeft ?? lyricsState.timerSeconds}
+              </p>
+            </div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 4, textAlign: "right" }}>
+              <p style={{ fontSize: 12, color: "#7B7B9A" }}>已作答</p>
+              <p style={{ fontSize: 32, fontWeight: 900, color: "#1A1A2E", lineHeight: 1 }}>
+                {Object.keys(lyricsState.answers).length} / {Object.keys(lyricsState.players).length}
+              </p>
+            </div>
+          </div>
+          <div style={{ background: "#FFF0E8", borderRadius: 14, padding: "14px 18px", border: "2px solid rgba(255,107,53,.15)" }}>
+            <p style={{ fontSize: 16, fontWeight: 700, color: "#1A1A2E", fontFamily: "var(--font-zh)", whiteSpace: "pre-wrap" }}>
+              {lyricsState.currentRound.lyricContext}
+            </p>
+          </div>
+          <button onClick={handleShowLyricsResults}
+            style={{ background: "#1A1A2E", color: "white", border: "none", borderRadius: 14, padding: "14px", fontSize: 15, fontWeight: 900, cursor: "pointer", fontFamily: "var(--font-zh)" }}>
+            🔍 揭曉答案 · Show Results
+          </button>
+        </div>
+      )}
+
+      {/* Lyrics Mode: results */}
+      {lyricsState?.phase === "results" && lyricsState.currentRound && (
+        <div style={{ ...panel, display: "flex", flexDirection: "column", gap: 20 }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+            <p style={{ fontSize: 11, color: "#B0AFBC", textTransform: "uppercase", letterSpacing: ".1em" }}>
+              第 {lyricsState.currentRoundIndex + 1} / {lyricsState.totalRounds} 回合 · 結果
+            </p>
+          </div>
+          <div style={{ background: "#FFF0E8", borderRadius: 14, padding: "14px 18px", border: "2px solid rgba(255,107,53,.15)" }}>
+            <p style={{ fontSize: 11, color: "#B0AFBC", marginBottom: 6, fontWeight: 700 }}>正確答案</p>
+            <p style={{ fontSize: 20, fontWeight: 900, color: "#FF6B35", fontFamily: "var(--font-zh)" }}>
+              {lyricsState.currentRound.blankSentence ?? "（已揭曉）"}
+            </p>
+          </div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            {Object.entries(lyricsState.players).sort(([,a],[,b]) => b.score - a.score).map(([id, p]) => {
+              const ans = lyricsState.answers[id];
+              return (
+                <div key={id} style={{ display: "flex", alignItems: "center", gap: 12, background: ans?.correct ? "rgba(0,200,150,.06)" : "rgba(255,107,53,.04)", border: `2px solid ${ans?.correct ? "rgba(0,200,150,.25)" : "rgba(255,107,53,.15)"}`, borderRadius: 12, padding: "12px 14px" }}>
+                  <span style={{ fontSize: 14, fontWeight: 700, color: "#1A1A2E", flex: 1 }}>{p.name}</span>
+                  {ans ? (
+                    <>
+                      <span style={{ fontSize: 14, color: "#7B7B9A", fontFamily: "var(--font-zh)" }}>{ans.text}</span>
+                      <span style={{ fontSize: 13, fontWeight: 900, color: ans.correct ? "#00C896" : "#FF3B5C" }}>
+                        {ans.correct ? `+${ans.points}` : "✗"}
+                      </span>
+                    </>
+                  ) : <span style={{ fontSize: 12, color: "#B0AFBC" }}>未作答</span>}
+                  <span style={{ fontSize: 13, fontWeight: 900, color: "#FF6B35", minWidth: 40, textAlign: "right" }}>{p.score}</span>
+                </div>
+              );
+            })}
+          </div>
+          <button onClick={handleNextLyricsRound}
+            style={{ background: "#FF6B35", color: "white", border: "none", borderRadius: 14, padding: "14px", fontSize: 15, fontWeight: 900, cursor: "pointer", fontFamily: "var(--font-zh)", boxShadow: "0 4px 16px rgba(255,107,53,.3)" }}>
+            {lyricsState.currentRoundIndex + 1 >= lyricsState.totalRounds ? "🏆 查看排名 · See Rankings" : "▶ 下一回合 · Next Round"}
+          </button>
+        </div>
+      )}
+
+      {/* Lyrics Mode: ended */}
+      {lyricsState?.phase === "ended" && (
+        <div style={{ ...panel, display: "flex", flexDirection: "column", alignItems: "center", gap: 20, padding: "48px 24px" }}>
+          <p style={{ fontSize: 11, color: "#B0AFBC", textTransform: "uppercase", letterSpacing: ".12em" }}>歌詞模式結束 · Lyrics Mode Over!</p>
+          <h2 className="title-outlined" style={{ fontSize: 40, lineHeight: 1.05 }}>
+            {Object.entries(lyricsState.players).sort(([,a],[,b]) => b.score - a.score)[0]?.[1]?.name ?? "?"}
+          </h2>
+          <div style={{ width: "100%", display: "flex", flexDirection: "column", gap: 8 }}>
+            {Object.entries(lyricsState.players).sort(([,a],[,b]) => b.score - a.score).map(([id, p], i) => (
+              <div key={id} style={{ display: "flex", alignItems: "center", gap: 12, background: i === 0 ? "rgba(255,107,53,.06)" : "white", border: `2px solid ${i === 0 ? "rgba(255,107,53,.3)" : "rgba(255,107,53,.1)"}`, borderRadius: 14, padding: "14px 18px" }}>
+                <span style={{ fontSize: 20, fontWeight: 900, color: i === 0 ? "#FF6B35" : "#B0AFBC", minWidth: 28 }}>#{i + 1}</span>
+                <span style={{ fontSize: 16, fontWeight: 700, color: "#1A1A2E", flex: 1 }}>{p.name}</span>
+                <span style={{ fontSize: 24, fontWeight: 900, color: "#FF6B35", fontFamily: "var(--font-mono)" }}>{p.score}</span>
+              </div>
+            ))}
+          </div>
+          <button onClick={handleResetLyricsGame}
+            style={{ background: "#FF6B35", color: "white", border: "none", borderRadius: 14, padding: "14px 32px", fontSize: 15, fontWeight: 900, cursor: "pointer", fontFamily: "var(--font-zh)" }}>
+            再玩一次 · Play Again
+          </button>
+        </div>
       )}
 
       {/* Game in progress */}
