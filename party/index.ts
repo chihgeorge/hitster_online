@@ -48,6 +48,45 @@ type PendingPlaylist = {
   kgBlocked: boolean;
 };
 
+// ── Shared playlist resolution helpers ──────────────────────────────────────
+
+type TrackItem = { videoId: string; title: string; description: string; channelTitle: string };
+type TrackMeta = { artist: string; descYear: number | null; titleYear: number | null };
+
+function parseTrackMetas(tracks: TrackItem[]): TrackMeta[] {
+  return tracks.map((track) => {
+    const descMeta = parseYouTubeMusicDescription(track.description);
+    const titleYear = extractYearFromTitle(track.title);
+    const titleParsed = parseArtistAndTrack(track.title);
+    const artist = descMeta.artist ?? titleParsed?.artist ?? channelToArtist(track.channelTitle);
+    return { artist, descYear: descMeta.year ?? null, titleYear: titleYear ?? null };
+  });
+}
+
+function buildCardsFromAI(
+  tracks: TrackItem[],
+  metas: TrackMeta[],
+  aiResults: Map<string, AITrackMeta>
+): { songs: Card[]; diagnostics: SongDiagnostic[] } {
+  const songs: Card[] = [];
+  const diagnostics: SongDiagnostic[] = [];
+  for (let i = 0; i < tracks.length; i++) {
+    const t = tracks[i];
+    const { descYear, titleYear, artist } = metas[i];
+    const ai = aiResults.get(t.videoId);
+    const year = descYear ?? titleYear ?? ai?.year ?? null;
+    const yearSource: SongDiagnostic["yearSource"] =
+      descYear ? "description" : titleYear ? "title" : ai?.year ? "ai" : null;
+    const cleanTitle = ai?.title ?? t.title;
+    const cleanArtist = ai?.artist ?? artist;
+    diagnostics.push({ title: cleanTitle, artist: cleanArtist, year, yearSource });
+    if (year) {
+      songs.push({ id: t.videoId, videoId: t.videoId, title: cleanTitle, artist: cleanArtist, year, yearSource: yearSource as Card["yearSource"] });
+    }
+  }
+  return { songs, diagnostics };
+}
+
 export default class HitsterRoom implements Party.Server {
   state: GameState;
   private pendingPlaylist: PendingPlaylist | null = null;
@@ -214,6 +253,30 @@ export default class HitsterRoom implements Party.Server {
     this.broadcastState();
   }
 
+  private async resolveAIWithCache(
+    tracks: TrackItem[],
+    anthropicKey: string | undefined,
+    onBatchDone?: (accumulated: Map<string, AITrackMeta>) => void
+  ): Promise<Map<string, AITrackMeta>> {
+    const cacheRaw = await this.room.storage.get<AITrackMeta>(
+      tracks.map(t => `aiMeta:${t.videoId}`)
+    ) as Map<string, AITrackMeta>;
+    const cachedAI = new Map<string, AITrackMeta>(
+      [...cacheRaw].map(([k, v]) => [k.slice(7), v])
+    );
+    const uncachedTracks = tracks.filter(t => !cachedAI.has(t.videoId));
+    const freshAI = anthropicKey && uncachedTracks.length > 0
+      ? await resolveTracksWithAI(uncachedTracks, anthropicKey, onBatchDone
+          ? (partial) => onBatchDone(new Map([...cachedAI, ...partial]))
+          : undefined)
+      : new Map<string, AITrackMeta>();
+    if (freshAI.size > 0) {
+      const toStore = Object.fromEntries([...freshAI].map(([id, meta]) => [`aiMeta:${id}`, meta]));
+      this.room.storage.put(toStore).catch(() => {});
+    }
+    return new Map([...cachedAI, ...freshAI]);
+  }
+
   private isValidHostId(hostId: string): boolean {
     return this.state.hostId !== "" && hostId === this.state.hostId;
   }
@@ -279,8 +342,7 @@ export default class HitsterRoom implements Party.Server {
     this.pendingPlaylist = null;
 
     // Tracks and metas declared outside the try so the abort handler can reference them.
-    let tracks: Awaited<ReturnType<typeof fetchPlaylistItems>> = [];
-    type TrackMeta = { artist: string; descYear: number | null; titleYear: number | null };
+    let tracks: TrackItem[] = [];
     let metas: TrackMeta[] = [];
 
     try {
@@ -293,16 +355,7 @@ export default class HitsterRoom implements Party.Server {
       const skippedCount = tracks.length - embeddable.size;
       tracks = tracks.filter((t) => embeddable.has(t.videoId));
 
-      // Fast pre-parse: extract artist/year from structured descriptions and title brackets.
-      // Description year (YouTube Music "Released on: YYYY") is highly reliable — we keep
-      // it as the authoritative source and don't ask the AI to re-derive it.
-      metas = tracks.map((track) => {
-        const descMeta = parseYouTubeMusicDescription(track.description);
-        const titleYear = extractYearFromTitle(track.title);
-        const titleParsed = parseArtistAndTrack(track.title);
-        const artist = descMeta.artist ?? titleParsed?.artist ?? channelToArtist(track.channelTitle);
-        return { artist, descYear: descMeta.year ?? null, titleYear: titleYear ?? null };
-      });
+      metas = parseTrackMetas(tracks);
 
       // Send initial DIAGNOSTIC immediately so the host sees the song list.
       this.sendTo(conn, {
@@ -312,63 +365,18 @@ export default class HitsterRoom implements Party.Server {
         ...(skippedCount > 0 ? { skippedEmbeddingCount: skippedCount } : {}),
       });
 
-      // ── Metadata cache check ─────────────────────────────────────────────────
-      const cacheRaw = await this.room.storage.get<AITrackMeta>(
-        tracks.map(t => `aiMeta:${t.videoId}`)
-      ) as Map<string, AITrackMeta>;
-      const cachedAI = new Map<string, AITrackMeta>(
-        [...cacheRaw].map(([k, v]) => [k.slice(7), v])
-      );
-      const uncachedTracks = tracks.filter(t => !cachedAI.has(t.videoId));
-
-      // ── AI metadata resolution ───────────────────────────────────────────────
-      const freshAI = anthropicKey && uncachedTracks.length > 0
-        ? await resolveTracksWithAI(uncachedTracks, anthropicKey, (partial) => {
-            if (this.abortLoad || mySeq !== this.loadSeq) return;
-            const mergedAI = new Map([...cachedAI, ...partial]);
-            const diagSongs: SongDiagnostic[] = tracks.map((t, i) => {
-              const { descYear, titleYear, artist } = metas[i];
-              const ai = mergedAI.get(t.videoId);
-              const year = descYear ?? titleYear ?? ai?.year ?? null;
-              const yearSource: SongDiagnostic["yearSource"] =
-                descYear ? "description" : titleYear ? "title" : ai?.year ? "ai" : null;
-              return { title: ai?.title ?? t.title, artist: ai?.artist ?? artist, year, yearSource };
-            });
-            const partialSongs: Card[] = tracks
-              .map((t, i) => {
-                const d = diagSongs[i];
-                if (d.year == null) return null;
-                return { id: t.videoId, videoId: t.videoId, title: d.title, artist: d.artist, year: d.year, yearSource: d.yearSource as Card["yearSource"] };
-              })
-              .filter((s): s is Card => s !== null);
-            this.pendingPlaylist = { playlistId, songs: partialSongs, diagnostics: diagSongs, spotifyRateLimited: false, kgBlocked: false };
-            this.sendTo(conn, { type: "DIAGNOSTIC", songs: diagSongs, status: { spotifyRateLimited: false, kgBlocked: false } });
-          })
-        : new Map<string, AITrackMeta>();
-
-      // Persist new AI results to cache (fire and forget).
-      if (freshAI.size > 0) {
-        const toStore = Object.fromEntries([...freshAI].map(([id, meta]) => [`aiMeta:${id}`, meta]));
-        this.room.storage.put(toStore).catch(() => {});
-      }
-      const aiResults = new Map([...cachedAI, ...freshAI]);
+      // ── AI metadata resolution (cache-backed, progressive diagnostics) ───────
+      const aiResults = await this.resolveAIWithCache(tracks, anthropicKey, (accumulated) => {
+        if (this.abortLoad || mySeq !== this.loadSeq) return;
+        const { songs: partialSongs, diagnostics: diagSongs } = buildCardsFromAI(tracks, metas, accumulated);
+        this.pendingPlaylist = { playlistId, songs: partialSongs, diagnostics: diagSongs, spotifyRateLimited: false, kgBlocked: false };
+        this.sendTo(conn, { type: "DIAGNOSTIC", songs: diagSongs, status: { spotifyRateLimited: false, kgBlocked: false } });
+      });
 
       // Abort checkpoint after AI pass.
-      // Build abort songs from aiResults + metas rather than pendingPlaylist so that
-      // tracks with description/title years and cache hits are not silently dropped
-      // when abort arrives before the first onBatchDone callback fires.
       if (this.abortLoad || mySeq !== this.loadSeq) {
         if (this.abortLoad) {
-          const abortSongs: Card[] = tracks
-            .map((t, i) => {
-              const { descYear, titleYear, artist } = metas[i];
-              const ai = aiResults.get(t.videoId);
-              const year = descYear ?? titleYear ?? ai?.year ?? null;
-              if (!year) return null;
-              const yearSource = (descYear ? "description" : titleYear ? "title" : "ai") as Card["yearSource"];
-              return { id: t.videoId, videoId: t.videoId, title: ai?.title ?? t.title, artist: ai?.artist ?? artist, year, yearSource } satisfies Card;
-            })
-            .filter((s): s is Card => s !== null);
+          const { songs: abortSongs } = buildCardsFromAI(tracks, metas, aiResults);
           this.sendTo(conn, abortSongs.length >= 2
             ? { type: "PLAYLIST_READY", songCount: abortSongs.length, songs: abortSongs.map((s) => ({ videoId: s.videoId, title: s.title, artist: s.artist, year: s.year })) }
             : { type: "PLAYLIST_LOAD_ERROR", error: "not_enough_songs" });
@@ -376,27 +384,7 @@ export default class HitsterRoom implements Party.Server {
         return;
       }
 
-      // ── Final merge ──────────────────────────────────────────────────────────
-      // Priority: description year > title-embedded year > AI year
-      // For title/artist: AI wins over raw YouTube title (cleaner names).
-      const songs: Card[] = [];
-      const diagnostics: SongDiagnostic[] = [];
-
-      for (let i = 0; i < tracks.length; i++) {
-        const t = tracks[i];
-        const { descYear, titleYear, artist } = metas[i];
-        const ai = aiResults.get(t.videoId);
-        const year = descYear ?? titleYear ?? ai?.year ?? null;
-        const yearSource: SongDiagnostic["yearSource"] =
-          descYear ? "description" : titleYear ? "title" : ai?.year ? "ai" : null;
-        const cleanTitle = ai?.title ?? t.title;
-        const cleanArtist = ai?.artist ?? artist;
-        diagnostics.push({ title: cleanTitle, artist: cleanArtist, year, yearSource });
-        if (year) {
-          songs.push({ id: t.videoId, videoId: t.videoId, title: cleanTitle, artist: cleanArtist, year, yearSource: yearSource as Card["yearSource"] } satisfies Card);
-        }
-      }
-
+      const { songs, diagnostics } = buildCardsFromAI(tracks, metas, aiResults);
       this.pendingPlaylist = { playlistId, songs, diagnostics, spotifyRateLimited: false, kgBlocked: false };
 
       if (songs.length < 2) {
@@ -580,47 +568,9 @@ export default class HitsterRoom implements Party.Server {
     try {
       const { youtubeKey, anthropicKey } = this.resolveEnv();
       const tracks = await fetchPlaylistItems(playlistId, youtubeKey);
-      const metas = tracks.map((track) => {
-        const descMeta = parseYouTubeMusicDescription(track.description);
-        const titleYear = extractYearFromTitle(track.title);
-        const titleParsed = parseArtistAndTrack(track.title);
-        const artist = descMeta.artist ?? titleParsed?.artist ?? channelToArtist(track.channelTitle);
-        return { artist, descYear: descMeta.year ?? null, titleYear: titleYear ?? null };
-      });
-
-      const cacheRaw = await this.room.storage.get<AITrackMeta>(
-        tracks.map(t => `aiMeta:${t.videoId}`)
-      ) as Map<string, AITrackMeta>;
-      const cachedAI = new Map<string, AITrackMeta>(
-        [...cacheRaw].map(([k, v]) => [k.slice(7), v])
-      );
-      const uncachedTracks = tracks.filter(t => !cachedAI.has(t.videoId));
-      const freshAI = anthropicKey && uncachedTracks.length > 0
-        ? await resolveTracksWithAI(uncachedTracks, anthropicKey)
-        : new Map<string, AITrackMeta>();
-      if (freshAI.size > 0) {
-        const toStore = Object.fromEntries([...freshAI].map(([id, meta]) => [`aiMeta:${id}`, meta]));
-        this.room.storage.put(toStore).catch(() => {});
-      }
-      const aiResults = new Map([...cachedAI, ...freshAI]);
-
-      const songs: Card[] = [];
-      const diagnostics: SongDiagnostic[] = [];
-      for (let i = 0; i < tracks.length; i++) {
-        const t = tracks[i];
-        const { descYear, titleYear, artist } = metas[i];
-        const ai = aiResults.get(t.videoId);
-        const year = descYear ?? titleYear ?? ai?.year ?? null;
-        const yearSource: SongDiagnostic["yearSource"] =
-          descYear ? "description" : titleYear ? "title" : ai?.year ? "ai" : null;
-        const cleanTitle = ai?.title ?? t.title;
-        const cleanArtist = ai?.artist ?? artist;
-        diagnostics.push({ title: cleanTitle, artist: cleanArtist, year, yearSource });
-        if (year) {
-          songs.push({ id: t.videoId, videoId: t.videoId, title: cleanTitle, artist: cleanArtist, year, yearSource: yearSource as Card["yearSource"] } satisfies Card);
-        }
-      }
-
+      const metas = parseTrackMetas(tracks);
+      const aiResults = await this.resolveAIWithCache(tracks, anthropicKey);
+      const { songs } = buildCardsFromAI(tracks, metas, aiResults);
       if (songs.length < 2) { this.sendTo(conn, { type: "ERROR", error: "not_enough_songs" }); return; }
       this.state.songs = songs.sort(() => Math.random() - 0.5);
       this.dealStartingCardsAndStart();
