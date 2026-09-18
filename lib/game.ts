@@ -1,5 +1,41 @@
 // Shared game state types used by both the PartyKit server and Next.js client.
 
+// ── Lyrics Mode types ────────────────────────────────────────────────────────
+
+export type GameMode = "timeline" | "lyrics";
+
+export interface LyricsRound {
+  videoId: string;
+  title: string;
+  artist: string;
+  language: "zh-TW" | "en" | "ja" | "ko";
+  lyricContext: string;       // surrounding lines with ___ placeholder — safe to broadcast
+  blankSentence: string;      // NEVER broadcast during guessing phase
+  acceptableVariants: string[];
+}
+
+export interface LyricsGameState {
+  mode: "lyrics";
+  phase: "lobby" | "loading" | "preview" | "playing" | "guessing" | "results" | "ended";
+  players: Record<string, { name: string; score: number; connected: boolean }>;
+  rounds: LyricsRound[];   // full generated deck, available in preview phase
+  currentRound: LyricsRound | null;
+  roundStart: number | null;
+  timerSeconds: number;
+  answers: Record<string, { text: string; ts: number; correct: boolean; points: number }>;
+  totalRounds: number;
+  currentRoundIndex: number;
+  consecutiveSkips: number;
+}
+
+export interface LyricsGameConfig {
+  timerSeconds: number;
+  totalRounds: number;
+  fuzzyEnabled: boolean;
+}
+
+
+
 export type GamePhase = "lobby" | "guessing" | "reveal" | "ended";
 
 export interface Card {
@@ -40,7 +76,7 @@ export interface EditableSong {
   videoId: string;
   title: string;
   artist: string;
-  year: number;
+  year: number | null;
 }
 
 export interface SavedPlaylist {
@@ -51,6 +87,14 @@ export interface SavedPlaylist {
   updatedAt: number;
 }
 
+export interface LyricOverride {
+  videoId: string;
+  lyricContext?: string;
+  blankSentence?: string;
+  acceptableVariants?: string[];
+  skip?: boolean;
+}
+
 export type ClientMessage =
   | { type: "JOIN"; name: string; playerId: string }
   | { type: "REJOIN"; playerId: string; name: string }
@@ -58,10 +102,17 @@ export type ClientMessage =
   | { type: "LOAD_PLAYLIST"; hostId: string; playlistUrl: string }
   | { type: "ABORT_LOAD"; hostId: string }
   | { type: "START_GAME"; hostId: string; playlistUrl: string; targetCardCount?: number; songs?: EditableSong[] }
+  | { type: "START_LYRICS_GAME"; hostId: string; playlistUrl: string; config: LyricsGameConfig; lyricOverrides?: LyricOverride[] }
   | { type: "LOAD_SAVED_PLAYLIST"; hostId: string; playlistId: string; songs: EditableSong[] }
   | { type: "REVEAL"; hostId: string }
   | { type: "NEXT_ROUND"; hostId: string }
-  | { type: "RESET_GAME"; hostId: string };
+  | { type: "RESET_GAME"; hostId: string }
+  | { type: "START_LYRICS_ROUND"; hostId: string }
+  | { type: "SUBMIT_LYRICS_ANSWER"; playerId: string; text: string; ts: number }
+  | { type: "SHOW_LYRICS_RESULTS"; hostId: string }
+  | { type: "NEXT_LYRICS_ROUND"; hostId: string }
+  | { type: "RESET_LYRICS_GAME"; hostId: string }
+  | { type: "CONFIRM_LYRICS_PREVIEW"; hostId: string };
 
 export type SongDiagnostic = {
   title: string;
@@ -75,15 +126,30 @@ export type DiagnosticStatus = {
   kgBlocked: boolean;
 };
 
+// Public shape of LyricsRound broadcast to clients: blankSentence/acceptableVariants
+// are stripped during guessing phase — only lyricContext is safe to broadcast then.
+export type PublicLyricsRound = Omit<LyricsRound, "blankSentence" | "acceptableVariants"> & {
+  blankSentence: string | null;
+};
+
+export type PublicLyricsGameState = Omit<LyricsGameState, "currentRound" | "rounds"> & {
+  currentRound: PublicLyricsRound | null;
+  rounds: PublicLyricsRound[];  // preview deck — blankSentence revealed only in preview phase
+};
+
 export type ServerMessage =
   | { type: "STATE"; state: GameState }
+  | { type: "LYRICS_STATE"; state: PublicLyricsGameState }
   | { type: "PLACEMENT_ACK"; playerId: string }
   | { type: "ERROR"; error: string }
   | { type: "DIAGNOSTIC"; songs: SongDiagnostic[]; status: DiagnosticStatus; skippedEmbeddingCount?: number }
   | { type: "PLAYLIST_READY"; songCount: number; songs: EditableSong[] }
   | { type: "PLAYLIST_LOAD_ERROR"; error: string }
   | { type: "PLAYLIST_SAVED"; playlistId: string }
-  | { type: "TOO_LATE" };
+  | { type: "TOO_LATE" }
+  | { type: "LYRICS_ROUND_FAILED"; videoId: string }
+  | { type: "ROUND_SKIPPED" }
+  | { type: "LYRICS_PREVIEW"; rounds: PublicLyricsRound[]; loading: boolean };
 
 // --- Placement evaluation (core game logic) ---
 
