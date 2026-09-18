@@ -6,7 +6,7 @@ import usePartySocket from "partysocket/react";
 import MusicPlayer from "@/components/MusicPlayer";
 import PlayerList from "@/components/PlayerList";
 import PlaylistEditor from "@/components/PlaylistEditor";
-import type { GameState, ServerMessage, ClientMessage, SongDiagnostic, DiagnosticStatus, EditableSong } from "@/lib/game";
+import type { GameState, ServerMessage, ClientMessage, SongDiagnostic, DiagnosticStatus, EditableSong, PublicLyricsGameState, PublicLyricsRound, LyricsGameConfig } from "@/lib/game";
 
 const PARTYKIT_HOST = process.env.NEXT_PUBLIC_PARTYKIT_HOST || "localhost:1999";
 
@@ -63,6 +63,14 @@ export default function HostPage() {
   const [copied, setCopied] = useState(false);
   const [saveError, setSaveError] = useState("");
   const [skippedEmbeddingCount, setSkippedEmbeddingCount] = useState(0);
+  // Lyrics Mode
+  const [gameMode, setGameMode] = useState<"timeline" | "lyrics">("timeline");
+  const [lyricsState, setLyricsState] = useState<PublicLyricsGameState | null>(null);
+  const [lyricsPreview, setLyricsPreview] = useState<PublicLyricsRound[]>([]);
+  const [lyricsPreviewLoading, setLyricsPreviewLoading] = useState(false);
+  const [lyricOverrides, setLyricOverrides] = useState<Record<string, { lyricContext?: string; blankSentence?: string }>>({});
+  const [lyricsConfig, setLyricsConfig] = useState<LyricsGameConfig>({ timerSeconds: 60, totalRounds: 10, fuzzyEnabled: false });
+  const [lyricsTimerLeft, setLyricsTimerLeft] = useState<number | null>(null);
   const hostIdRef = useRef<string>("");
   const loadedUrlRef = useRef<string>("");
   const readySongsRef = useRef<EditableSong[]>([]);
@@ -112,6 +120,9 @@ export default function HostPage() {
           setReadySongs([]);
           setShowSavePanel(false);
           setSavedId(null);
+          setLyricsPreview([]);
+          setLyricsPreviewLoading(false);
+          setLyricOverrides({});
         }
       }
       if (msg.type === "ERROR") {
@@ -149,8 +160,34 @@ export default function HostPage() {
         setError(msg.error);
         setLoadStatus("error");
       }
+      if (msg.type === "LYRICS_STATE") {
+        setLyricsState(msg.state);
+        if (msg.state.phase === "lobby" || msg.state.phase === "ended") {
+          setLyricsTimerLeft(null);
+        }
+      }
+      if (msg.type === "LYRICS_PREVIEW") {
+        setLyricsPreviewLoading(msg.loading);
+        if (!msg.loading) setLyricsPreview(msg.rounds);
+      }
     },
   });
+
+  // Lyrics countdown timer (client-side display only)
+  useEffect(() => {
+    if (lyricsState?.phase !== "guessing" || lyricsState.roundStart === null) {
+      setLyricsTimerLeft(null);
+      return;
+    }
+    const deadline = lyricsState.roundStart + lyricsState.timerSeconds * 1000;
+    const tick = () => {
+      const left = Math.max(0, Math.ceil((deadline - Date.now()) / 1000));
+      setLyricsTimerLeft(left);
+    };
+    tick();
+    const id = setInterval(tick, 200);
+    return () => clearInterval(id);
+  }, [lyricsState?.phase, lyricsState?.roundStart, lyricsState?.timerSeconds]);
 
   function send(msg: ClientMessage) {
     socket.send(JSON.stringify(msg));
@@ -175,6 +212,19 @@ export default function HostPage() {
   function handleStartGame(e: React.FormEvent) {
     e.preventDefault();
     setError("");
+    if (gameMode === "lyrics") {
+      const overrides = Object.entries(lyricOverrides)
+        .filter(([, v]) => v.lyricContext !== undefined || v.blankSentence !== undefined)
+        .map(([videoId, v]) => ({ videoId, ...v }));
+      send({
+        type: "START_LYRICS_GAME",
+        hostId: hostIdRef.current,
+        playlistUrl: loadedUrlRef.current,
+        config: lyricsConfig,
+        ...(overrides.length > 0 ? { lyricOverrides: overrides } : {}),
+      });
+      return;
+    }
     setStarting(true);
     send({
       type: "START_GAME",
@@ -183,6 +233,27 @@ export default function HostPage() {
       targetCardCount: targetCount,
       songs: readySongsRef.current,
     });
+  }
+
+  function handleConfirmLyricsPreview() {
+    send({ type: "CONFIRM_LYRICS_PREVIEW", hostId: hostIdRef.current });
+  }
+
+  function handleStartLyricsRound() {
+    send({ type: "START_LYRICS_ROUND", hostId: hostIdRef.current });
+  }
+
+  function handleShowLyricsResults() {
+    send({ type: "SHOW_LYRICS_RESULTS", hostId: hostIdRef.current });
+  }
+
+  function handleNextLyricsRound() {
+    send({ type: "NEXT_LYRICS_ROUND", hostId: hostIdRef.current });
+  }
+
+  function handleResetLyricsGame() {
+    send({ type: "RESET_LYRICS_GAME", hostId: hostIdRef.current });
+    setLyricsState(null);
   }
 
   function handleReveal() {
@@ -319,7 +390,7 @@ export default function HostPage() {
             </p>
           </div>
         </div>
-        <div className="hide-xs" style={{ textAlign: "right", fontSize: 13, display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 3 }}>
+        <div style={{ textAlign: "right", fontSize: 13, display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 3, flexShrink: 1, minWidth: 0 }}>
           {Object.values(state?.players ?? {}).length === 0 ? (
             <span style={{ color: "#B0AFBC" }}>No players yet</span>
           ) : (
@@ -346,6 +417,20 @@ export default function HostPage() {
         <>
         <form onSubmit={handleStartGame} style={{ ...panel, display: "flex", flexDirection: "column", gap: 18 }}>
           <h2 style={{ fontWeight: 900, fontSize: 17, color: "#1A1A2E" }}>設定遊戲 · Set Up Game</h2>
+
+          {/* Mode picker */}
+          <div style={{ display: "flex", gap: 0, background: "#FFF0E8", borderRadius: 12, padding: 4 }}>
+            {(["timeline", "lyrics"] as const).map((m) => (
+              <button key={m} type="button" onClick={() => setGameMode(m)}
+                style={{ flex: 1, padding: "10px 0", borderRadius: 10, border: "none", cursor: "pointer", fontWeight: 900, fontSize: 13, fontFamily: "var(--font-zh)", transition: "all .15s",
+                  background: gameMode === m ? "#FF6B35" : "transparent",
+                  color: gameMode === m ? "white" : "#B0AFBC",
+                  boxShadow: gameMode === m ? "0 2px 8px rgba(255,107,53,.3)" : "none",
+                }}>
+                {m === "timeline" ? "📅 時間軸模式" : "🎵 歌詞模式"}
+              </button>
+            ))}
+          </div>
 
           {/* URL input + Load button */}
           <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
@@ -469,7 +554,7 @@ export default function HostPage() {
               {skippedEmbeddingCount > 0 && (
                 <div style={{ display: "flex", alignItems: "flex-start", gap: 6, fontSize: 12, color: "#E85520" }}>
                   <span style={{ marginTop: 1 }}>⚠</span>
-                  <span>{skippedEmbeddingCount} 個影片已跳過 — 上傳者停用了嵌入功能，這些歌曲無法播放。</span>
+                  <span>{skippedEmbeddingCount} 個影片已跳過 — 版權持有人停用了嵌入播放，這些歌曲在本遊戲中無法播放。這是 YouTube 的限制，與 API 金鑰無關。</span>
                 </div>
               )}
               {diagnosticStatus && (diagnosticStatus.spotifyRateLimited || diagnosticStatus.kgBlocked) && (
@@ -501,14 +586,93 @@ export default function HostPage() {
                   {saveError && <p style={{ fontSize: 12, color: "#FF3B5C" }}>{saveError}</p>}
                 </div>
               )}
-              {readySongs.length > 0 && (
+              {gameMode === "timeline" && readySongs.length > 0 && (
                 <button type="button" onClick={() => setShowEditor((v) => !v)}
                   style={{ background: "#FFF0E8", border: "2px solid rgba(255,107,53,.2)", borderRadius: 10, padding: "10px 14px", fontSize: 13, fontWeight: 700, color: "#1A1A2E", cursor: "pointer", textAlign: "left", fontFamily: "var(--font-zh)" }}>
                   {showEditor ? "▲ 隱藏歌曲編輯器" : "✎ 編輯歌曲資訊"}
                 </button>
               )}
-              {showEditor && readySongs.length > 0 && (
+              {gameMode === "timeline" && showEditor && readySongs.length > 0 && (
                 <PlaylistEditor playlistId={savedId} songs={readySongs} hostId={hostIdRef.current} partyKitHost={PARTYKIT_HOST} onSongsChange={setReadySongs} />
+              )}
+              {gameMode === "lyrics" && readySongs.length > 0 && (
+                <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                  <p style={{ fontSize: 12, color: "#B0AFBC", margin: 0 }}>
+                    {lyricsPreviewLoading
+                      ? "⏳ 正在生成歌詞題目… Generating questions…"
+                      : (lyricsState?.rounds?.length ?? 0) > 0
+                        ? `${lyricsState!.rounds.length} songs selected for this game`
+                        : lyricsPreview.length > 0
+                          ? `${lyricsPreview.length} / ${readySongs.length} songs have questions ready`
+                          : `${readySongs.length} songs loaded`}
+                  </p>
+                <div style={{ overflowX: "auto", borderRadius: 12, border: "1px solid rgba(255,107,53,.12)" }}>
+                  <table style={{ width: "100%", fontSize: 12, borderCollapse: "collapse" }}>
+                    <thead>
+                      <tr style={{ borderBottom: "1px solid rgba(255,107,53,.12)" }}>
+                        {(["#", "Title", "Artist", "Question", "Answer"] as const).map((h) => (
+                          <th key={h} style={{ padding: "8px 14px", textAlign: "left", fontWeight: 700, color: "#B0AFBC", whiteSpace: "nowrap" }}>{h}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {(() => {
+                        // After game starts: show selected deck (lyricsState.rounds)
+                        if ((lyricsState?.rounds?.length ?? 0) > 0) {
+                          return lyricsState!.rounds.map((lr, i) => (
+                            <tr key={lr.videoId} style={{ borderBottom: "1px solid rgba(255,107,53,.07)", background: i % 2 === 0 ? "transparent" : "rgba(255,107,53,.02)" }}>
+                              <td style={{ padding: "8px 14px", color: "#B0AFBC", fontFamily: "var(--font-mono)", width: 32 }}>{i + 1}</td>
+                              <td style={{ padding: "8px 14px", fontWeight: 700, color: "#1A1A2E", maxWidth: 160, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{lr.title}</td>
+                              <td style={{ padding: "8px 14px", color: "#7B7B9A", maxWidth: 120, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{lr.artist}</td>
+                              <td style={{ padding: "8px 14px", color: "#7B7B9A", fontFamily: "var(--font-zh)", maxWidth: 220, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{lr.lyricContext ?? "—"}</td>
+                              <td style={{ padding: "8px 14px", fontWeight: 900, color: lr.blankSentence ? "#FF6B35" : "#D0CEDC", fontFamily: "var(--font-zh)", whiteSpace: "nowrap" }}>{lr.blankSentence ?? "—"}</td>
+                            </tr>
+                          ));
+                        }
+                        // Preview loaded: merge preview data + host overrides into readySongs rows
+                        const previewMap = new Map(lyricsPreview.map(r => [r.videoId, r]));
+                        return readySongs.map((s, i) => {
+                          const lr = previewMap.get(s.videoId);
+                          const ov = lyricOverrides[s.videoId] ?? {};
+                          const qValue = ov.lyricContext ?? lr?.lyricContext ?? "";
+                          const aValue = ov.blankSentence ?? lr?.blankSentence ?? "";
+                          const hasData = !!(lr?.lyricContext || lr?.blankSentence);
+                          const cellBase: React.CSSProperties = { padding: "4px 8px", fontFamily: "var(--font-zh)", fontSize: 12, width: "100%", border: "none", outline: "none", borderRadius: 4, background: "transparent" };
+                          return (
+                            <tr key={s.videoId} style={{ borderBottom: "1px solid rgba(255,107,53,.07)", background: i % 2 === 0 ? "transparent" : "rgba(255,107,53,.02)" }}>
+                              <td style={{ padding: "8px 14px", color: "#B0AFBC", fontFamily: "var(--font-mono)", width: 32 }}>{i + 1}</td>
+                              <td style={{ padding: "8px 14px", fontWeight: 700, color: "#1A1A2E", maxWidth: 160, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{s.title}</td>
+                              <td style={{ padding: "8px 14px", color: "#7B7B9A", maxWidth: 120, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{s.artist}</td>
+                              <td style={{ maxWidth: 240, padding: "4px 6px" }}>
+                                {hasData || lyricsPreviewLoading ? (
+                                  <textarea
+                                    rows={2}
+                                    value={qValue}
+                                    placeholder={lyricsPreviewLoading ? "…" : "—"}
+                                    onChange={(e) => setLyricOverrides(prev => ({ ...prev, [s.videoId]: { ...prev[s.videoId], lyricContext: e.target.value } }))}
+                                    style={{ ...cellBase, color: ov.lyricContext ? "#1A1A2E" : "#7B7B9A", resize: "vertical", minHeight: 40 }}
+                                  />
+                                ) : <span style={{ padding: "4px 8px", color: "#D0CEDC" }}>—</span>}
+                              </td>
+                              <td style={{ maxWidth: 180, padding: "4px 6px" }}>
+                                {hasData || lyricsPreviewLoading ? (
+                                  <input
+                                    type="text"
+                                    value={aValue}
+                                    placeholder={lyricsPreviewLoading ? "…" : "—"}
+                                    onChange={(e) => setLyricOverrides(prev => ({ ...prev, [s.videoId]: { ...prev[s.videoId], blankSentence: e.target.value } }))}
+                                    style={{ ...cellBase, fontWeight: 900, color: ov.blankSentence ? "#1A1A2E" : aValue ? "#FF6B35" : "#D0CEDC" }}
+                                  />
+                                ) : <span style={{ padding: "4px 8px", color: "#D0CEDC" }}>—</span>}
+                              </td>
+                            </tr>
+                          );
+                        });
+                      })()}
+                    </tbody>
+                  </table>
+                </div>
+                </div>
               )}
             </div>
           )}
@@ -521,8 +685,8 @@ export default function HostPage() {
             </div>
           )}
 
-          {/* Card count slider */}
-          {loadStatus !== "loading" && (
+          {/* Card count slider (timeline mode only) */}
+          {loadStatus !== "loading" && gameMode === "timeline" && (
             <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
               <label style={{ fontSize: 12, fontWeight: 700, color: "#7B7B9A" }}>
                 勝利所需卡牌數：<span style={{ color: "#FF6B35", fontWeight: 900 }}>{targetCount}</span>
@@ -532,11 +696,43 @@ export default function HostPage() {
             </div>
           )}
 
-          {/* Start Game */}
-          {loadStatus === "ready" && (
+          {/* Lyrics config (lyrics mode only, hidden once preview is ready) */}
+          {loadStatus !== "loading" && gameMode === "lyrics" && !lyricsState && (
+            <div style={{ display: "flex", flexDirection: "column", gap: 10, background: "#FFF0E8", borderRadius: 14, padding: 14, border: "2px solid rgba(255,107,53,.15)" }}>
+              <p style={{ fontSize: 12, fontWeight: 700, color: "#7B7B9A", marginBottom: 2 }}>歌詞模式設定</p>
+              <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                <label style={{ fontSize: 12, fontWeight: 700, color: "#7B7B9A" }}>
+                  回答時間：<span style={{ color: "#FF6B35", fontWeight: 900 }}>{lyricsConfig.timerSeconds}秒</span>
+                </label>
+                <input type="range" min={20} max={120} step={10} value={lyricsConfig.timerSeconds}
+                  onChange={(e) => setLyricsConfig((c) => ({ ...c, timerSeconds: Number(e.target.value) }))} className="w-full" />
+              </div>
+              <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                <label style={{ fontSize: 12, fontWeight: 700, color: "#7B7B9A" }}>
+                  回合數：<span style={{ color: "#FF6B35", fontWeight: 900 }}>{lyricsConfig.totalRounds}</span>
+                </label>
+                <input type="range" min={3} max={20} value={lyricsConfig.totalRounds}
+                  onChange={(e) => setLyricsConfig((c) => ({ ...c, totalRounds: Number(e.target.value) }))} className="w-full" />
+              </div>
+              <label style={{ display: "flex", alignItems: "center", gap: 10, cursor: "pointer" }}>
+                <input type="checkbox" checked={lyricsConfig.fuzzyEnabled}
+                  onChange={(e) => setLyricsConfig((c) => ({ ...c, fuzzyEnabled: e.target.checked }))} />
+                <span style={{ fontSize: 13, fontWeight: 700, color: "#1A1A2E" }}>寬鬆模式（允許拼字錯誤）</span>
+              </label>
+            </div>
+          )}
+
+          {/* Start Game — two states for lyrics: generate lyrics, then confirm to begin */}
+          {loadStatus === "ready" && lyricsState?.phase === "preview" && (
+            <button type="button" onClick={handleConfirmLyricsPreview} disabled={playerCount === 0}
+              style={{ background: playerCount === 0 ? "rgba(255,107,53,.35)" : "#FF6B35", color: "white", border: "none", borderRadius: 14, padding: "15px", fontSize: 16, fontWeight: 900, cursor: playerCount === 0 ? "not-allowed" : "pointer", fontFamily: "var(--font-zh)", boxShadow: playerCount > 0 ? "0 4px 16px rgba(255,107,53,.3)" : "none" }}>
+              ▶ 開始遊戲 · Start Game
+            </button>
+          )}
+          {loadStatus === "ready" && !lyricsState && (
             <button type="submit" disabled={playerCount === 0}
               style={{ background: playerCount === 0 ? "rgba(255,107,53,.35)" : "#FF6B35", color: "white", border: "none", borderRadius: 14, padding: "15px", fontSize: 16, fontWeight: 900, cursor: playerCount === 0 ? "not-allowed" : "pointer", fontFamily: "var(--font-zh)", boxShadow: playerCount > 0 ? "0 4px 16px rgba(255,107,53,.3)" : "none" }}>
-              🎮 開始遊戲 · Start Game
+              {gameMode === "lyrics" ? "🎵 開始歌詞模式 · Start Lyrics" : "🎮 開始遊戲 · Start Game"}
             </button>
           )}
 
@@ -589,6 +785,161 @@ export default function HostPage() {
           )}
         </div>
         </>
+      )}
+
+      {/* Lyrics Mode: loading */}
+      {lyricsState?.phase === "loading" && (
+        <div style={{ ...panel, display: "flex", flexDirection: "column", alignItems: "center", gap: 16, padding: "48px 24px" }}>
+          <div style={{ position: "relative", width: 56, height: 56 }}>
+            <div style={{ position: "absolute", inset: 0, borderRadius: "50%", border: "4px solid rgba(255,107,53,.15)" }} />
+            <div className="animate-spin" style={{ position: "absolute", inset: 0, borderRadius: "50%", border: "4px solid transparent", borderTopColor: "#FF6B35" }} />
+          </div>
+          <p style={{ fontSize: 16, fontWeight: 700, color: "#1A1A2E" }}>AI 正在準備歌詞…</p>
+          <p style={{ fontSize: 12, color: "#B0AFBC" }}>Preparing lyrics with AI — this takes about 15–30 seconds</p>
+        </div>
+      )}
+
+      {/* Lyrics Mode: playing (show lyric context, ready to cut) */}
+      {lyricsState?.phase === "playing" && lyricsState.currentRound && (
+        <div style={{ ...panel, display: "flex", flexDirection: "column", gap: 20 }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+            <p style={{ fontSize: 11, color: "#B0AFBC", textTransform: "uppercase", letterSpacing: ".1em" }}>
+              第 {lyricsState.currentRoundIndex + 1} / {lyricsState.totalRounds} 回合
+            </p>
+            <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+              {Object.entries(lyricsState.players).sort(([,a],[,b]) => b.score - a.score).map(([id, p]) => (
+                <span key={id} style={{ fontSize: 12, color: "#7B7B9A", fontWeight: 600 }}>{p.name}: <span style={{ color: "#FF6B35" }}>{p.score}</span></span>
+              ))}
+            </div>
+          </div>
+          <div style={{ background: "#FFF0E8", borderRadius: 16, padding: "20px 24px", border: "2px solid rgba(255,107,53,.15)" }}>
+            <p style={{ fontSize: 11, color: "#B0AFBC", marginBottom: 8, fontWeight: 700, textTransform: "uppercase", letterSpacing: ".1em" }}>
+              {lyricsState.currentRound.title} · {lyricsState.currentRound.artist}
+            </p>
+            <p style={{ fontSize: 20, fontWeight: 700, color: "#1A1A2E", lineHeight: 1.7, fontFamily: "var(--font-zh)", whiteSpace: "pre-wrap" }}>
+              {lyricsState.currentRound.lyricContext}
+            </p>
+          </div>
+          <button onClick={handleStartLyricsRound}
+            style={{ background: "#FF6B35", color: "white", border: "none", borderRadius: 14, padding: "15px", fontSize: 16, fontWeight: 900, cursor: "pointer", fontFamily: "var(--font-zh)", boxShadow: "0 4px 16px rgba(255,107,53,.3)" }}>
+            ✂️ 切歌！Cut!
+          </button>
+        </div>
+      )}
+
+      {/* Lyrics Mode: guessing (timer + answer count + reveal button) */}
+      {lyricsState?.phase === "guessing" && lyricsState.currentRound && (
+        <div style={{ ...panel, display: "flex", flexDirection: "column", gap: 20 }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+            <p style={{ fontSize: 11, color: "#B0AFBC", textTransform: "uppercase", letterSpacing: ".1em" }}>
+              第 {lyricsState.currentRoundIndex + 1} / {lyricsState.totalRounds} 回合 · 搶答中
+            </p>
+            <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+              {Object.entries(lyricsState.players).sort(([,a],[,b]) => b.score - a.score).map(([id, p]) => (
+                <span key={id} style={{ fontSize: 12, color: "#7B7B9A", fontWeight: 600 }}>{p.name}: <span style={{ color: "#FF6B35" }}>{p.score}</span></span>
+              ))}
+            </div>
+          </div>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16 }}>
+            <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+              <p style={{ fontSize: 12, color: "#7B7B9A" }}>倒數計時</p>
+              <p style={{ fontSize: 48, fontWeight: 900, color: (lyricsTimerLeft ?? 99) <= 5 ? "#FF3B5C" : "#FF6B35", fontFamily: "var(--font-mono)", lineHeight: 1 }}>
+                {lyricsTimerLeft ?? lyricsState.timerSeconds}
+              </p>
+            </div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 4, textAlign: "right" }}>
+              <p style={{ fontSize: 12, color: "#7B7B9A" }}>已作答</p>
+              <p style={{ fontSize: 32, fontWeight: 900, color: "#1A1A2E", lineHeight: 1 }}>
+                {Object.keys(lyricsState.answers).length} / {Object.keys(lyricsState.players).length}
+              </p>
+            </div>
+          </div>
+          <div style={{ background: "#FFF0E8", borderRadius: 14, padding: "14px 18px", border: "2px solid rgba(255,107,53,.15)" }}>
+            <p style={{ fontSize: 16, fontWeight: 700, color: "#1A1A2E", fontFamily: "var(--font-zh)", whiteSpace: "pre-wrap" }}>
+              {lyricsState.currentRound.lyricContext}
+            </p>
+          </div>
+          <button onClick={handleShowLyricsResults}
+            style={{ background: "#1A1A2E", color: "white", border: "none", borderRadius: 14, padding: "14px", fontSize: 15, fontWeight: 900, cursor: "pointer", fontFamily: "var(--font-zh)" }}>
+            🔍 揭曉答案 · Show Results
+          </button>
+        </div>
+      )}
+
+      {/* Lyrics Mode: results */}
+      {lyricsState?.phase === "results" && lyricsState.currentRound && (
+        <div style={{ ...panel, display: "flex", flexDirection: "column", gap: 20 }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+            <p style={{ fontSize: 11, color: "#B0AFBC", textTransform: "uppercase", letterSpacing: ".1em" }}>
+              第 {lyricsState.currentRoundIndex + 1} / {lyricsState.totalRounds} 回合 · 結果
+            </p>
+          </div>
+          <div style={{ background: "#FFF0E8", borderRadius: 14, border: "2px solid rgba(255,107,53,.15)", overflow: "hidden" }}>
+            <table style={{ width: "100%", fontSize: 12, borderCollapse: "collapse" }}>
+              <thead>
+                <tr style={{ borderBottom: "1px solid rgba(255,107,53,.15)" }}>
+                  {(["Title", "Artist", "Lyric Question", "Answer"] as const).map((h) => (
+                    <th key={h} style={{ padding: "8px 14px", textAlign: "left", fontWeight: 700, color: "#B0AFBC", whiteSpace: "nowrap" }}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td style={{ padding: "10px 14px", fontWeight: 700, color: "#1A1A2E", maxWidth: 160, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{lyricsState.currentRound.title}</td>
+                  <td style={{ padding: "10px 14px", color: "#7B7B9A", maxWidth: 120, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{lyricsState.currentRound.artist}</td>
+                  <td style={{ padding: "10px 14px", color: "#7B7B9A", fontFamily: "var(--font-zh)", maxWidth: 200, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{lyricsState.currentRound.lyricContext ?? "—"}</td>
+                  <td style={{ padding: "10px 14px", fontWeight: 900, color: "#FF6B35", fontFamily: "var(--font-zh)", whiteSpace: "nowrap" }}>{lyricsState.currentRound.blankSentence ?? "（已揭曉）"}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            {Object.entries(lyricsState.players).sort(([,a],[,b]) => b.score - a.score).map(([id, p]) => {
+              const ans = lyricsState.answers[id];
+              return (
+                <div key={id} style={{ display: "flex", alignItems: "center", gap: 12, background: ans?.correct ? "rgba(0,200,150,.06)" : "rgba(255,107,53,.04)", border: `2px solid ${ans?.correct ? "rgba(0,200,150,.25)" : "rgba(255,107,53,.15)"}`, borderRadius: 12, padding: "12px 14px" }}>
+                  <span style={{ fontSize: 14, fontWeight: 700, color: "#1A1A2E", flex: 1 }}>{p.name}</span>
+                  {ans ? (
+                    <>
+                      <span style={{ fontSize: 14, color: "#7B7B9A", fontFamily: "var(--font-zh)" }}>{ans.text}</span>
+                      <span style={{ fontSize: 13, fontWeight: 900, color: ans.correct ? "#00C896" : "#FF3B5C" }}>
+                        {ans.correct ? `+${ans.points}` : "✗"}
+                      </span>
+                    </>
+                  ) : <span style={{ fontSize: 12, color: "#B0AFBC" }}>未作答</span>}
+                  <span style={{ fontSize: 13, fontWeight: 900, color: "#FF6B35", minWidth: 40, textAlign: "right" }}>{p.score}</span>
+                </div>
+              );
+            })}
+          </div>
+          <button onClick={handleNextLyricsRound}
+            style={{ background: "#FF6B35", color: "white", border: "none", borderRadius: 14, padding: "14px", fontSize: 15, fontWeight: 900, cursor: "pointer", fontFamily: "var(--font-zh)", boxShadow: "0 4px 16px rgba(255,107,53,.3)" }}>
+            {lyricsState.currentRoundIndex + 1 >= lyricsState.totalRounds ? "🏆 查看排名 · See Rankings" : "▶ 下一回合 · Next Round"}
+          </button>
+        </div>
+      )}
+
+      {/* Lyrics Mode: ended */}
+      {lyricsState?.phase === "ended" && (
+        <div style={{ ...panel, display: "flex", flexDirection: "column", alignItems: "center", gap: 20, padding: "48px 24px" }}>
+          <p style={{ fontSize: 11, color: "#B0AFBC", textTransform: "uppercase", letterSpacing: ".12em" }}>歌詞模式結束 · Lyrics Mode Over!</p>
+          <h2 className="title-outlined" style={{ fontSize: 40, lineHeight: 1.05 }}>
+            {Object.entries(lyricsState.players).sort(([,a],[,b]) => b.score - a.score)[0]?.[1]?.name ?? "?"}
+          </h2>
+          <div style={{ width: "100%", display: "flex", flexDirection: "column", gap: 8 }}>
+            {Object.entries(lyricsState.players).sort(([,a],[,b]) => b.score - a.score).map(([id, p], i) => (
+              <div key={id} style={{ display: "flex", alignItems: "center", gap: 12, background: i === 0 ? "rgba(255,107,53,.06)" : "white", border: `2px solid ${i === 0 ? "rgba(255,107,53,.3)" : "rgba(255,107,53,.1)"}`, borderRadius: 14, padding: "14px 18px" }}>
+                <span style={{ fontSize: 20, fontWeight: 900, color: i === 0 ? "#FF6B35" : "#B0AFBC", minWidth: 28 }}>#{i + 1}</span>
+                <span style={{ fontSize: 16, fontWeight: 700, color: "#1A1A2E", flex: 1 }}>{p.name}</span>
+                <span style={{ fontSize: 24, fontWeight: 900, color: "#FF6B35", fontFamily: "var(--font-mono)" }}>{p.score}</span>
+              </div>
+            ))}
+          </div>
+          <button onClick={handleResetLyricsGame}
+            style={{ background: "#FF6B35", color: "white", border: "none", borderRadius: 14, padding: "14px 32px", fontSize: 15, fontWeight: 900, cursor: "pointer", fontFamily: "var(--font-zh)" }}>
+            再玩一次 · Play Again
+          </button>
+        </div>
       )}
 
       {/* Game in progress */}

@@ -5,7 +5,6 @@ import { useRouter } from "next/navigation";
 import { generateRoomCode } from "@/lib/game";
 
 function Vinyl({ size = 160 }: { size?: number }) {
-  const c = size / 2;
   return (
     <div
       className="animate-vinyl rounded-full flex-shrink-0 relative"

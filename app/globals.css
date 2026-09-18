@@ -60,6 +60,9 @@ body {
 /* ── mono util ── */
 .font-mono-custom { font-family: var(--font-mono); }
 
+/* ── form controls ── */
+input[type="range"] { accent-color: var(--orange); }
+
 /* ── responsive utils ── */
 @media (max-width: 479px) {
   .hide-xs { display: none !important; }

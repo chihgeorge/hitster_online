@@ -1,5 +1,30 @@
 # Changelog
 
+## [0.4.0.0] — 2026-09-17
+
+### Added
+- **Lyrics Mode** — new game mode where players fill in a blanked-out chorus phrase for the currently playing song
+  - Two-phase AI generation: Claude Haiku (bulk preview of all songs) then Claude Sonnet (re-resolves the final game deck for quality)
+  - Progressive preview screen lets the host review and edit every Question/Answer before starting
+  - `CONFIRM_LYRICS_PREVIEW` message lets host lock in the deck with optional per-song overrides (`lyricContext`, `blankSentence`)
+  - Fuzzy matching mode (Levenshtein distance) allows tolerant answers when enabled by host
+  - DO storage caches Haiku results under `lyrics:<videoId>` and Sonnet results under `lyrics-sonnet:<videoId>` — repeat loads skip the API
+  - Host UI: mode picker (Timeline / Lyrics), editable preview table, timer/round config sliders, live countdown, per-player scores, round results table
+  - Player UI: text input with auto-submit, countdown ring, correct/incorrect result reveal
+  - Game phases: `lobby → loading → preview → playing → guessing → results → ended`
+  - 86 Vitest tests covering the full state machine, cache paths, fuzzy matching, and edge cases
+- **`EditableSong.year` now nullable** — songs without a confirmed year can be loaded and edited; `isValidYear` and the PlaylistEditor year input handle `null` gracefully
+
+### Changed
+- `resolveLyricsForTracks` accepts optional `model` parameter; defaults to `claude-haiku-4-5-20251001` (bulk) but callers can pass `claude-sonnet-5` for the game deck
+- `max_tokens` increased from 1200 → 2000 for the Anthropic lyrics call (couplet format requires more tokens)
+- Lyrics system prompt rewritten for couplet format: two-line context with a phrase blanked, not a full line
+- Host page header player-count label visible on all screen sizes (removed `.hide-xs`)
+- Skip-embedding warning copy updated to clarify it is a YouTube rights restriction, not an API key issue
+
+### Fixed
+- PlaylistEditor year field renders blank (not `0`) when year is null; color goes grey for absent years
+
 ## [0.3.0.0] — 2026-09-16
 
 ### Changed

@@ -38,7 +38,7 @@ export default function PlaylistEditor({ playlistId, songs, hostId, partyKitHost
       videoId: song.videoId,
       title: (overrides.title as string | undefined) ?? song.title,
       artist: (overrides.artist as string | undefined) ?? song.artist,
-      year: (overrides.year as number | undefined) ?? song.year,
+      year: (overrides.year as number | null | undefined) ?? song.year,
     };
   }
 
@@ -219,10 +219,10 @@ export default function PlaylistEditor({ playlistId, songs, hostId, partyKitHost
           </button>
         )}
       </div>
-      <div className="overflow-x-auto rounded-xl border border-white/10">
+      <div className="overflow-x-auto rounded-xl" style={{ border: "1px solid rgba(255,107,53,.12)" }}>
         <table className="w-full text-xs">
           <thead>
-            <tr className="text-left text-gray-500 border-b border-white/10">
+            <tr className="text-left" style={{ borderBottom: "1px solid rgba(255,107,53,.12)", color: "#7B7B9A" }}>
               <th className="px-3 py-2 font-medium">Title</th>
               <th className="px-3 py-2 font-medium">Artist</th>
               <th className="px-3 py-2 font-medium w-20">Year</th>
@@ -237,13 +237,13 @@ export default function PlaylistEditor({ playlistId, songs, hostId, partyKitHost
               const isDeleting = deleting[song.videoId] ?? false;
               const err = errors[song.videoId];
               return (
-                <tr key={song.videoId} className="border-b border-white/5 last:border-0">
+                <tr key={song.videoId} style={{ borderBottom: "1px solid rgba(255,107,53,.07)" }}>
                   <td className="px-2 py-1.5">
                     <input
                       type="text"
                       value={draft.title}
                       onChange={(e) => setField(song.videoId, "title", e.target.value)}
-                      className="w-full rounded px-2 py-1 outline-none placeholder-gray-600" style={{ background: "rgba(255,255,255,.06)", color: "rgba(255,255,255,.9)", border: "1.5px solid rgba(255,107,53,.15)" }}
+                      className="w-full rounded px-2 py-1 outline-none" style={{ background: "rgba(26,26,46,.04)", color: "#1A1A2E", border: "1.5px solid rgba(255,107,53,.15)" }}
                     />
                     {err && <p className="text-red-400 text-[10px] mt-0.5">{err}</p>}
                   </td>
@@ -252,17 +252,21 @@ export default function PlaylistEditor({ playlistId, songs, hostId, partyKitHost
                       type="text"
                       value={draft.artist}
                       onChange={(e) => setField(song.videoId, "artist", e.target.value)}
-                      className="w-full rounded px-2 py-1 outline-none" style={{ background: "rgba(255,255,255,.06)", color: "rgba(255,255,255,.6)", border: "1.5px solid rgba(255,107,53,.15)" }}
+                      className="w-full rounded px-2 py-1 outline-none" style={{ background: "rgba(26,26,46,.04)", color: "#7B7B9A", border: "1.5px solid rgba(255,107,53,.15)" }}
                     />
                   </td>
                   <td className="px-2 py-1.5">
                     <input
                       type="number"
-                      value={draft.year}
+                      value={draft.year ?? ""}
+                      placeholder="Year"
                       min={1900}
                       max={new Date().getFullYear() + 1}
-                      onChange={(e) => setField(song.videoId, "year", parseInt(e.target.value, 10))}
-                      className="w-full rounded px-2 py-1 outline-none" style={{ background: "rgba(255,255,255,.06)", fontFamily: "var(--font-mono)", color: "#FFD600", border: "1.5px solid rgba(255,107,53,.15)" }}
+                      onChange={(e) => {
+                        const v = parseInt(e.target.value, 10);
+                        setField(song.videoId, "year", isNaN(v) ? (null as unknown as number) : v);
+                      }}
+                      className="w-full rounded px-2 py-1 outline-none" style={{ background: "rgba(26,26,46,.04)", fontFamily: "var(--font-mono)", color: draft.year == null ? "#B0AFBC" : "#FF6B35", border: "1.5px solid rgba(255,107,53,.15)" }}
                     />
                   </td>
                   <td className="px-2 py-1.5">
@@ -281,7 +285,7 @@ export default function PlaylistEditor({ playlistId, songs, hostId, partyKitHost
                         type="button"
                         disabled={isDeleting}
                         onClick={() => void handleDeleteSong(song)}
-                        className="rounded px-2 py-1 bg-white/5 text-gray-500 hover:text-red-400 hover:bg-white/10 transition-colors disabled:opacity-40"
+                        className="rounded px-2 py-1 transition-colors disabled:opacity-40" style={{ background: "rgba(26,26,46,.04)", color: "#B0AFBC" }}
                       >
                         {isDeleting ? "…" : "✕"}
                       </button>
