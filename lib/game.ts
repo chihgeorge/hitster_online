@@ -16,8 +16,9 @@ export interface LyricsRound {
 
 export interface LyricsGameState {
   mode: "lyrics";
-  phase: "lobby" | "loading" | "playing" | "guessing" | "results" | "ended";
+  phase: "lobby" | "loading" | "preview" | "playing" | "guessing" | "results" | "ended";
   players: Record<string, { name: string; score: number; connected: boolean }>;
+  rounds: LyricsRound[];   // full generated deck, available in preview phase
   currentRound: LyricsRound | null;
   roundStart: number | null;
   timerSeconds: number;
@@ -75,7 +76,7 @@ export interface EditableSong {
   videoId: string;
   title: string;
   artist: string;
-  year: number;
+  year: number | null;
 }
 
 export interface SavedPlaylist {
@@ -110,7 +111,8 @@ export type ClientMessage =
   | { type: "SUBMIT_LYRICS_ANSWER"; playerId: string; text: string; ts: number }
   | { type: "SHOW_LYRICS_RESULTS"; hostId: string }
   | { type: "NEXT_LYRICS_ROUND"; hostId: string }
-  | { type: "RESET_LYRICS_GAME"; hostId: string };
+  | { type: "RESET_LYRICS_GAME"; hostId: string }
+  | { type: "CONFIRM_LYRICS_PREVIEW"; hostId: string };
 
 export type SongDiagnostic = {
   title: string;
@@ -130,8 +132,9 @@ export type PublicLyricsRound = Omit<LyricsRound, "blankSentence" | "acceptableV
   blankSentence: string | null;
 };
 
-export type PublicLyricsGameState = Omit<LyricsGameState, "currentRound"> & {
+export type PublicLyricsGameState = Omit<LyricsGameState, "currentRound" | "rounds"> & {
   currentRound: PublicLyricsRound | null;
+  rounds: PublicLyricsRound[];  // preview deck — blankSentence revealed only in preview phase
 };
 
 export type ServerMessage =
@@ -145,7 +148,8 @@ export type ServerMessage =
   | { type: "PLAYLIST_SAVED"; playlistId: string }
   | { type: "TOO_LATE" }
   | { type: "LYRICS_ROUND_FAILED"; videoId: string }
-  | { type: "ROUND_SKIPPED" };
+  | { type: "ROUND_SKIPPED" }
+  | { type: "LYRICS_PREVIEW"; rounds: PublicLyricsRound[]; loading: boolean };
 
 // --- Placement evaluation (core game logic) ---
 

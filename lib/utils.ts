@@ -1,4 +1,5 @@
-export function isValidYear(year: number): boolean {
+export function isValidYear(year: number | null | undefined): boolean {
+  if (year == null) return false;
   return year >= 1900 && year <= new Date().getFullYear() + 1;
 }
 

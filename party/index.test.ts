@@ -892,7 +892,7 @@ describe("LOAD_SAVED_PLAYLIST handler", () => {
     expect(lastSentTo(conn)?.error).toBe("not_enough_songs");
   });
 
-  it("filters out cards with invalid years", async () => {
+  it("includes all songs in PLAYLIST_READY but filters invalid years at game start", async () => {
     const room = new HitsterRoom(makeRoom() as any);
     const conn = makeConn();
     await send(room, conn, {
@@ -902,12 +902,16 @@ describe("LOAD_SAVED_PLAYLIST handler", () => {
       songs: [
         { videoId: "v1", title: "Good Song", artist: "Artist", year: 1985 },
         { videoId: "v2", title: "Good Song 2", artist: "Artist", year: 1990 },
-        { videoId: "v3", title: "Bad Song", artist: "Artist", year: 1800 }, // invalid year
+        { videoId: "v3", title: "Bad Song", artist: "Artist", year: 1800 }, // invalid year — shows in editor as null
       ],
     });
     const msg = lastSentTo(conn);
     expect(msg?.type).toBe("PLAYLIST_READY");
-    expect(msg?.songCount).toBe(2); // third card filtered out
+    // All 3 songs shown in PlaylistEditor (invalid year stored as null so host can fix it)
+    expect(msg?.songCount).toBe(3);
+    // Invalid year song has year: null in the list
+    const badSong = msg?.songs?.find((s: { videoId: string }) => s.videoId === "v3");
+    expect(badSong?.year).toBeNull();
   });
 
   it("rejects when hostConnId established but a different conn tries to claim host", async () => {
@@ -1059,7 +1063,9 @@ async function setupLyricsGame(overrides?: object) {
   // Pre-populate DO storage with lyrics cache so tests don't need a real Anthropic key
   (mockRoom.storage.get as ReturnType<typeof vi.fn>).mockImplementation((keys: unknown) =>
     Promise.resolve(new Map(Array.isArray(keys)
-      ? keys.filter((k: string) => k.startsWith("lyrics:")).map((k: string) => [k, CACHED_LYRICS])
+      ? keys
+          .filter((k: string) => k.startsWith("lyrics:") || k.startsWith("lyrics-sonnet:"))
+          .map((k: string) => [k, CACHED_LYRICS])
       : []))
   );
 
@@ -1079,10 +1085,15 @@ async function setupLyricsGame(overrides?: object) {
     ...overrides,
   });
 
+  // Advance past preview phase to playing so tests start in the expected state.
+  await send(room, hostConn, { type: "CONFIRM_LYRICS_PREVIEW", hostId: "host-uuid" });
+
   return { room, hostConn, p1Conn };
 }
 
 describe("Lyrics Mode: sanitizedLyricsState hides blankSentence", () => {
+  beforeEach(() => vi.clearAllMocks());
+
   it("strips blankSentence during playing phase", async () => {
     const { room } = await setupLyricsGame();
     const msgs = (room.room.broadcast as ReturnType<typeof vi.fn>).mock.calls
@@ -1106,12 +1117,15 @@ describe("Lyrics Mode: sanitizedLyricsState hides blankSentence", () => {
 });
 
 describe("Lyrics Mode: START_LYRICS_GAME", () => {
-  it("transitions to loading then playing", async () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it("transitions to loading then preview then playing", async () => {
     const { room } = await setupLyricsGame();
     const broadcasts = (room.room.broadcast as ReturnType<typeof vi.fn>).mock.calls
       .map((c: any[]) => JSON.parse(c[0] as string));
     const phases = broadcasts.filter((m: any) => m.type === "LYRICS_STATE").map((m: any) => m.state.phase);
     expect(phases).toContain("loading");
+    expect(phases).toContain("preview");
     expect(phases.at(-1)).toBe("playing");
   });
 
@@ -1144,11 +1158,10 @@ describe("Lyrics Mode: START_LYRICS_GAME", () => {
     });
     const broadcasts = (room.room.broadcast as ReturnType<typeof vi.fn>).mock.calls
       .map((c: any[]) => JSON.parse(c[0] as string));
-    // In loading phase blankSentence is null, so check via the room's lyricsDeck indirectly
-    // We can check the broadcastLyricsState during "results" after a full round
-    // For now, just confirm playing state reached
-    const playingBcast = broadcasts.findLast((m: any) => m.type === "LYRICS_STATE" && m.state.phase === "playing");
-    expect(playingBcast).toBeDefined();
+    // In preview phase, blankSentence is revealed so we can verify the override took effect
+    const previewBcast = broadcasts.findLast((m: any) => m.type === "LYRICS_STATE" && m.state.phase === "preview");
+    expect(previewBcast).toBeDefined();
+    expect(previewBcast.state.rounds[0].blankSentence).toBe("OVERRIDDEN");
   });
 
   it("uses DO lyrics cache when available", async () => {
@@ -1157,7 +1170,9 @@ describe("Lyrics Mode: START_LYRICS_GAME", () => {
     const mockRoom = makeRoom();
     (mockRoom.storage.get as ReturnType<typeof vi.fn>).mockImplementation((keys: unknown) =>
       Promise.resolve(new Map(Array.isArray(keys)
-        ? keys.filter((k: string) => k.startsWith("lyrics:")).map((k: string) => [k, CACHED_LYRICS])
+        ? keys
+            .filter((k: string) => k.startsWith("lyrics:") || k.startsWith("lyrics-sonnet:"))
+            .map((k: string) => [k, CACHED_LYRICS])
         : []))
     );
 
@@ -1170,7 +1185,8 @@ describe("Lyrics Mode: START_LYRICS_GAME", () => {
       .map((c: any[]) => JSON.parse(c[0] as string))
       .filter((m: any) => m.type === "LYRICS_STATE")
       .map((m: any) => m.state.phase);
-    expect(phases.at(-1)).toBe("playing");
+    // After START_LYRICS_GAME, phase is "preview"; needs CONFIRM_LYRICS_PREVIEW to reach "playing"
+    expect(phases.at(-1)).toBe("preview");
   });
 });
 
@@ -1330,5 +1346,147 @@ describe("Lyrics Mode: onConnect sends LYRICS_STATE when active", () => {
     const lyricsMsg = msgs.find((m: any) => m.type === "LYRICS_STATE");
     expect(lyricsMsg).toBeDefined();
     expect(lyricsMsg.state.phase).toBe("playing");
+  });
+});
+
+describe("Lyrics Mode: CONFIRM_LYRICS_PREVIEW guards", () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it("rejects wrong phase (not in preview)", async () => {
+    const { room, hostConn } = await setupLyricsGame();
+    // Already advanced to playing phase; CONFIRM_LYRICS_PREVIEW should error
+    await send(room, hostConn, { type: "CONFIRM_LYRICS_PREVIEW", hostId: "host-uuid" });
+    const last = lastSentTo(hostConn);
+    expect(last?.type).toBe("ERROR");
+    expect(last?.error).toBe("wrong_phase");
+  });
+
+  it("rejects non-host", async () => {
+    vi.mocked(fetchPlaylistItems).mockResolvedValue([fakeLyricsTrack()]);
+    const mockRoom = makeRoom();
+    (mockRoom.storage.get as ReturnType<typeof vi.fn>).mockImplementation((keys: unknown) =>
+      Promise.resolve(new Map(Array.isArray(keys)
+        ? keys.filter((k: string) => k.startsWith("lyrics:") || k.startsWith("lyrics-sonnet:"))
+            .map((k: string) => [k, CACHED_LYRICS])
+        : []))
+    );
+    const room = new HitsterRoom(mockRoom as any);
+    const hostConn = makeConn("host-conn");
+    await send(room, hostConn, {
+      type: "START_LYRICS_GAME", hostId: "host-uuid", playlistUrl: "PLtest",
+      config: { timerSeconds: 60, totalRounds: 1, fuzzyEnabled: false },
+    });
+    // Now in preview phase — a stranger tries to confirm
+    const stranger = makeConn("stranger");
+    await send(room, stranger, { type: "CONFIRM_LYRICS_PREVIEW", hostId: "bad-id" });
+    const last = lastSentTo(stranger);
+    expect(last?.type).toBe("ERROR");
+    expect(last?.error).toBe("unauthorized");
+  });
+});
+
+describe("Lyrics Mode: NEXT_LYRICS_ROUND advances to next round", () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it("transitions results → playing with next round loaded", async () => {
+    const TRACK_2 = { videoId: "vid2", title: "Second Song", description: "", channelTitle: "Artist 2" };
+    const CACHED_LYRICS_2 = { title: "Second Song", artist: "Artist 2", language: "en" as const, lyricContext: "X ___", blankSentence: "hello", acceptableVariants: [] };
+
+    vi.mocked(fetchPlaylistItems).mockResolvedValue([fakeLyricsTrack(), TRACK_2]);
+    vi.mocked(fetchEmbeddableVideoIds).mockResolvedValue(new Set(["vid1", "vid2"]));
+
+    const mockRoom = makeRoom();
+    (mockRoom.storage.get as ReturnType<typeof vi.fn>).mockImplementation((keys: unknown) =>
+      Promise.resolve(new Map(Array.isArray(keys)
+        ? keys.filter((k: string) => k.startsWith("lyrics:") || k.startsWith("lyrics-sonnet:")).map((k: string) => {
+            const id = k.startsWith("lyrics-sonnet:") ? k.slice(14) : k.slice(7);
+            return [k, id === "vid2" ? CACHED_LYRICS_2 : CACHED_LYRICS];
+          })
+        : []))
+    );
+
+    const room = new HitsterRoom(mockRoom as any);
+    const hostConn = makeConn("host-conn");
+    const p1Conn = makeConn("p1-conn");
+
+    await send(room, p1Conn, { type: "JOIN", playerId: P1, name: "Alice" });
+    await send(room, hostConn, {
+      type: "START_LYRICS_GAME", hostId: "host-uuid", playlistUrl: "PLtest",
+      config: { timerSeconds: 60, totalRounds: 2, fuzzyEnabled: false },
+    });
+    await send(room, hostConn, { type: "CONFIRM_LYRICS_PREVIEW", hostId: "host-uuid" });
+
+    // Complete round 1
+    await send(room, hostConn, { type: "START_LYRICS_ROUND", hostId: "host-uuid" });
+    await send(room, hostConn, { type: "SHOW_LYRICS_RESULTS", hostId: "host-uuid" });
+    await send(room, hostConn, { type: "NEXT_LYRICS_ROUND", hostId: "host-uuid" });
+
+    const msg = lastBroadcast(room);
+    expect(msg?.type).toBe("LYRICS_STATE");
+    // Should be in playing phase with next round loaded (not ended)
+    expect(msg?.state.phase).toBe("playing");
+    expect(msg?.state.currentRoundIndex).toBe(1);
+  });
+});
+
+describe("Lyrics Mode: RESET_LYRICS_GAME wrong phase", () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it("rejects reset when game is not in ended phase", async () => {
+    const { room, hostConn } = await setupLyricsGame();
+    // Still in playing phase — reset should error
+    await send(room, hostConn, { type: "RESET_LYRICS_GAME", hostId: "host-uuid" });
+    const last = lastSentTo(hostConn);
+    expect(last?.type).toBe("ERROR");
+    expect(last?.error).toBe("wrong_phase");
+  });
+});
+
+describe("Lyrics Mode: generateLyricsPreview broadcasts LYRICS_PREVIEW", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    process.env.ANTHROPIC_API_KEY = "test-key";
+  });
+  afterEach(() => {
+    delete process.env.ANTHROPIC_API_KEY;
+  });
+
+  it("broadcasts LYRICS_PREVIEW with loading:false after cached lyrics loaded", async () => {
+    const TWO_TRACKS = [
+      { videoId: "v1", title: "Song A", description: "", channelTitle: "Artist" },
+      { videoId: "v2", title: "Song B", description: "", channelTitle: "Artist" },
+    ];
+    vi.mocked(fetchPlaylistItems).mockResolvedValue(TWO_TRACKS);
+    vi.mocked(fetchEmbeddableVideoIds).mockResolvedValue(new Set(["v1", "v2"]));
+    vi.mocked(resolveTracksWithAI).mockResolvedValue(new Map());
+
+    const LYRICS_V1 = { title: "Song A", artist: "Artist", language: "en" as const, lyricContext: "X ___", blankSentence: "a", acceptableVariants: [] };
+    const LYRICS_V2 = { title: "Song B", artist: "Artist", language: "en" as const, lyricContext: "Y ___", blankSentence: "b", acceptableVariants: [] };
+
+    const mockRoom = makeRoom();
+    (mockRoom.storage.get as ReturnType<typeof vi.fn>).mockImplementation((keys: unknown) =>
+      Promise.resolve(Array.isArray(keys)
+        ? new Map(keys.filter((k: string) => k.startsWith("lyrics:")).map((k: string) => {
+            const id = k.slice(7);
+            return [k, id === "v1" ? LYRICS_V1 : id === "v2" ? LYRICS_V2 : null];
+          }).filter(([, v]) => v !== null))
+        : new Map())
+    );
+
+    const room = new HitsterRoom(mockRoom as any);
+    const conn = makeConn();
+    await send(room, conn, { type: "LOAD_PLAYLIST", hostId: "host-uuid", playlistUrl: "PLtest" });
+    // Flush all pending microtasks so the void generateLyricsPreview() completes
+    await new Promise<void>((resolve) => setTimeout(resolve, 0));
+
+    const broadcasts = (room.room.broadcast as ReturnType<typeof vi.fn>).mock.calls
+      .map((c: unknown[]) => JSON.parse(c[0] as string));
+    const previewMsgs = broadcasts.filter((m: { type: string }) => m.type === "LYRICS_PREVIEW");
+    expect(previewMsgs.length).toBeGreaterThan(0);
+    const finalPreview = previewMsgs.at(-1);
+    expect(finalPreview?.loading).toBe(false);
+    expect(finalPreview?.rounds.length).toBeGreaterThan(0);
+    // resolveLyricsForTracks should NOT be called (all cached)
+    expect(vi.mocked(resolveLyricsForTracks)).not.toHaveBeenCalled();
   });
 });

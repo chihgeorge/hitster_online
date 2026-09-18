@@ -13,6 +13,7 @@ import {
   type LyricsGameConfig,
   type LyricsRound,
   type PublicLyricsGameState,
+  type PublicLyricsRound,
 } from "../lib/game";
 import { isValidYear, sanitizeText } from "../lib/utils";
 import {
@@ -24,7 +25,7 @@ import {
   extractYearFromTitle,
 } from "../lib/youtube";
 import { resolveTracksWithAI, type AITrackMeta } from "../lib/ai-metadata";
-import { resolveLyricsForTracks, type LyricsResult } from "../lib/lyrics-resolver";
+import { resolveLyricsForTracks, MODEL_GAME, type LyricsResult } from "../lib/lyrics-resolver";
 import { isCorrect, computePoints } from "../lib/fuzzy";
 
 const DEFAULT_TARGET_CARD_COUNT = 10;
@@ -55,6 +56,7 @@ function isValidPlayerId(id: string): boolean {
 type PendingPlaylist = {
   playlistId: string;
   songs: Card[];
+  allSongs: EditableSong[];
   diagnostics: SongDiagnostic[];
   spotifyRateLimited: boolean;
   kgBlocked: boolean;
@@ -79,8 +81,9 @@ function buildCardsFromAI(
   tracks: TrackItem[],
   metas: TrackMeta[],
   aiResults: Map<string, AITrackMeta>
-): { songs: Card[]; diagnostics: SongDiagnostic[] } {
+): { songs: Card[]; allSongs: EditableSong[]; diagnostics: SongDiagnostic[] } {
   const songs: Card[] = [];
+  const allSongs: EditableSong[] = [];
   const diagnostics: SongDiagnostic[] = [];
   for (let i = 0; i < tracks.length; i++) {
     const t = tracks[i];
@@ -92,11 +95,12 @@ function buildCardsFromAI(
     const cleanTitle = ai?.title ?? t.title;
     const cleanArtist = ai?.artist ?? artist;
     diagnostics.push({ title: cleanTitle, artist: cleanArtist, year, yearSource });
+    allSongs.push({ videoId: t.videoId, title: cleanTitle, artist: cleanArtist, year });
     if (year) {
       songs.push({ id: t.videoId, videoId: t.videoId, title: cleanTitle, artist: cleanArtist, year, yearSource: yearSource as Card["yearSource"] });
     }
   }
-  return { songs, diagnostics };
+  return { songs, allSongs, diagnostics };
 }
 
 export default class HitsterRoom implements Party.Server {
@@ -105,6 +109,7 @@ export default class HitsterRoom implements Party.Server {
   private lyricsConfig: LyricsGameConfig = { timerSeconds: LYRICS_DEFAULT_TIMER, totalRounds: LYRICS_DEFAULT_ROUNDS, fuzzyEnabled: false };
   private lyricsDeck: (LyricsRound & { failed?: boolean })[] = [];
   private pendingPlaylist: PendingPlaylist | null = null;
+  private lyricsPreviewMap: Map<string, LyricsResult> = new Map();
   private abortLoad = false;
   private loadSeq = 0;
   private hostConnId = "";
@@ -206,6 +211,9 @@ export default class HitsterRoom implements Party.Server {
       case "START_LYRICS_GAME":
         await this.handleStartLyricsGame(sender, msg.hostId, msg.playlistUrl, msg.config, msg.lyricOverrides);
         break;
+      case "CONFIRM_LYRICS_PREVIEW":
+        this.handleConfirmLyricsPreview(sender, msg.hostId);
+        break;
       case "START_LYRICS_ROUND":
         this.handleStartLyricsRound(sender, msg.hostId);
         break;
@@ -289,14 +297,24 @@ export default class HitsterRoom implements Party.Server {
     this.broadcastState();
   }
 
+  private async storageBatchGet<T>(keys: string[]): Promise<Map<string, T>> {
+    const result = new Map<string, T>();
+    for (let i = 0; i < keys.length; i += 128) {
+      const chunk = keys.slice(i, i + 128);
+      const partial = await this.room.storage.get<T>(chunk) as Map<string, T>;
+      for (const [k, v] of partial) result.set(k, v);
+    }
+    return result;
+  }
+
   private async resolveAIWithCache(
     tracks: TrackItem[],
     anthropicKey: string | undefined,
     onBatchDone?: (accumulated: Map<string, AITrackMeta>) => void
   ): Promise<Map<string, AITrackMeta>> {
-    const cacheRaw = await this.room.storage.get<AITrackMeta>(
+    const cacheRaw = await this.storageBatchGet<AITrackMeta>(
       tracks.map(t => `aiMeta:${t.videoId}`)
-    ) as Map<string, AITrackMeta>;
+    );
     const cachedAI = new Map<string, AITrackMeta>(
       [...cacheRaw].map(([k, v]) => [k.slice(7), v])
     );
@@ -307,8 +325,11 @@ export default class HitsterRoom implements Party.Server {
           : undefined)
       : new Map<string, AITrackMeta>();
     if (freshAI.size > 0) {
-      const toStore = Object.fromEntries([...freshAI].map(([id, meta]) => [`aiMeta:${id}`, meta]));
-      this.room.storage.put(toStore).catch(() => {});
+      const entries = [...freshAI].map(([id, meta]) => [`aiMeta:${id}`, meta] as const);
+      for (let i = 0; i < entries.length; i += 128) {
+        const chunk = Object.fromEntries(entries.slice(i, i + 128));
+        this.room.storage.put(chunk).catch(() => {});
+      }
     }
     return new Map([...cachedAI, ...freshAI]);
   }
@@ -362,7 +383,7 @@ export default class HitsterRoom implements Party.Server {
 
     // Test seeds: signal ready immediately.
     if (playlistUrl === "hitster://test" || playlistUrl === "hitster://cpop-test") {
-      this.pendingPlaylist = { playlistId, songs: [], diagnostics: [], spotifyRateLimited: false, kgBlocked: false };
+      this.pendingPlaylist = { playlistId, songs: [], allSongs: [], diagnostics: [], spotifyRateLimited: false, kgBlocked: false };
       this.sendTo(conn, { type: "PLAYLIST_READY", songCount: 20, songs: [] });
       return;
     }
@@ -404,37 +425,121 @@ export default class HitsterRoom implements Party.Server {
       // ── AI metadata resolution (cache-backed, progressive diagnostics) ───────
       const aiResults = await this.resolveAIWithCache(tracks, anthropicKey, (accumulated) => {
         if (this.abortLoad || mySeq !== this.loadSeq) return;
-        const { songs: partialSongs, diagnostics: diagSongs } = buildCardsFromAI(tracks, metas, accumulated);
-        this.pendingPlaylist = { playlistId, songs: partialSongs, diagnostics: diagSongs, spotifyRateLimited: false, kgBlocked: false };
+        const { songs: partialSongs, allSongs: partialAll, diagnostics: diagSongs } = buildCardsFromAI(tracks, metas, accumulated);
+        this.pendingPlaylist = { playlistId, songs: partialSongs, allSongs: partialAll, diagnostics: diagSongs, spotifyRateLimited: false, kgBlocked: false };
         this.sendTo(conn, { type: "DIAGNOSTIC", songs: diagSongs, status: { spotifyRateLimited: false, kgBlocked: false } });
       });
 
       // Abort checkpoint after AI pass.
       if (this.abortLoad || mySeq !== this.loadSeq) {
         if (this.abortLoad) {
-          const { songs: abortSongs } = buildCardsFromAI(tracks, metas, aiResults);
-          this.sendTo(conn, abortSongs.length >= 2
-            ? { type: "PLAYLIST_READY", songCount: abortSongs.length, songs: abortSongs.map((s) => ({ videoId: s.videoId, title: s.title, artist: s.artist, year: s.year })) }
+          const { allSongs: abortAll } = buildCardsFromAI(tracks, metas, aiResults);
+          this.sendTo(conn, abortAll.length >= 2
+            ? { type: "PLAYLIST_READY", songCount: abortAll.length, songs: abortAll }
             : { type: "PLAYLIST_LOAD_ERROR", error: "not_enough_songs" });
         }
         return;
       }
 
-      const { songs, diagnostics } = buildCardsFromAI(tracks, metas, aiResults);
-      this.pendingPlaylist = { playlistId, songs, diagnostics, spotifyRateLimited: false, kgBlocked: false };
+      const { songs, allSongs, diagnostics } = buildCardsFromAI(tracks, metas, aiResults);
+      this.pendingPlaylist = { playlistId, songs, allSongs, diagnostics, spotifyRateLimited: false, kgBlocked: false };
 
-      if (songs.length < 2) {
+      if (allSongs.length < 2) {
         this.sendTo(conn, { type: "PLAYLIST_LOAD_ERROR", error: "not_enough_songs" });
         return;
       }
 
       this.sendTo(conn, {
         type: "PLAYLIST_READY",
-        songCount: songs.length,
-        songs: songs.map((s) => ({ videoId: s.videoId, title: s.title, artist: s.artist, year: s.year })),
+        songCount: allSongs.length,
+        songs: allSongs,
       });
+
+      // Kick off lyrics generation in background immediately after playlist is ready.
+      // Results are broadcast via LYRICS_PREVIEW and cached in DO storage for fast START_LYRICS_GAME.
+      const { anthropicKey: lyricsKey } = this.resolveEnv();
+      void this.generateLyricsPreview(allSongs, aiResults, lyricsKey);
     } catch (err) {
       this.sendTo(conn, { type: "PLAYLIST_LOAD_ERROR", error: this.parseErrorCode(err) });
+    }
+  }
+
+  private buildPreviewRounds(
+    enrichedTracks: { videoId: string; title: string; artist: string; year: number }[],
+    lyrics: Map<string, LyricsResult>
+  ): PublicLyricsRound[] {
+    return enrichedTracks.flatMap((t) => {
+      const lyric = lyrics.get(t.videoId);
+      if (!lyric) return [];
+      const r: PublicLyricsRound = {
+        videoId: t.videoId,
+        title: lyric.title || t.title,
+        artist: lyric.artist || t.artist,
+        language: lyric.language,
+        lyricContext: lyric.lyricContext,
+        blankSentence: lyric.blankSentence,
+      };
+      return [r];
+    });
+  }
+
+  private async generateLyricsPreview(
+    allSongs: EditableSong[],
+    aiResults: Map<string, AITrackMeta>,
+    anthropicKey: string | undefined
+  ) {
+    // Signal loading so the host table shows a spinner instead of dashes.
+    this.broadcast({ type: "LYRICS_PREVIEW", rounds: [], loading: true });
+
+    const enrichedTracks = allSongs.map((s) => {
+      const meta = aiResults.get(s.videoId);
+      return {
+        videoId: s.videoId,
+        title: meta?.title ?? s.title,
+        artist: meta?.artist ?? s.artist,
+        year: meta?.year ?? 0,
+      };
+    });
+
+    // Check DO lyrics cache first.
+    const lyricsCacheRaw = await this.storageBatchGet<LyricsResult>(
+      enrichedTracks.map((t) => `lyrics:${t.videoId}`)
+    );
+    const cachedLyrics = new Map<string, LyricsResult>(
+      [...lyricsCacheRaw].map(([k, v]) => [k.slice(7), v])
+    );
+    const uncachedTracks = enrichedTracks.filter((t) => !cachedLyrics.has(t.videoId));
+
+    // If we have cached results, broadcast them immediately so the table is not empty.
+    if (cachedLyrics.size > 0) {
+      const cachedRounds = this.buildPreviewRounds(enrichedTracks, cachedLyrics);
+      this.broadcast({ type: "LYRICS_PREVIEW", rounds: cachedRounds, loading: uncachedTracks.length > 0 });
+    }
+
+    if (anthropicKey && uncachedTracks.length > 0) {
+      // Accumulate fresh lyrics progressively, broadcasting after each batch.
+      const accumulated = new Map<string, LyricsResult>(cachedLyrics);
+      await resolveLyricsForTracks(uncachedTracks, anthropicKey, (partial) => {
+        partial.forEach((v, k) => accumulated.set(k, v));
+        const progressRounds = this.buildPreviewRounds(enrichedTracks, accumulated);
+        this.broadcast({ type: "LYRICS_PREVIEW", rounds: progressRounds, loading: true });
+      });
+
+      // Cache only the newly generated entries.
+      const freshEntries = [...accumulated].filter(([id]) => !cachedLyrics.has(id));
+      if (freshEntries.length > 0) {
+        const storageEntries = freshEntries.map(([id, l]) => [`lyrics:${id}`, l] as const);
+        for (let i = 0; i < storageEntries.length; i += 128) {
+          this.room.storage.put(Object.fromEntries(storageEntries.slice(i, i + 128))).catch(() => {});
+        }
+      }
+
+      const allLyrics = accumulated;
+      this.lyricsPreviewMap = allLyrics;
+      this.broadcast({ type: "LYRICS_PREVIEW", rounds: this.buildPreviewRounds(enrichedTracks, allLyrics), loading: false });
+    } else {
+      this.lyricsPreviewMap = cachedLyrics;
+      this.broadcast({ type: "LYRICS_PREVIEW", rounds: this.buildPreviewRounds(enrichedTracks, cachedLyrics), loading: false });
     }
   }
 
@@ -465,26 +570,31 @@ export default class HitsterRoom implements Party.Server {
       return;
     }
 
-    const cards: Card[] = songs
-      .filter(
-        (s) =>
-          typeof s.videoId === "string" &&
-          s.videoId.length > 0 &&
-          typeof s.title === "string" &&
-          s.title.trim().length > 0 &&
-          typeof s.year === "number" &&
-          isValidYear(s.year)
-      )
+    const validSongs = songs.filter(
+      (s) =>
+        typeof s.videoId === "string" &&
+        s.videoId.length > 0 &&
+        typeof s.title === "string" &&
+        s.title.trim().length > 0
+    );
+    const cards: Card[] = validSongs
+      .filter((s) => typeof s.year === "number" && isValidYear(s.year))
       .map((s) => ({
         id: s.videoId,
         videoId: s.videoId,
         title: sanitizeText(s.title, 200),
         artist: sanitizeText(s.artist ?? "", 100),
-        year: s.year,
+        year: s.year as number,
         yearSource: "manual" as const,
       }));
+    const allSongs: EditableSong[] = validSongs.map((s) => ({
+      videoId: s.videoId,
+      title: sanitizeText(s.title, 200),
+      artist: sanitizeText(s.artist ?? "", 100),
+      year: typeof s.year === "number" && isValidYear(s.year) ? s.year : null,
+    }));
 
-    if (cards.length < 2) {
+    if (allSongs.length < 2) {
       this.sendTo(conn, { type: "PLAYLIST_LOAD_ERROR", error: "not_enough_songs" });
       return;
     }
@@ -492,10 +602,11 @@ export default class HitsterRoom implements Party.Server {
     this.pendingPlaylist = {
       playlistId,
       songs: cards,
-      diagnostics: cards.map((c) => ({
-        title: c.title,
-        artist: c.artist,
-        year: c.year,
+      allSongs,
+      diagnostics: allSongs.map((s) => ({
+        title: s.title,
+        artist: s.artist,
+        year: s.year,
         yearSource: null,
       })),
       spotifyRateLimited: false,
@@ -504,8 +615,8 @@ export default class HitsterRoom implements Party.Server {
 
     this.sendTo(conn, {
       type: "PLAYLIST_READY",
-      songCount: cards.length,
-      songs: cards.map((c) => ({ videoId: c.videoId, title: c.title, artist: c.artist, year: c.year })),
+      songCount: allSongs.length,
+      songs: allSongs,
     });
   }
 
@@ -571,25 +682,25 @@ export default class HitsterRoom implements Party.Server {
     // ── Use cached playlist (loaded via LOAD_PLAYLIST) ───────────────────────
     const pending = this.pendingPlaylist;
     if (pending && pending.playlistId === playlistId) {
-      if (pending.songs.length < 2) {
+      // Build gameplay deck from allSongs, applying host overrides, then keep only year-resolved songs.
+      const overrideMap = songOverrides && songOverrides.length > 0
+        ? new Map(songOverrides.map((s) => [s.videoId, s]))
+        : new Map<string, EditableSong>();
+      const resolvedCards: Card[] = [];
+      for (const s of pending.allSongs) {
+        const ov = overrideMap.get(s.videoId);
+        const title = sanitizeText(ov?.title || s.title, 200) || s.title;
+        const artist = sanitizeText(ov?.artist || s.artist, 100) || s.artist;
+        const rawYear = (ov?.year != null && isValidYear(ov.year)) ? ov.year : s.year;
+        if (rawYear != null && isValidYear(rawYear)) {
+          resolvedCards.push({ id: s.videoId, videoId: s.videoId, title, artist, year: rawYear, yearSource: "manual" });
+        }
+      }
+      if (resolvedCards.length < 2) {
         this.sendTo(conn, { type: "ERROR", error: "not_enough_songs" });
         return;
       }
-      // Apply host-side edits (year/title/artist overrides from PlaylistEditor).
-      if (songOverrides && songOverrides.length > 0) {
-        const overrideMap = new Map(songOverrides.map((s) => [s.videoId, s]));
-        pending.songs = pending.songs.map((card) => {
-          const ov = overrideMap.get(card.videoId);
-          if (!ov) return card;
-          return {
-            ...card,
-            title: sanitizeText(ov.title) || card.title,
-            artist: sanitizeText(ov.artist) || card.artist,
-            year: isValidYear(ov.year) ? ov.year : card.year,
-          };
-        });
-      }
-      this.state.songs = [...pending.songs].sort(() => Math.random() - 0.5);
+      this.state.songs = [...resolvedCards].sort(() => Math.random() - 0.5);
       this.broadcast({ type: "DIAGNOSTIC", songs: pending.diagnostics, status: { spotifyRateLimited: pending.spotifyRateLimited, kgBlocked: pending.kgBlocked } });
       this.pendingPlaylist = null;
       this.dealStartingCardsAndStart();
@@ -728,7 +839,11 @@ export default class HitsterRoom implements Party.Server {
           blankSentence: ls.phase === "guessing" || ls.phase === "loading" || ls.phase === "playing" ? null : round.blankSentence,
         }
       : null;
-    return { ...ls, currentRound: publicRound };
+    // In preview, send all rounds with answers revealed so the host can review them.
+    const publicRounds: PublicLyricsRound[] = ls.phase === "preview"
+      ? ls.rounds.map((r) => ({ videoId: r.videoId, title: r.title, artist: r.artist, language: r.language, lyricContext: r.lyricContext, blankSentence: r.blankSentence }))
+      : [];
+    return { ...ls, currentRound: publicRound, rounds: publicRounds };
   }
 
   private broadcastLyricsState() {
@@ -775,6 +890,7 @@ export default class HitsterRoom implements Party.Server {
       mode: "lyrics",
       phase: "loading",
       players,
+      rounds: [],
       currentRound: null,
       roundStart: null,
       timerSeconds: this.lyricsConfig.timerSeconds,
@@ -792,9 +908,9 @@ export default class HitsterRoom implements Party.Server {
       let tracks: TrackItem[] = [];
       if (playlistUrl === "hitster://test" || playlistUrl === "hitster://cpop-test") {
         const pending = this.pendingPlaylist;
-        tracks = (pending?.songs ?? []).map((s) => ({ videoId: s.videoId, title: s.title, description: "", channelTitle: s.artist }));
+        tracks = (pending?.allSongs ?? []).map((s) => ({ videoId: s.videoId, title: s.title, description: "", channelTitle: s.artist }));
       } else if (this.pendingPlaylist?.playlistId === playlistId) {
-        tracks = this.pendingPlaylist.songs.map((s) => ({ videoId: s.videoId, title: s.title, description: "", channelTitle: s.artist }));
+        tracks = this.pendingPlaylist.allSongs.map((s) => ({ videoId: s.videoId, title: s.title, description: "", channelTitle: s.artist }));
       } else if (PLAYLIST_ID_PATTERN.test(playlistId)) {
         tracks = await fetchPlaylistItems(playlistId, youtubeKey);
       } else {
@@ -822,25 +938,56 @@ export default class HitsterRoom implements Party.Server {
       });
 
       // Check DO lyrics cache
-      const lyricsCacheRaw = await this.room.storage.get<LyricsResult>(
+      const lyricsCacheRaw = await this.storageBatchGet<LyricsResult>(
         enrichedTracks.map((t) => `lyrics:${t.videoId}`)
-      ) as Map<string, LyricsResult>;
+      );
       const cachedLyrics = new Map<string, LyricsResult>(
         [...lyricsCacheRaw].map(([k, v]) => [k.slice(7), v])
       );
       const uncachedTracks = enrichedTracks.filter((t) => !cachedLyrics.has(t.videoId));
 
-      // Resolve fresh lyrics
-      const freshLyrics = anthropicKey && uncachedTracks.length > 0
-        ? await resolveLyricsForTracks(uncachedTracks, anthropicKey)
+      // Use preloaded Haiku preview as the candidate pool.
+      // Then re-resolve the actual game deck songs with Sonnet for higher quality.
+      const candidatePool = this.lyricsPreviewMap.size > 0
+        ? this.lyricsPreviewMap
+        : new Map([...cachedLyrics]);
+
+      // Pick which tracks will be in the deck (shuffle, take totalRounds).
+      const candidateTracks = enrichedTracks.filter((t) => {
+        const ov = (lyricOverrides ?? []).find((o) => o.videoId === t.videoId);
+        return !ov?.skip;
+      });
+      const deckCandidates = candidateTracks
+        .sort(() => Math.random() - 0.5)
+        .slice(0, this.lyricsConfig.totalRounds * 3); // oversample to handle Sonnet skips
+
+      // Re-resolve deck candidates with Sonnet for accuracy. Cache keyed with model suffix.
+      const sonnetCacheRaw = await this.storageBatchGet<LyricsResult>(
+        deckCandidates.map((t) => `lyrics-sonnet:${t.videoId}`)
+      );
+      const sonnetCached = new Map<string, LyricsResult>(
+        [...sonnetCacheRaw].map(([k, v]) => [k.slice(14), v])
+      );
+      const sonnetUncached = deckCandidates.filter((t) => !sonnetCached.has(t.videoId));
+
+      const sonnetFresh = anthropicKey && sonnetUncached.length > 0
+        ? await resolveLyricsForTracks(sonnetUncached, anthropicKey, undefined, MODEL_GAME)
         : new Map<string, LyricsResult>();
 
-      if (freshLyrics.size > 0) {
-        const toStore = Object.fromEntries([...freshLyrics].map(([id, l]) => [`lyrics:${id}`, l]));
-        this.room.storage.put(toStore).catch(() => {});
+      if (sonnetFresh.size > 0) {
+        const entries = [...sonnetFresh].map(([id, l]) => [`lyrics-sonnet:${id}`, l] as const);
+        for (let i = 0; i < entries.length; i += 128) {
+          this.room.storage.put(Object.fromEntries(entries.slice(i, i + 128))).catch(() => {});
+        }
       }
 
-      const allLyrics = new Map([...cachedLyrics, ...freshLyrics]);
+      // For the deck: prefer Sonnet result, fall back to Haiku preview, then raw cache.
+      const sonnetAll = new Map([...sonnetCached, ...sonnetFresh]);
+      const allLyrics = new Map<string, LyricsResult>();
+      for (const t of enrichedTracks) {
+        const best = sonnetAll.get(t.videoId) ?? candidatePool.get(t.videoId) ?? cachedLyrics.get(t.videoId);
+        if (best) allLyrics.set(t.videoId, best);
+      }
 
       // Build deck: apply lyricOverrides, filter skipped songs
       const overrideMap = new Map((lyricOverrides ?? []).map((o) => [o.videoId, o]));
@@ -869,14 +1016,30 @@ export default class HitsterRoom implements Party.Server {
 
       this.lyricsDeck = deck.sort(() => Math.random() - 0.5).slice(0, this.lyricsConfig.totalRounds);
       this.lyricsState.totalRounds = this.lyricsDeck.length;
-      this.lyricsState.phase = "playing";
-      this.lyricsState.currentRound = this.lyricsDeck[0];
+      this.lyricsState.phase = "preview";
+      this.lyricsState.rounds = this.lyricsDeck;
+      this.lyricsState.currentRound = null;
       this.lyricsState.answers = {};
       this.broadcastLyricsState();
     } catch (err) {
       this.sendTo(conn, { type: "ERROR", error: this.parseErrorCode(err) });
       this.lyricsState = null;
     }
+  }
+
+  private handleConfirmLyricsPreview(conn: Party.Connection, hostId: string) {
+    if (!this.isValidHostId(hostId) || !this.lyricsState) {
+      this.sendTo(conn, { type: "ERROR", error: "unauthorized" });
+      return;
+    }
+    if (this.lyricsState.phase !== "preview") {
+      this.sendTo(conn, { type: "ERROR", error: "wrong_phase" });
+      return;
+    }
+    this.lyricsState.phase = "playing";
+    this.lyricsState.currentRound = this.lyricsDeck[0] ?? null;
+    this.lyricsState.answers = {};
+    this.broadcastLyricsState();
   }
 
   private handleStartLyricsRound(conn: Party.Connection, hostId: string) {

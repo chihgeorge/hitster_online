@@ -38,7 +38,7 @@ export default function PlaylistEditor({ playlistId, songs, hostId, partyKitHost
       videoId: song.videoId,
       title: (overrides.title as string | undefined) ?? song.title,
       artist: (overrides.artist as string | undefined) ?? song.artist,
-      year: (overrides.year as number | undefined) ?? song.year,
+      year: (overrides.year as number | null | undefined) ?? song.year,
     };
   }
 
@@ -258,11 +258,15 @@ export default function PlaylistEditor({ playlistId, songs, hostId, partyKitHost
                   <td className="px-2 py-1.5">
                     <input
                       type="number"
-                      value={draft.year}
+                      value={draft.year ?? ""}
+                      placeholder="Year"
                       min={1900}
                       max={new Date().getFullYear() + 1}
-                      onChange={(e) => setField(song.videoId, "year", parseInt(e.target.value, 10))}
-                      className="w-full rounded px-2 py-1 outline-none" style={{ background: "rgba(26,26,46,.04)", fontFamily: "var(--font-mono)", color: "#FF6B35", border: "1.5px solid rgba(255,107,53,.15)" }}
+                      onChange={(e) => {
+                        const v = parseInt(e.target.value, 10);
+                        setField(song.videoId, "year", isNaN(v) ? (null as unknown as number) : v);
+                      }}
+                      className="w-full rounded px-2 py-1 outline-none" style={{ background: "rgba(26,26,46,.04)", fontFamily: "var(--font-mono)", color: draft.year == null ? "#B0AFBC" : "#FF6B35", border: "1.5px solid rgba(255,107,53,.15)" }}
                     />
                   </td>
                   <td className="px-2 py-1.5">
