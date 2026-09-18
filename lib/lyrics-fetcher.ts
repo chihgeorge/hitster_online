@@ -18,15 +18,19 @@ type LrclibTrack = {
  * Higher = better match.
  */
 function matchScore(result: LrclibTrack, title: string, artist: string): number {
-  const norm = (s: string) => s.toLowerCase().replace(/[^\p{L}\p{N}]/gu, "");
+  const norm = (s: string) => (s ?? "").toLowerCase().replace(/[^\p{L}\p{N}]/gu, "");
   const rt = norm(result.trackName);
   const ra = norm(result.artistName);
   const qt = norm(title);
   const qa = norm(artist);
 
+  // Require at minimum a partial title match — prevents wrong-artist tracks from
+  // scoring via lyrics bonus alone (e.g. score=3: partial artist +1, lyrics +2).
+  if (rt !== qt && !rt.includes(qt) && !qt.includes(rt)) return 0;
+
   let score = 0;
   if (rt === qt) score += 4;
-  else if (rt.includes(qt) || qt.includes(rt)) score += 2;
+  else score += 2;
 
   if (ra === qa) score += 3;
   else if (ra.includes(qa) || qa.includes(ra)) score += 1;

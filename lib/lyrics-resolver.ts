@@ -51,8 +51,10 @@ async function resolveLyricsBatch(
     const lyrics = fetchedLyrics.get(t.videoId);
     const lang = detectLanguageHint(t.title, t.artist);
     if (lyrics) {
-      // Truncate to ~1500 chars to stay within token budget while keeping the chorus
-      const truncated = lyrics.length > 1500 ? lyrics.slice(0, 1500) + "\n[…]" : lyrics;
+      // Truncate to ~1500 chars to stay within token budget while keeping the chorus.
+      // Sanitize bare `---` lines so they don't break the per-track block separator.
+      const truncated = (lyrics.length > 1500 ? lyrics.slice(0, 1500) + "\n[…]" : lyrics)
+        .replace(/^-{3,}$/gm, "- - -");
       return `${t.videoId} | "${t.title}" by ${t.artist} (${t.year}) | language: ${lang}\nLYRICS:\n${truncated}\n---`;
     }
     return `${t.videoId} | "${t.title}" by ${t.artist} (${t.year}) | language: ${lang} | NO_LYRICS`;
@@ -125,7 +127,7 @@ Rules:
 
     const language = (["zh-TW", "en", "ja", "ko"].includes(item.language as string)
       ? (item.language as LyricsResult["language"])
-      : "zh-TW");
+      : "en");
     const lyricContext = typeof item.lyricContext === "string" ? item.lyricContext.trim() : "___";
     const acceptableVariants = Array.isArray(item.acceptableVariants)
       ? (item.acceptableVariants as unknown[]).filter((v): v is string => typeof v === "string")
