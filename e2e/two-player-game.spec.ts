@@ -1,5 +1,5 @@
 /**
- * Two-player full-game E2E test.
+ * Two-player full-game E2E tests.
  *
  * Uses `hitster://test` playlist — 20 deterministic songs (years 1960, 1963, 1966, …),
  * no shuffle, targetCardCount = 3.
@@ -15,7 +15,10 @@
  *   Round 3 (Alice's turn): song 1972 — Alice appends → correct → Alice = 3 cards → WINS
  */
 
-import { test, expect, type Page } from "@playwright/test";
+import { test, expect, type Page, type APIRequestContext } from "@playwright/test";
+
+const PARTYKIT_HOST = process.env.NEXT_PUBLIC_PARTYKIT_HOST ?? "localhost:1999";
+const PARTY_URL = (id: string) => `http://${PARTYKIT_HOST}/parties/playlist/${id}`;
 
 // ── helpers ──────────────────────────────────────────────────────────────────
 
@@ -36,9 +39,9 @@ async function appendCard(page: Page) {
   const count = await dropZones.count();
   await dropZones.nth(count - 1).click();
   // Confirm placement
-  await page.getByRole("button", { name: /確認放置/i }).click();
+  await page.locator("[data-testid='place-btn']").click();
   // CTA bar disappears when server ACKs placement (canPlace becomes false)
-  await expect(page.getByRole("button", { name: /確認放置/i })).not.toBeVisible({ timeout: 5_000 });
+  await expect(page.locator("[data-testid='place-btn']")).not.toBeVisible({ timeout: 5_000 });
 }
 
 /** Verify a page shows the spectator notice (not the placement UI) during guessing. */
@@ -50,6 +53,25 @@ async function expectSpectating(page: Page, activePlayerName: string) {
 }
 
 // ── test ─────────────────────────────────────────────────────────────────────
+
+/**
+ * Create a saved playlist via the HTTP API and return its ID.
+ * Avoids needing to go through the host UI save flow in each test.
+ */
+async function createSavedPlaylist(request: APIRequestContext): Promise<string> {
+  const id = crypto.randomUUID();
+  const songs = Array.from({ length: 20 }, (_, i) => ({
+    videoId: `sv_${i}`,
+    title: `Saved Song ${1960 + i * 3}`,
+    artist: "Saved Artist",
+    year: 1960 + i * 3,
+  }));
+  const res = await request.post(PARTY_URL(id), {
+    data: { ownerHostId: "e2e-host", name: "E2E Saved", songs },
+  });
+  if (res.status() !== 201) throw new Error(`Failed to create playlist: ${res.status()}`);
+  return id;
+}
 
 test.describe("Two-player full game", () => {
   test(
@@ -83,52 +105,117 @@ test.describe("Two-player full game", () => {
         const urlInput = hostPage.locator('input[type="url"]');
         await urlInput.click();
         await urlInput.pressSequentially("hitster://test");
-        await hostPage.getByRole("button", { name: /Load/i }).click();
+        await hostPage.locator("[data-testid='load-playlist-btn']").click();
         await expect(hostPage.getByText(/已載入/i)).toBeVisible({ timeout: 5_000 });
-        await hostPage.getByRole("button", { name: /Start Game/i }).click();
+        await hostPage.locator("[data-testid='start-game-btn']").click();
 
         // ── Round 1: Alice's turn ─────────────────────────────────────────────
         await appendCard(p1Page);
         await expectSpectating(p2Page, "Alice");
 
-        await expect(
-          hostPage.getByRole("button", { name: /reveal/i }),
-        ).toBeVisible({ timeout: 10_000 });
-        await hostPage.getByRole("button", { name: /reveal/i }).click();
+        await expect(hostPage.locator("[data-testid='reveal-btn']")).toBeVisible({ timeout: 10_000 });
+        await hostPage.locator("[data-testid='reveal-btn']").click();
 
-        await expect(
-          hostPage.getByRole("button", { name: /next round/i }),
-        ).toBeVisible({ timeout: 10_000 });
-        await hostPage.getByRole("button", { name: /next round/i }).click();
+        await expect(hostPage.locator("[data-testid='next-round-btn']")).toBeVisible({ timeout: 10_000 });
+        await hostPage.locator("[data-testid='next-round-btn']").click();
 
         // ── Round 2: Bob's turn ───────────────────────────────────────────────
         await appendCard(p2Page);
         await expectSpectating(p1Page, "Bob");
 
-        await expect(
-          hostPage.getByRole("button", { name: /reveal/i }),
-        ).toBeVisible({ timeout: 10_000 });
-        await hostPage.getByRole("button", { name: /reveal/i }).click();
+        await expect(hostPage.locator("[data-testid='reveal-btn']")).toBeVisible({ timeout: 10_000 });
+        await hostPage.locator("[data-testid='reveal-btn']").click();
 
-        await expect(
-          hostPage.getByRole("button", { name: /next round/i }),
-        ).toBeVisible({ timeout: 10_000 });
-        await hostPage.getByRole("button", { name: /next round/i }).click();
+        await expect(hostPage.locator("[data-testid='next-round-btn']")).toBeVisible({ timeout: 10_000 });
+        await hostPage.locator("[data-testid='next-round-btn']").click();
 
         // ── Round 3: Alice's turn again ───────────────────────────────────────
         await appendCard(p1Page);
         await expectSpectating(p2Page, "Alice");
 
-        await expect(
-          hostPage.getByRole("button", { name: /reveal/i }),
-        ).toBeVisible({ timeout: 10_000 });
-        await hostPage.getByRole("button", { name: /reveal/i }).click();
+        await expect(hostPage.locator("[data-testid='reveal-btn']")).toBeVisible({ timeout: 10_000 });
+        await hostPage.locator("[data-testid='reveal-btn']").click();
 
         // ── 4. Game over: Alice wins with 3 cards ─────────────────────────────
         await expect(p1Page.getByRole("heading", { name: "WINNER!" })).toBeVisible({ timeout: 10_000 });
         await expect(p2Page.getByText(/Alice.*贏了/i)).toBeVisible({ timeout: 10_000 });
         await expect(hostPage.getByText(/Winner!/i)).toBeVisible({ timeout: 10_000 });
         await expect(hostPage.getByRole("heading", { name: "Alice" })).toBeVisible({ timeout: 10_000 });
+      } finally {
+        await hostCtx.close();
+        await p1Ctx.close();
+        await p2Ctx.close();
+      }
+    },
+  );
+});
+
+test.describe("Two-player game using saved playlist", () => {
+  test(
+    "game runs correctly when loaded from a saved playlist (not hitster://test seed)",
+    async ({ browser, request }) => {
+      test.setTimeout(120_000);
+
+      // Create the saved playlist via API — no UI save flow needed
+      const playlistId = await createSavedPlaylist(request);
+
+      const hostCtx = await browser.newContext();
+      const p1Ctx = await browser.newContext();
+      const p2Ctx = await browser.newContext();
+
+      const hostPage = await hostCtx.newPage();
+      const p1Page = await p1Ctx.newPage();
+      const p2Page = await p2Ctx.newPage();
+
+      try {
+        // ── 1. Create room ───────────────────────────────────────────────────
+        await hostPage.goto("/");
+        await hostPage.getByRole("button", { name: /Create a Room/i }).click();
+        await hostPage.waitForURL(/\/room\/[A-Z]+\/host$/);
+        const roomCode = hostPage.url().match(/\/room\/([A-Z]+)\/host$/)![1];
+
+        // ── 2. Both players join ─────────────────────────────────────────────
+        await joinRoom(p1Page, "Alice", roomCode);
+        await joinRoom(p2Page, "Bob", roomCode);
+        await expect(hostPage.getByText("Alice")).toBeVisible({ timeout: 10_000 });
+
+        // ── 3. Host loads the saved playlist by pasting its ID ───────────────
+        const loadInput = hostPage.getByPlaceholder(/貼上播放清單 ID/);
+        await loadInput.fill(playlistId);
+        await loadInput.press("Enter");
+        await expect(hostPage.getByText(/已載入/i)).toBeVisible({ timeout: 5_000 });
+
+        // ── 4. Start game and complete round 1 (Alice's turn) ────────────────
+        await hostPage.locator("[data-testid='start-game-btn']").click();
+
+        await appendCard(p1Page);
+        await expectSpectating(p2Page, "Alice");
+
+        await expect(hostPage.locator("[data-testid='reveal-btn']")).toBeVisible({ timeout: 10_000 });
+        await hostPage.locator("[data-testid='reveal-btn']").click();
+
+        // Round result: reveal panel appears on host
+        await expect(hostPage.locator("[data-testid='next-round-btn']")).toBeVisible({ timeout: 10_000 });
+        await hostPage.locator("[data-testid='next-round-btn']").click();
+
+        // ── 5. Round 2 (Bob's turn) ──────────────────────────────────────────
+        await appendCard(p2Page);
+        await expectSpectating(p1Page, "Bob");
+
+        await expect(hostPage.locator("[data-testid='reveal-btn']")).toBeVisible({ timeout: 10_000 });
+        await hostPage.locator("[data-testid='reveal-btn']").click();
+        await expect(hostPage.locator("[data-testid='next-round-btn']")).toBeVisible({ timeout: 10_000 });
+        await hostPage.locator("[data-testid='next-round-btn']").click();
+
+        // ── 6. Round 3 (Alice's turn) — Alice wins ───────────────────────────
+        await appendCard(p1Page);
+        await expectSpectating(p2Page, "Alice");
+
+        await expect(hostPage.locator("[data-testid='reveal-btn']")).toBeVisible({ timeout: 10_000 });
+        await hostPage.locator("[data-testid='reveal-btn']").click();
+
+        await expect(p1Page.getByRole("heading", { name: "WINNER!" })).toBeVisible({ timeout: 10_000 });
+        await expect(hostPage.getByText(/Winner!/i)).toBeVisible({ timeout: 10_000 });
       } finally {
         await hostCtx.close();
         await p1Ctx.close();
