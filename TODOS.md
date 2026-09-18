@@ -63,6 +63,28 @@
 - [x] **P2** Invalid room code silently creates orphaned waiting room  
   Fixed by /qa on feat/initial-scaffold, 2026-08-28 — commit ed7449a. Shows yellow warning banner after 90s: "Still waiting after 90 seconds — double-check your room code."
 
+## Lyrics Mode — lrclib.net integration (feat/lyrics-api, 2026-09-17)
+
+- [x] **P1** Fetch real lyrics from lrclib.net before Claude Q&A generation  
+  `lib/lyrics-fetcher.ts`: `fetchLyrics()` + `fetchLyricsBatch()`. Injects `LYRICS:` blocks (truncated at 1500 chars) or `NO_LYRICS` markers per track. Claude is grounded in actual song text rather than generated/hallucinated lyrics.  
+  _Landed in v0.4.1_
+
+- [x] **P1** Harden prompt injection: sanitize `---` in lyrics (adversarial review CRITICAL)  
+  Replace bare `---` lines with `- - -` before injection to prevent block separator corruption.  
+  _Landed in v0.4.1_
+
+- [x] **P2** Require partial title match in `matchScore` (adversarial review HIGH)  
+  Without this, zero-title-match tracks score ≥3 via lyrics bonus and get injected as wrong-song ground truth.  
+  _Landed in v0.4.1_
+
+- [ ] **P3** E2E: verify lrclib → Claude pipeline with a real player in the room  
+  Headless QA could not test this path (requires playerCount ≥ 1). Load `hitster://cpop-test` in Lyrics Mode with a second tab as player, click Start Lyrics, check server logs for `[lyrics-resolver] lrclib hits: N/8`.  
+  _Deferred from /qa on feat/lyrics-api 2026-09-17_
+
+- [ ] **P3** Add 429/rate-limit handling for lrclib.net  
+  With concurrency=8, rapid deploys can hit rate limits. A 429 silently drops the window (logs no warning). Add backoff or at least log `[lyrics-resolver] rate limited`.  
+  _Surfaced by adversarial review on feat/lyrics-api 2026-09-17_
+
 ## Lyrics Mode — completed (from /plan-eng-review 2026-09-17)
 
 - [x] **P1** `npm install fastest-levenshtein` before any Lyrics Mode code  
