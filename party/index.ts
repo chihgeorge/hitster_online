@@ -384,7 +384,7 @@ export default class HitsterRoom implements Party.Server {
     // Test seeds: signal ready immediately.
     if (playlistUrl === "hitster://test" || playlistUrl === "hitster://cpop-test") {
       const testSongs = Array.from({ length: 20 }, (_, i) => ({
-        videoId: "dQw4w9WgXcQ", title: `Test Song ${1960 + i * 3}`,
+        videoId: `dQw4w9WgXcQ_${i}`, title: `Test Song ${1960 + i * 3}`,
         artist: "Test Artist", year: 1960 + i * 3,
       }));
       this.pendingPlaylist = { playlistId, songs: testSongs, allSongs: testSongs, diagnostics: [], spotifyRateLimited: false, kgBlocked: false };
