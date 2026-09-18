@@ -146,4 +146,89 @@ describe("fetchLyricsBatch", () => {
     expect(result.size).toBe(0);
     expect(mockFetch).not.toHaveBeenCalled();
   });
+
+  it("processes multiple windows when tracks exceed concurrency", async () => {
+    // concurrency=2 with 3 tracks → two windows: [v1,v2] then [v3]
+    mockFetch.mockResolvedValue(mockResponse(lrclibTrack()));
+
+    const tracks = [
+      { videoId: "v1", title: "Song1", artist: "Artist" },
+      { videoId: "v2", title: "Song2", artist: "Artist" },
+      { videoId: "v3", title: "Song3", artist: "Artist" },
+    ];
+
+    const result = await fetchLyricsBatch(tracks, 2);
+    expect(result.size).toBe(3);
+    expect(result.has("v1")).toBe(true);
+    expect(result.has("v2")).toBe(true);
+    expect(result.has("v3")).toBe(true);
+  });
+
+  it("excludes tracks where fetchLyrics returns null due to network errors", async () => {
+    // With concurrency=1 each track is processed sequentially, making mock ordering predictable.
+    // v1: get throws, search throws → fetchLyrics returns null → excluded
+    // v2: get succeeds → included
+    mockFetch
+      .mockRejectedValueOnce(new Error("network error"))  // v1 get rejects
+      .mockRejectedValueOnce(new Error("network error"))  // v1 search also rejects
+      .mockResolvedValueOnce(mockResponse(lrclibTrack())); // v2 get succeeds
+
+    const tracks = [
+      { videoId: "v1", title: "Broken Song", artist: "Error Artist" },
+      { videoId: "v2", title: "Wonderwall", artist: "Oasis" },
+    ];
+
+    const result = await fetchLyricsBatch(tracks, 1);
+    expect(result.has("v1")).toBe(false);
+    expect(result.has("v2")).toBe(true);
+  });
+});
+
+describe("fetchLyrics — additional edge cases", () => {
+  it("returns null when search returns non-ok status", async () => {
+    mockFetch
+      .mockResolvedValueOnce(mockResponse({}, false))   // get fails
+      .mockResolvedValueOnce(mockResponse({}, false));  // search also non-ok
+
+    const result = await fetchLyrics("Obscure Song", "Nobody");
+    expect(result).toBeNull();
+    expect(mockFetch).toHaveBeenCalledTimes(2);
+  });
+
+  it("returns null when search itself throws (network error)", async () => {
+    const netError = new Error("Failed to fetch");
+    mockFetch
+      .mockRejectedValueOnce(netError)  // get throws
+      .mockRejectedValueOnce(netError); // search throws
+
+    const result = await fetchLyrics("Wonderwall", "Oasis");
+    expect(result).toBeNull();
+    expect(mockFetch).toHaveBeenCalledTimes(2);
+  });
+
+  it("returns null when best search result score is below threshold (< 3)", async () => {
+    // trackName partial match (+2), artistName no match (0), lyrics present (+2) = score 4
+    // but let's build one that only gets score 2: title partial match only, no artist match, short lyrics
+    const lowScoreTrack = lrclibTrack({
+      trackName: "Wonderwall Extended Version",
+      artistName: "Cover Band Nobody Knows",
+      plainLyrics: "La la la", // too short → no +2 for lyrics
+    });
+
+    mockFetch
+      .mockResolvedValueOnce(mockResponse({}, false))
+      .mockResolvedValueOnce(mockResponse([lowScoreTrack]));
+
+    const result = await fetchLyrics("Wonderwall", "Oasis");
+    expect(result).toBeNull();
+  });
+
+  it("returns null when search returns a non-array body", async () => {
+    mockFetch
+      .mockResolvedValueOnce(mockResponse({}, false))
+      .mockResolvedValueOnce(mockResponse({ error: "unexpected object" }));
+
+    const result = await fetchLyrics("Wonderwall", "Oasis");
+    expect(result).toBeNull();
+  });
 });
