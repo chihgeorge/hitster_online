@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.4.1] — 2026-09-17
+
+### Added
+- **Real lyrics grounding for Lyrics Mode** — `lib/lyrics-fetcher.ts` fetches plain-text lyrics from [lrclib.net](https://lrclib.net) (free, no API key) before sending tracks to Claude
+  - Tries `/api/get` (exact match) first; falls back to `/api/search` with scored ranking
+  - Scored matching: title exact +4, partial +2; artist exact +3, partial +1; lyrics present +2; requires ≥3 and at least a partial title match
+  - Batch-fetches up to 8 tracks in parallel with `fetchLyricsBatch()`
+  - `resolveLyricsForTracks` injects `LYRICS:` blocks for hits (truncated to 1500 chars), `NO_LYRICS` marker for misses
+  - Claude is instructed to use ONLY the supplied lyrics for hits; falls back to memory for misses
+
+### Fixed
+- Sanitize `---` lines in injected lyrics to prevent prompt block separator corruption
+- Require partial title match in `matchScore` to prevent wrong-song lyrics from being injected as ground truth
+- Add null guard in `norm()` for missing `trackName`/`artistName` fields from unvalidated lrclib JSON
+- Change unknown language fallback from `zh-TW` to `en`
+
 ## [0.4.0.0] — 2026-09-17
 
 ### Added
