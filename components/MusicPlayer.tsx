@@ -110,6 +110,7 @@ export default function MusicPlayer({ currentSong, phase, placementCount, onReve
       <div className="flex gap-3">
         {phase === "guessing" && (
           <button
+            data-testid="reveal-btn"
             onClick={onReveal}
             disabled={placementCount === 0}
             style={{
@@ -124,6 +125,7 @@ export default function MusicPlayer({ currentSong, phase, placementCount, onReve
         )}
         {phase === "reveal" && (
           <button
+            data-testid="next-round-btn"
             onClick={onNextRound}
             style={{
               flex: 1, background: "rgba(255,255,255,.1)", color: "white",

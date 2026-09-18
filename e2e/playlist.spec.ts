@@ -122,7 +122,7 @@ test.describe("Host lobby: save and load playlist", () => {
     const input = page.locator('input[type="url"]');
     await input.click();
     await input.pressSequentially("hitster://test");
-    await page.getByRole("button", { name: /Load/i }).click();
+    await page.locator("[data-testid='load-playlist-btn']").click();
 
     // PLAYLIST_READY fires immediately for test seed
     await expect(page.getByText(/已載入/i)).toBeVisible({ timeout: 5000 });
@@ -137,11 +137,74 @@ test.describe("Host lobby: save and load playlist", () => {
     const input = page.locator('input[type="url"]');
     await input.click();
     await input.pressSequentially("hitster://test");
-    await page.getByRole("button", { name: /Load/i }).click();
+    await page.locator("[data-testid='load-playlist-btn']").click();
     await expect(page.getByText(/已載入/i)).toBeVisible({ timeout: 5000 });
 
     // Click "儲存播放清單" to reveal the name input
     await page.getByRole("button", { name: "儲存播放清單" }).click();
     await expect(page.getByPlaceholder("播放清單名稱")).toBeVisible();
+  });
+
+  test("save → reload → load saved playlist → start game", async ({ page }) => {
+    await page.goto("/");
+    await page.getByRole("button", { name: /create/i }).click();
+    await page.waitForURL(/\/room\/[A-Z]{4}\/host$/);
+
+    // Load test seed
+    const urlInput = page.locator('input[type="url"]');
+    await urlInput.click();
+    await urlInput.pressSequentially("hitster://test");
+    await page.locator("[data-testid='load-playlist-btn']").click();
+    await expect(page.getByText(/已載入/i)).toBeVisible({ timeout: 5_000 });
+
+    // Save the playlist
+    await page.getByRole("button", { name: "儲存播放清單" }).click();
+    const nameInput = page.getByPlaceholder("播放清單名稱");
+    await nameInput.fill("E2E Test Playlist");
+    await page.getByRole("button", { name: /儲存/ }).click();
+    // After save, the "已儲存 ✓" badge appears and the copy ID button is shown
+    await expect(page.getByText("已儲存 ✓")).toBeVisible({ timeout: 5_000 });
+
+    // Reload the page to simulate a fresh session
+    await page.reload();
+    await page.waitForURL(/\/room\/[A-Z]+\/host$/);
+
+    // The saved playlist should appear in the Saved Playlists section
+    await expect(page.getByText("E2E Test Playlist")).toBeVisible({ timeout: 5_000 });
+
+    // Load it from the saved list
+    const loadBtn = page.locator("button", { hasText: "載入" }).last();
+    await loadBtn.click();
+    await expect(page.getByText(/已載入/i)).toBeVisible({ timeout: 5_000 });
+
+    // Start game button should now be available (no players needed for this assertion)
+    await expect(page.locator("[data-testid='start-game-btn']")).toBeVisible();
+  });
+
+  test("edit year on a song → verify the edit is reflected in the editor", async ({ page }) => {
+    await page.goto("/");
+    await page.getByRole("button", { name: /create/i }).click();
+    await page.waitForURL(/\/room\/[A-Z]{4}\/host$/);
+
+    // Load test seed
+    const urlInput = page.locator('input[type="url"]');
+    await urlInput.click();
+    await urlInput.pressSequentially("hitster://test");
+    await page.locator("[data-testid='load-playlist-btn']").click();
+    await expect(page.getByText(/已載入/i)).toBeVisible({ timeout: 5_000 });
+
+    // Open the song editor
+    await page.getByRole("button", { name: /編輯歌曲資訊/i }).click();
+    await expect(page.getByRole("table")).toBeVisible({ timeout: 3_000 });
+
+    // Edit year of first song (1960 → 1961)
+    const yearInputs = page.locator("input[type='number']");
+    const firstYear = yearInputs.first();
+    await firstYear.click({ clickCount: 3 });
+    await firstYear.fill("1961");
+    await firstYear.press("Tab");
+
+    // Verify the change was accepted (field stays at 1961)
+    await expect(firstYear).toHaveValue("1961");
   });
 });

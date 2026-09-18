@@ -454,6 +454,7 @@ export default function HostPage() {
               />
               <button
                 type="button"
+                data-testid="load-playlist-btn"
                 onClick={handleLoadPlaylist}
                 disabled={!playlistUrl.trim() || loadStatus === "loading"}
                 style={{
@@ -724,13 +725,13 @@ export default function HostPage() {
 
           {/* Start Game — two states for lyrics: generate lyrics, then confirm to begin */}
           {loadStatus === "ready" && lyricsState?.phase === "preview" && (
-            <button type="button" onClick={handleConfirmLyricsPreview} disabled={playerCount === 0}
+            <button type="button" data-testid="start-game-btn" onClick={handleConfirmLyricsPreview} disabled={playerCount === 0}
               style={{ background: playerCount === 0 ? "rgba(255,107,53,.35)" : "#FF6B35", color: "white", border: "none", borderRadius: 14, padding: "15px", fontSize: 16, fontWeight: 900, cursor: playerCount === 0 ? "not-allowed" : "pointer", fontFamily: "var(--font-zh)", boxShadow: playerCount > 0 ? "0 4px 16px rgba(255,107,53,.3)" : "none" }}>
               ▶ 開始遊戲 · Start Game
             </button>
           )}
           {loadStatus === "ready" && !lyricsState && (
-            <button type="submit" disabled={playerCount === 0}
+            <button type="submit" data-testid="start-game-btn" disabled={playerCount === 0}
               style={{ background: playerCount === 0 ? "rgba(255,107,53,.35)" : "#FF6B35", color: "white", border: "none", borderRadius: 14, padding: "15px", fontSize: 16, fontWeight: 900, cursor: playerCount === 0 ? "not-allowed" : "pointer", fontFamily: "var(--font-zh)", boxShadow: playerCount > 0 ? "0 4px 16px rgba(255,107,53,.3)" : "none" }}>
               {gameMode === "lyrics" ? "🎵 開始歌詞模式 · Start Lyrics" : "🎮 開始遊戲 · Start Game"}
             </button>

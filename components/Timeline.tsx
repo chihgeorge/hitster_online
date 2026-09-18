@@ -157,7 +157,7 @@ export default function Timeline({
               <p style={{ color: "white", fontWeight: 900, fontSize: 16 }}>太晚了！</p>
             </div>
           ) : selectedPosition !== null ? (
-            <button onClick={onPlace} style={{
+            <button data-testid="place-btn" onClick={onPlace} style={{
               width: "100%", background: "#FF6B35", color: "white",
               border: "none", borderRadius: 16, padding: "16px",
               fontSize: 17, fontWeight: 900, cursor: "pointer",

@@ -192,6 +192,50 @@ describe("PLACE handler", () => {
     await send(room, conn, { type: "PLACE", playerId: P1, position: 0 });
     expect(lastSentTo(conn)?.type).toBe("TOO_LATE");
   });
+
+  it("handles two concurrent PLACE messages from the active player without crashing", async () => {
+    const r = new HitsterRoom(makeRoom() as any);
+    r.state.players[P1] = { name: "Alice", cardCount: 0, timeline: [], connected: true };
+    r.state.phase = "guessing";
+    r.state.activePlayerId = P1;
+    r.state.currentSong = {
+      id: "v1", videoId: "v1", title: "Song", artist: "Artist", year: 1985, yearSource: "description",
+    };
+
+    const conn = makeConn("conn-1");
+
+    // Simulate a double-click / network retry: same player sends PLACE twice simultaneously
+    await Promise.all([
+      send(r, conn, { type: "PLACE", playerId: P1, position: 0 }),
+      send(r, conn, { type: "PLACE", playerId: P1, position: 0 }),
+    ]);
+
+    // Placement recorded exactly once, ACK sent at least once
+    expect(r.state.placements[P1]).toBe(0);
+    const sentMessages = (conn.send as ReturnType<typeof vi.fn>).mock.calls.map(
+      ([raw]: [string]) => JSON.parse(raw),
+    );
+    expect(sentMessages.some((m: { type: string }) => m.type === "PLACEMENT_ACK")).toBe(true);
+  });
+
+  it("rejects PLACE from a non-active player (spectator)", async () => {
+    const r = new HitsterRoom(makeRoom() as any);
+    r.state.players[P1] = { name: "Alice", cardCount: 0, timeline: [], connected: true };
+    r.state.players[P2] = { name: "Bob", cardCount: 0, timeline: [], connected: true };
+    r.state.phase = "guessing";
+    r.state.activePlayerId = P1;
+    r.state.currentSong = {
+      id: "v1", videoId: "v1", title: "Song", artist: "Artist", year: 1985, yearSource: "description",
+    };
+
+    const conn = makeConn("conn-2");
+    await send(r, conn, { type: "PLACE", playerId: P2, position: 0 });
+
+    // P2 is spectating — placement should be silently ignored
+    expect(r.state.placements[P2]).toBeUndefined();
+    const sentMessages = (conn.send as ReturnType<typeof vi.fn>).mock.calls;
+    expect(sentMessages).toHaveLength(0);
+  });
 });
 
 // ─── START_GAME ──────────────────────────────────────────────────────────────
