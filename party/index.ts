@@ -383,8 +383,12 @@ export default class HitsterRoom implements Party.Server {
 
     // Test seeds: signal ready immediately.
     if (playlistUrl === "hitster://test" || playlistUrl === "hitster://cpop-test") {
-      this.pendingPlaylist = { playlistId, songs: [], allSongs: [], diagnostics: [], spotifyRateLimited: false, kgBlocked: false };
-      this.sendTo(conn, { type: "PLAYLIST_READY", songCount: 20, songs: [] });
+      const testSongs = Array.from({ length: 20 }, (_, i) => ({
+        videoId: "dQw4w9WgXcQ", title: `Test Song ${1960 + i * 3}`,
+        artist: "Test Artist", year: 1960 + i * 3,
+      }));
+      this.pendingPlaylist = { playlistId, songs: testSongs, allSongs: testSongs, diagnostics: [], spotifyRateLimited: false, kgBlocked: false };
+      this.sendTo(conn, { type: "PLAYLIST_READY", songCount: 20, songs: testSongs });
       return;
     }
 
