@@ -1380,6 +1380,23 @@ describe("Lyrics Mode: RESET_LYRICS_GAME", () => {
   });
 });
 
+describe("Lyrics Mode: RESET_LYRICS_GAME tells clients to drop lyrics state", () => {
+  // Regression: ISSUE-002 — players stayed on the WINNER screen after the host clicked Play Again
+  // Found by /qa on 2026-09-21
+  it("broadcasts LYRICS_ABORTED before the lobby STATE so players leave the ended screen", async () => {
+    const { room, hostConn } = await setupLyricsGame();
+    await send(room, hostConn, { type: "START_LYRICS_ROUND", hostId: "host-uuid" });
+    await send(room, hostConn, { type: "SHOW_LYRICS_RESULTS", hostId: "host-uuid" });
+    await send(room, hostConn, { type: "NEXT_LYRICS_ROUND", hostId: "host-uuid" });
+    const broadcast = room.room.broadcast as ReturnType<typeof vi.fn>;
+    broadcast.mockClear();
+    await send(room, hostConn, { type: "RESET_LYRICS_GAME", hostId: "host-uuid" });
+    const types = broadcast.mock.calls.map((c: any[]) => JSON.parse(c[0]).type);
+    expect(types).toContain("LYRICS_ABORTED");
+    expect(types.indexOf("LYRICS_ABORTED")).toBeLessThan(types.lastIndexOf("STATE"));
+  });
+});
+
 describe("Lyrics Mode: onConnect sends LYRICS_STATE when active", () => {
   it("sends lyricsState to new connections when game is active", async () => {
     const { room } = await setupLyricsGame();

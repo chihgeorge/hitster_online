@@ -1151,8 +1151,9 @@ export default class HitsterRoom implements Party.Server {
       this.sendTo(conn, { type: "ERROR", error: "wrong_phase" });
       return;
     }
-    this.lyricsState = null;
     this.lyricsDeck = [];
+    // Clients keep their own lyricsState; tell them it is gone so players leave the winner screen.
+    this.abortLyricsStart();
     this.broadcastState();
   }
 
