@@ -404,7 +404,8 @@ export default class HitsterRoom implements Party.Server {
             videoId: `dQw4w9WgXcQ_${i}`, title: `Test Song ${1960 + i * 3}`,
             artist: "Test Artist", year: 1960 + i * 3,
           }));
-      this.pendingPlaylist = { playlistId, songs: testSongs, allSongs: testSongs, diagnostics: [], spotifyRateLimited: false, kgBlocked: false };
+      const seedCards: Card[] = testSongs.map((song, i) => ({ id: `seed-${i}`, ...song, yearSource: "manual" as const }));
+      this.pendingPlaylist = { playlistId, songs: seedCards, allSongs: testSongs, diagnostics: [], spotifyRateLimited: false, kgBlocked: false };
       this.sendTo(conn, { type: "PLAYLIST_READY", songCount: testSongs.length, songs: testSongs });
       return;
     }

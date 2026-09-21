@@ -7,6 +7,8 @@
 - **Lyrics Mode: Play Again works for everyone.** When the host starts over, players go back to the waiting lobby instead of staying on the WINNER screen, including players whose connection dropped and came back
 - **Lyrics Mode: a malformed answer can no longer break scoring.** Answers with a missing or non-numeric timestamp, or non-text content, are ignored instead of turning a player's score into NaN
 
+- **Production build works again.** `next build` was failing a type check on the test-seed playlists (`hitster://test`, `hitster://cpop-test`), which would block any deploy from `main`
+
 ### Added
 - Component tests for the player screen (late answers, "Time's up", Play Again) and a test setup for `app/` components
 
