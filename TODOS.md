@@ -136,3 +136,14 @@
 - [ ] **P3** Replace hardcoded hex values with CSS variables  
   CSS tokens (`--orange`, `--ink`, `--bg`, `--text2`, etc.) are defined in `globals.css` `:root` but all component files use raw hex strings inline (`#FF6B35`, `#1A1A2E`, etc.). A palette change requires grep-and-replace across 4 files. Migrate to `var(--orange)` etc. at call sites.  
   _Surfaced by /design-review on 2026-09-16_
+
+## QA findings 2026-09-21 (deferred)
+
+- [ ] **P3** Joining a nonexistent room code shows "waiting for host" forever  
+  PartyKit creates rooms on demand, so any code "exists". Needs a room registry or a host-presence check with an error message. Found by /qa on 2026-09-21.
+- [ ] **P2** Decide whether Lyrics Mode should play audio  
+  Host round screen has a "Cut" button but only Timeline mode mounts `MusicPlayer`. Found by /qa on 2026-09-21.
+- [ ] **P3** Room state is in memory only: a PartyKit reload or eviction wipes the game and leaves host/player pages stale  
+  Persist minimal game state to `room.storage` or detect a fresh server and reset clients. Found by /qa on 2026-09-21.
+- [ ] **P3** Unit test for the Lyrics "Time's up" state on the play page (needs a mocked partysocket harness)  
+  Regression for ISSUE-001, deferred by /qa on 2026-09-21.
