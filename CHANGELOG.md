@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.4.2.1] — 2026-09-21
+
+### Fixed
+- **Lyrics Mode: late answers no longer look accepted.** After the countdown hits 0 the answer box is replaced by "⏰ 時間到 · Time's up!" instead of letting a player submit an answer that scores nothing while showing "Submitted!"
+- **Lyrics Mode: Play Again works for everyone.** When the host starts over, players go back to the waiting lobby instead of staying on the WINNER screen, including players whose connection dropped and came back
+- **Lyrics Mode: a malformed answer can no longer break scoring.** Answers with a missing or non-numeric timestamp, or non-text content, are ignored instead of turning a player's score into NaN
+
+### Added
+- Component tests for the player screen (late answers, "Time's up", Play Again) and a test setup for `app/` components
+
 ## [0.4.2] — 2026-09-21
 
 ### Fixed

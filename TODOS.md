@@ -147,3 +147,13 @@
   Persist minimal game state to `room.storage` or detect a fresh server and reset clients. Found by /qa on 2026-09-21.
 - [ ] **P3** Unit test for the Lyrics "Time's up" state on the play page (needs a mocked partysocket harness)  
   Regression for ISSUE-001, deferred by /qa on 2026-09-21.
+- [ ] **P2** Server should stamp answer time itself instead of trusting the client `ts`  
+  `party/index.ts` handleSubmitLyricsAnswer compares a client-supplied `ts` to the deadline and `computePoints` uses it, so a player can answer late or claim max points by spoofing it. Found by /ship adversarial review on 2026-09-21.
+- [ ] **P2** Bind Lyrics answers to the sending connection  
+  Any player can answer as another player (ids are visible in broadcast state). Needs a conn.id to playerId map that survives REJOIN. Found by /ship adversarial review on 2026-09-21.
+- [ ] **P3** `handleStartLyricsGame` has no re-entrancy guard  
+  A second START_LYRICS_GAME (double click) can let a stale loader abort or overwrite the newer game. Reject START while a game is active and bail after each await if a sequence token changed. Found by /ship adversarial review on 2026-09-21.
+- [ ] **P3** Player shows "Submitted!" before the server acknowledges  
+  Server silently drops answers for unknown/late-joining players. Send an ack or derive submitted from `lyricsState.answers[playerId]`. Also tag SUBMIT/TOO_LATE with the round index. Found by /ship adversarial review on 2026-09-21.
+- [ ] **P3** Client countdown uses the device clock against the server's `roundStart`  
+  A device clock ahead by more than the round timer shows "Time's up" immediately. Send a server time offset. Found by /ship adversarial review on 2026-09-21.
