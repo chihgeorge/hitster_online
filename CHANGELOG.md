@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.5.0.0] — 2026-09-21
+
+### Added
+- **Lyrics Mode now plays the song.** The host's screen plays each round's song automatically, the ✂️ Cut button pauses it so players can fill in the next line, and the song resumes on the results screen. The video stays hidden so lyric videos can't reveal the answer on a shared screen
+- If a song can't be played (embedding blocked, video removed), the host sees a notice instead of a silent round
+- If the browser blocks autoplay, a clear "Click to play" banner appears at the bottom of the host's screen
+
+### Changed
+- During a round, players' phones no longer receive the current song's video id, so a curious player can't open the video and read the lyrics. The host asks the server for it separately. (The pre-game review step still sends the whole deck to everyone; tracked in TODOS.md)
+- The Timeline and Lyrics players now share one YouTube loader, which fixes the two overwriting each other's setup
+
+### Fixed
+- A repeated song (for example after Play Again) restarts instead of resuming mid-song
+
 ## [0.4.2.1] — 2026-09-21
 
 ### Fixed
