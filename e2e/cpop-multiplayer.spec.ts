@@ -94,8 +94,9 @@ test.describe("C-pop multiplayer with metadata verification", () => {
         await expect(metadataToggle).toBeVisible({ timeout: 10_000 });
         await metadataToggle.click();
 
-        // All 8 songs should be resolved (shown as "YT Music" source in the table).
-        await expect(hostPage.getByText("YT Music").first()).toBeVisible();
+        // All 8 songs should be listed and resolved in the table.
+        await expect(hostPage.locator("table tbody tr")).toHaveCount(8);
+        await expect(hostPage.getByText(/8\/8 年份已解析/)).toBeVisible();
 
         // Spot-check specific songs in the table (use .first() — titles appear in both the p card and td cell)
         await expect(hostPage.getByText("那些年").first()).toBeVisible();
