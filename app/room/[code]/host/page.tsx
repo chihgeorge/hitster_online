@@ -166,6 +166,7 @@ export default function HostPage() {
           setLyricsTimerLeft(null);
         }
       }
+      if (msg.type === "LYRICS_ABORTED") setLyricsState(null);
       if (msg.type === "LYRICS_PREVIEW") {
         setLyricsPreviewLoading(msg.loading);
         if (!msg.loading) setLyricsPreview(msg.rounds);
@@ -413,11 +414,13 @@ export default function HostPage() {
       )}
 
       {/* Lobby setup */}
-      {phase === "lobby" && !starting && (
+      {phase === "lobby" && !starting && (!lyricsState || lyricsState.phase === "preview") && (
         <>
         <form onSubmit={handleStartGame} style={{ ...panel, display: "flex", flexDirection: "column", gap: 18 }}>
           <h2 style={{ fontWeight: 900, fontSize: 17, color: "#1A1A2E" }}>設定遊戲 · Set Up Game</h2>
 
+          {/* Setup controls: hidden while reviewing the generated lyrics deck */}
+          {lyricsState?.phase !== "preview" && (<>
           {/* Mode picker */}
           <div style={{ display: "flex", gap: 0, background: "#FFF0E8", borderRadius: 12, padding: 4 }}>
             {(["timeline", "lyrics"] as const).map((m) => (
@@ -473,6 +476,7 @@ export default function HostPage() {
               </button>
             </div>
           </div>
+          </>)}
 
           {/* Loading progress */}
           {loadStatus === "loading" && (
@@ -686,6 +690,9 @@ export default function HostPage() {
             </div>
           )}
 
+          {/* Error from starting Lyrics Mode (playlist itself loaded fine) */}
+          {loadStatus === "ready" && error && !lyricsState && <ErrorBanner code={error} />}
+
           {/* Card count slider (timeline mode only) */}
           {loadStatus !== "loading" && gameMode === "timeline" && (
             <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
@@ -745,6 +752,7 @@ export default function HostPage() {
         </form>
 
         {/* Saved playlists panel */}
+        {lyricsState?.phase !== "preview" && (
         <div style={{ ...panel, display: "flex", flexDirection: "column", gap: 14 }}>
           <h3 style={{ fontWeight: 900, fontSize: 14, color: "#1A1A2E" }}>已儲存的播放清單 · Saved Playlists</h3>
           <div style={{ display: "flex", gap: 10 }}>
@@ -785,6 +793,7 @@ export default function HostPage() {
             <p style={{ fontSize: 12, color: "#B0AFBC" }}>此裝置尚無儲存的播放清單。載入後點擊「儲存播放清單」即可儲存。</p>
           )}
         </div>
+        )}
         </>
       )}
 
@@ -813,11 +822,11 @@ export default function HostPage() {
               ))}
             </div>
           </div>
-          <div style={{ background: "#FFF0E8", borderRadius: 16, padding: "20px 24px", border: "2px solid rgba(255,107,53,.15)" }}>
+          <div style={{ background: "#FFF0E8", borderRadius: 16, textAlign: "center", padding: "40px 24px", border: "2px solid rgba(255,107,53,.15)" }}>
             <p style={{ fontSize: 11, color: "#B0AFBC", marginBottom: 8, fontWeight: 700, textTransform: "uppercase", letterSpacing: ".1em" }}>
               {lyricsState.currentRound.title} · {lyricsState.currentRound.artist}
             </p>
-            <p style={{ fontSize: 20, fontWeight: 700, color: "#1A1A2E", lineHeight: 1.7, fontFamily: "var(--font-zh)", whiteSpace: "pre-wrap" }}>
+            <p style={{ fontSize: 28, fontWeight: 700, color: "#1A1A2E", lineHeight: 1.7, fontFamily: "var(--font-zh)", whiteSpace: "pre-wrap" }}>
               {lyricsState.currentRound.lyricContext}
             </p>
           </div>
@@ -855,8 +864,8 @@ export default function HostPage() {
               </p>
             </div>
           </div>
-          <div style={{ background: "#FFF0E8", borderRadius: 14, padding: "14px 18px", border: "2px solid rgba(255,107,53,.15)" }}>
-            <p style={{ fontSize: 16, fontWeight: 700, color: "#1A1A2E", fontFamily: "var(--font-zh)", whiteSpace: "pre-wrap" }}>
+          <div style={{ background: "#FFF0E8", borderRadius: 16, padding: "40px 24px", textAlign: "center", border: "2px solid rgba(255,107,53,.15)" }}>
+            <p style={{ fontSize: 28, fontWeight: 700, color: "#1A1A2E", lineHeight: 1.7, fontFamily: "var(--font-zh)", whiteSpace: "pre-wrap" }}>
               {lyricsState.currentRound.lyricContext}
             </p>
           </div>
