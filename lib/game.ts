@@ -44,7 +44,7 @@ export interface Card {
   title: string;
   artist: string;
   year: number;
-  yearSource: "spotify" | "description" | "title" | "google" | "itunes" | "ytmusic" | "manual" | "ai";
+  yearSource: "description" | "title" | "manual" | "ai";
 }
 
 export interface Player {
@@ -119,12 +119,7 @@ export type SongDiagnostic = {
   title: string;
   artist: string;
   year: number | null;
-  yearSource: "description" | "title" | "ytmusic" | "spotify" | "google" | "itunes" | "ai" | null;
-};
-
-export type DiagnosticStatus = {
-  spotifyRateLimited: boolean;
-  kgBlocked: boolean;
+  yearSource: "description" | "title" | "ai" | "manual" | null;
 };
 
 // Public shape of LyricsRound broadcast to clients: blankSentence/acceptableVariants
@@ -146,12 +141,11 @@ export type ServerMessage =
   | { type: "LYRICS_AUDIO"; videoId: string | null; roundIndex: number }
   | { type: "PLACEMENT_ACK"; playerId: string }
   | { type: "ERROR"; error: string }
-  | { type: "DIAGNOSTIC"; songs: SongDiagnostic[]; status: DiagnosticStatus; skippedEmbeddingCount?: number }
+  | { type: "DIAGNOSTIC"; songs: SongDiagnostic[]; skippedEmbeddingCount?: number }
   | { type: "PLAYLIST_READY"; songCount: number; songs: EditableSong[] }
   | { type: "PLAYLIST_LOAD_ERROR"; error: string }
   | { type: "PLAYLIST_SAVED"; playlistId: string }
   | { type: "TOO_LATE" }
-  | { type: "LYRICS_ROUND_FAILED"; videoId: string }
   | { type: "ROUND_SKIPPED" }
   | { type: "LYRICS_PREVIEW"; rounds: PublicLyricsRound[]; loading: boolean };
 
