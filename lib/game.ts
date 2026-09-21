@@ -140,6 +140,7 @@ export type PublicLyricsGameState = Omit<LyricsGameState, "currentRound" | "roun
 export type ServerMessage =
   | { type: "STATE"; state: GameState }
   | { type: "LYRICS_STATE"; state: PublicLyricsGameState }
+  | { type: "LYRICS_ABORTED" }
   | { type: "PLACEMENT_ACK"; playerId: string }
   | { type: "ERROR"; error: string }
   | { type: "DIAGNOSTIC"; songs: SongDiagnostic[]; status: DiagnosticStatus; skippedEmbeddingCount?: number }

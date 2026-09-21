@@ -1,5 +1,35 @@
 # Changelog
 
+## [0.4.2] — 2026-09-21
+
+### Fixed
+- **Lyrics Mode start no longer hangs or silently fails**
+  - Sonnet 5 hidden thinking could use the whole `max_tokens` budget and return no text, yielding zero questions. Thinking is now disabled and `max_tokens` raised to 4000 (about 3x faster)
+  - `hitster://cpop-test` loaded 20 fake songs in `LOAD_PLAYLIST`; it now loads the real 8-song C-pop seed (shared `CPOP_SEED`)
+  - A failed Start Lyrics left the "preparing lyrics" spinner up forever. New `LYRICS_ABORTED` message clears it on host and players; host shows the error banner
+- **Playable questions**
+  - `lyricContext` must contain a blank (repaired from the answer, or the song is dropped) so the answer is never shown to players
+  - Blank length now matches the answer (one `_` per letter/character, punctuation ignored)
+  - Simplified Chinese is rejected for zh-TW output; Claude is told to convert Simplified lrclib lyrics to Traditional
+  - CJK blanks must be 2-6 characters
+- **Host layout** — lobby setup is hidden during the lyrics game so each screen stands alone; question card is centered and larger
+
+## [0.4.1] — 2026-09-17
+
+### Added
+- **Real lyrics grounding for Lyrics Mode** — `lib/lyrics-fetcher.ts` fetches plain-text lyrics from [lrclib.net](https://lrclib.net) (free, no API key) before sending tracks to Claude
+  - Tries `/api/get` (exact match) first; falls back to `/api/search` with scored ranking
+  - Scored matching: title exact +4, partial +2; artist exact +3, partial +1; lyrics present +2; requires ≥3 and at least a partial title match
+  - Batch-fetches up to 8 tracks in parallel with `fetchLyricsBatch()`
+  - `resolveLyricsForTracks` injects `LYRICS:` blocks for hits (truncated to 1500 chars), `NO_LYRICS` marker for misses
+  - Claude is instructed to use ONLY the supplied lyrics for hits; falls back to memory for misses
+
+### Fixed
+- Sanitize `---` lines in injected lyrics to prevent prompt block separator corruption
+- Require partial title match in `matchScore` to prevent wrong-song lyrics from being injected as ground truth
+- Add null guard in `norm()` for missing `trackName`/`artistName` fields from unvalidated lrclib JSON
+- Change unknown language fallback from `zh-TW` to `en`
+
 ## [0.4.0.0] — 2026-09-17
 
 ### Added
