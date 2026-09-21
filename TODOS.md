@@ -141,8 +141,9 @@
 
 - [ ] **P3** Joining a nonexistent room code shows "waiting for host" forever  
   PartyKit creates rooms on demand, so any code "exists". Needs a room registry or a host-presence check with an error message. Found by /qa on 2026-09-21.
-- [ ] **P2** Decide whether Lyrics Mode should play audio  
-  Host round screen has a "Cut" button but only Timeline mode mounts `MusicPlayer`. Found by /qa on 2026-09-21.
+- [x] **P2** Decide whether Lyrics Mode should play audio  
+  Host round screen has a "Cut" button but only Timeline mode mounts `MusicPlayer`. Found by /qa on 2026-09-21.  
+  **Completed:** v0.5.0.0 (2026-09-21) — host-side LyricsPlayer.
 - [ ] **P3** Room state is in memory only: a PartyKit reload or eviction wipes the game and leaves host/player pages stale  
   Persist minimal game state to `room.storage` or detect a fresh server and reset clients. Found by /qa on 2026-09-21.
 - [x] **P3** Unit test for the Lyrics "Time's up" state on the play page (needs a mocked partysocket harness)  
@@ -157,3 +158,7 @@
   Server silently drops answers for unknown/late-joining players. Send an ack or derive submitted from `lyricsState.answers[playerId]`. Also tag SUBMIT/TOO_LATE with the round index. Found by /ship adversarial review on 2026-09-21.
 - [ ] **P3** Client countdown uses the device clock against the server's `roundStart`  
   A device clock ahead by more than the round timer shows "Time's up" immediately. Send a server time offset. Found by /ship adversarial review on 2026-09-21.
+- [ ] **P2** The review step broadcasts the whole deck (video ids and answers) to every client  
+  `sanitizedLyricsState` sends `rounds` with answers revealed to all connections during `preview` so the host can review them. Players can read it from the WebSocket. Needs per-connection state (host gets the deck, players get an empty list). Found by /ship review on 2026-09-21.
+- [ ] **P3** Play a video that can't be embedded: skip to the next song automatically  
+  LyricsPlayer now warns the host, but the round still runs without audio. `LYRICS_ROUND_FAILED` exists in `lib/game.ts` with no sender. Found by /ship adversarial review on 2026-09-21.
