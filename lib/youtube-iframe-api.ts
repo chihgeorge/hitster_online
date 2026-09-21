@@ -23,7 +23,7 @@ export function whenYouTubeApiReady(cb: () => void): void {
   }
   const previous = window.onYouTubeIframeAPIReady;
   window.onYouTubeIframeAPIReady = () => {
-    previous?.();
+    try { previous?.(); } catch (err) { console.error(err); } // an earlier handler must not stop this one
     cb();
   };
 }

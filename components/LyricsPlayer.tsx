@@ -10,21 +10,34 @@ interface Props {
   playing: boolean;
 }
 
+type AudioReply = { videoId: string | null; roundIndex: number };
+type AudioState = { phase: string; currentRoundIndex: number };
+
+/** The host player exists only while a round is running; it stays mounted across rounds. */
+export function isAudioPhase(state: { phase: string } | null): boolean {
+  return !!state && ["playing", "guessing", "results"].includes(state.phase);
+}
+
 /**
  * Maps the lyrics game state plus the host-only LYRICS_AUDIO reply to what the player should do:
- * audible in `playing` and `results`, paused on Cut. An audio reply for another round is ignored.
+ * audible in `playing` and `results`, paused on Cut. A reply for another round is ignored, so the
+ * player pauses (rather than replays the old song) until the new round's reply arrives.
  */
-export function lyricsAudioProps(
-  state: { phase: string; currentRoundIndex: number } | null,
-  audio: { videoId: string | null; roundIndex: number } | null
-): Props {
-  const active = state && ["playing", "guessing", "results"].includes(state.phase);
-  if (!active || !audio?.videoId || audio.roundIndex !== state.currentRoundIndex) return { videoId: null, playing: false };
+export function lyricsAudioProps(state: AudioState | null, audio: AudioReply | null): Props {
+  if (!state || !isAudioPhase(state) || !audio?.videoId || audio.roundIndex !== state.currentRoundIndex) {
+    return { videoId: null, playing: false };
+  }
   return { videoId: audio.videoId, playing: state.phase !== "guessing" };
 }
 
-// Host-side audio for Lyrics Mode. One persistent YouTube player: it autoplays when a round starts,
-// pauses on Cut, resumes on the results screen, and loads the next song each round. The video is
+/** True when the host still has to ask the server for this round's video id. A reply with a null id counts as answered. */
+export function needsLyricsAudio(state: AudioState | null, audio: AudioReply | null): boolean {
+  return isAudioPhase(state) && audio?.roundIndex !== state!.currentRoundIndex;
+}
+
+// Host-side audio for Lyrics Mode. One persistent YouTube player (the host page keeps it mounted for the
+// whole game): it autoplays when a round starts, pauses on Cut, resumes on the results screen, and loads
+// the next song each round. The video is
 // visually hidden so lyric videos don't show the answer on a shared screen.
 export default function LyricsPlayer({ videoId, playing }: Props) {
   const targetRef = useRef<HTMLDivElement>(null);
@@ -95,6 +108,9 @@ export default function LyricsPlayer({ videoId, playing }: Props) {
     // eslint-disable-next-line react-hooks/exhaustive-deps -- sync reads the latest props via wantRef
   }, [videoId, playing]);
 
+  const failed = !!videoId && failedId === videoId;
+  const showBlocked = !failed && blocked && playing && !!videoId;
+
   return (
     <>
       {/* Kept in the layout (not display:none) so the browser still lets it play */}
@@ -105,12 +121,12 @@ export default function LyricsPlayer({ videoId, playing }: Props) {
         <div ref={targetRef} />
       </div>
       {/* Fixed so the host sees it whatever the scroll position */}
-      {(failedId === videoId && videoId) || (blocked && playing && videoId) ? (
+      {failed || showBlocked ? (
         <div
           role="status"
           style={{ position: "fixed", left: "50%", bottom: 16, transform: "translateX(-50%)", zIndex: 50, width: "min(92vw, 420px)" }}
         >
-          {failedId === videoId ? (
+          {failed ? (
             <div data-testid="lyrics-audio-error" style={{ background: "#FFF0E8", border: "2px solid rgba(255,59,92,.4)", borderRadius: 14, padding: "12px 16px", fontSize: 14, fontWeight: 700, color: "#1A1A2E", textAlign: "center", fontFamily: "var(--font-zh)", boxShadow: "0 6px 20px rgba(0,0,0,.15)" }}>
               ⚠️ 這首歌無法播放，本回合沒有音樂 · This song can&apos;t be played, no audio this round
             </div>

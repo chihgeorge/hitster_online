@@ -1679,7 +1679,10 @@ describe("Lyrics Mode: video id is host-only", () => {
   it("refuses GET_LYRICS_AUDIO from a non-host", async () => {
     const { room, hostConn, p1Conn } = await setupLyricsGame();
     await send(room, hostConn, { type: "START_LYRICS_ROUND", hostId: "host-uuid" });
+    const broadcast = room.room.broadcast as ReturnType<typeof vi.fn>;
+    broadcast.mockClear();
     await send(room, p1Conn, { type: "GET_LYRICS_AUDIO", hostId: "not-the-host" });
+    expect(broadcast).not.toHaveBeenCalled();
     const reply = lastSentTo(p1Conn);
     expect(reply?.type).toBe("ERROR");
     expect(JSON.stringify(reply)).not.toContain(room.lyricsState!.currentRound!.videoId);
@@ -1691,5 +1694,18 @@ describe("Lyrics Mode: video id is host-only", () => {
     await send(room, host, { type: "LOAD_PLAYLIST", hostId: "host-uuid", playlistUrl: "hitster://cpop-test" });
     await send(room, host, { type: "GET_LYRICS_AUDIO", hostId: "host-uuid" });
     expect(lastSentTo(host)).toMatchObject({ type: "LYRICS_AUDIO", videoId: null });
+  });
+});
+
+describe("Lyrics Mode: GET_LYRICS_AUDIO across rounds", () => {
+  // The fixture deck has a single song, so simulate being on a later round by setting the index directly
+  it("reports the current round index, so the host can discard a reply for an earlier round", async () => {
+    const { room, hostConn } = await setupLyricsGame();
+    await send(room, hostConn, { type: "START_LYRICS_ROUND", hostId: "host-uuid" });
+    await send(room, hostConn, { type: "GET_LYRICS_AUDIO", hostId: "host-uuid" });
+    expect(lastSentTo(hostConn)).toMatchObject({ type: "LYRICS_AUDIO", roundIndex: 0 });
+    room.lyricsState!.currentRoundIndex = 3;
+    await send(room, hostConn, { type: "GET_LYRICS_AUDIO", hostId: "host-uuid" });
+    expect(lastSentTo(hostConn)).toMatchObject({ type: "LYRICS_AUDIO", roundIndex: 3 });
   });
 });

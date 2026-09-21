@@ -1,9 +1,14 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, act, cleanup, fireEvent } from "@testing-library/react";
-import LyricsPlayer from "./LyricsPlayer";
+import LyricsPlayer, { lyricsAudioProps, needsLyricsAudio, isAudioPhase } from "./LyricsPlayer";
 
 // Mimics the real YouTube IFrame API: player methods only exist after onReady.
-type Events = { onReady?: () => void; onAutoplayBlocked?: () => void };
+type Events = {
+  onReady?: () => void;
+  onAutoplayBlocked?: () => void;
+  onStateChange?: (e: { data: number }) => void;
+  onError?: (e: { data: number }) => void;
+};
 class FakePlayer {
   static instances: FakePlayer[] = [];
   events: Events;
@@ -167,9 +172,8 @@ describe("LyricsPlayer", () => {
   });
 });
 
-// ── Ship review fixes (2026-09-21) ────────────────────────────────────────────
+// ── Host wiring helpers and review regressions ───────────────────────────────
 
-import { lyricsAudioProps } from "./LyricsPlayer";
 
 describe("lyricsAudioProps (phase + host audio reply -> player props)", () => {
   const audio = { videoId: "vid-1", roundIndex: 2 };
@@ -235,18 +239,17 @@ describe("LyricsPlayer: review fixes", () => {
     player().ready();
     act(() => { player().events.onAutoplayBlocked?.(); });
     expect(screen.getByTestId("lyrics-play-btn")).toBeTruthy();
-    act(() => { (player().events as { onStateChange?: (e: { data: number }) => void }).onStateChange?.({ data: 1 }); });
+    act(() => { player().events.onStateChange?.({ data: 1 }); });
     expect(screen.queryByTestId("lyrics-play-btn")).toBeNull();
   });
 });
 
 describe("LyricsPlayer: can't-play notice and fallback button", () => {
-  type Ev = { onError?: (e: { data: number }) => void };
   it("tells the host when the video can't be played, and clears it for the next song", () => {
     const { rerender } = render(<LyricsPlayer videoId="vid-1" playing />);
     player().ready();
     expect(screen.queryByTestId("lyrics-audio-error")).toBeNull();
-    act(() => { (player().events as Ev).onError?.({ data: 101 }); });
+    act(() => { player().events.onError?.({ data: 101 }); });
     expect(screen.getByTestId("lyrics-audio-error")).toBeTruthy();
     rerender(<LyricsPlayer videoId="vid-2" playing />);
     expect(screen.queryByTestId("lyrics-audio-error")).toBeNull();
@@ -257,5 +260,47 @@ describe("LyricsPlayer: can't-play notice and fallback button", () => {
     player().ready();
     act(() => { player().events.onAutoplayBlocked?.(); });
     expect(screen.getByRole("status").contains(screen.getByTestId("lyrics-play-btn"))).toBe(true);
+  });
+});
+
+describe("needsLyricsAudio (when the host must ask for the video id)", () => {
+  const at = (phase: string, roundIndex = 1) => ({ phase, currentRoundIndex: roundIndex });
+  it("asks in a running round when there is no reply yet", () => {
+    expect(needsLyricsAudio(at("playing"), null)).toBe(true);
+  });
+  it("asks again when the reply belongs to an earlier round", () => {
+    expect(needsLyricsAudio(at("playing", 2), { videoId: "v", roundIndex: 1 })).toBe(true);
+  });
+  it("does not ask once this round has a reply, even a null one (no retry loop)", () => {
+    expect(needsLyricsAudio(at("guessing"), { videoId: "v", roundIndex: 1 })).toBe(false);
+    expect(needsLyricsAudio(at("guessing"), { videoId: null, roundIndex: 1 })).toBe(false);
+  });
+  it.each(["lobby", "loading", "preview", "ended"])("never asks in %s", (phase) => {
+    expect(needsLyricsAudio(at(phase), null)).toBe(false);
+  });
+  it("never asks without a game", () => {
+    expect(needsLyricsAudio(null, null)).toBe(false);
+    expect(isAudioPhase(null)).toBe(false);
+  });
+});
+
+describe("LyricsPlayer: notice and banner precedence", () => {
+  it("shows only the error notice when an error arrives while the play button is showing", () => {
+    render(<LyricsPlayer videoId="vid-1" playing />);
+    player().ready();
+    act(() => { player().events.onAutoplayBlocked?.(); });
+    expect(screen.getByTestId("lyrics-play-btn")).toBeTruthy();
+    act(() => { player().events.onError?.({ data: 150 }); });
+    expect(screen.getByTestId("lyrics-audio-error")).toBeTruthy();
+    expect(screen.queryByTestId("lyrics-play-btn")).toBeNull();
+  });
+
+  it("stays on the same player while the round changes (persistent across rounds)", () => {
+    const { rerender } = render(<LyricsPlayer videoId="vid-1" playing />);
+    player().ready();
+    rerender(<LyricsPlayer videoId={null} playing={false} />); // between rounds, reply not here yet
+    rerender(<LyricsPlayer videoId="vid-2" playing />);
+    expect(FakePlayer.instances).toHaveLength(1);
+    expect(player().loadVideoById).toHaveBeenLastCalledWith("vid-2");
   });
 });

@@ -43,7 +43,7 @@ export default function MusicPlayer({ currentSong, phase, placementCount, onReve
 
     return () => {
       cancelled = true;
-      player?.destroy();
+      if (typeof player?.destroy === "function") player.destroy(); // absent until onReady on the real API
       setPlayerReady(false);
     };
   }, [currentSong?.videoId]);

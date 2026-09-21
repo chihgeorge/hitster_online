@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { useParams } from "next/navigation";
 import usePartySocket from "partysocket/react";
 import MusicPlayer from "@/components/MusicPlayer";
-import LyricsPlayer, { lyricsAudioProps } from "@/components/LyricsPlayer";
+import LyricsPlayer, { lyricsAudioProps, isAudioPhase, needsLyricsAudio } from "@/components/LyricsPlayer";
 import PlayerList from "@/components/PlayerList";
 import PlaylistEditor from "@/components/PlaylistEditor";
 import type { GameState, ServerMessage, ClientMessage, SongDiagnostic, DiagnosticStatus, EditableSong, PublicLyricsGameState, PublicLyricsRound, LyricsGameConfig } from "@/lib/game";
@@ -164,6 +164,8 @@ export default function HostPage() {
       }
       if (msg.type === "LYRICS_STATE") {
         setLyricsState(msg.state);
+        // A new game must not match audio left over from the previous one
+        if (["loading", "preview", "ended"].includes(msg.state.phase)) setLyricsAudio(null);
         if (msg.state.phase === "lobby" || msg.state.phase === "ended") {
           setLyricsTimerLeft(null);
         }
@@ -193,13 +195,12 @@ export default function HostPage() {
     return () => clearInterval(id);
   }, [lyricsState?.phase, lyricsState?.roundStart, lyricsState?.timerSeconds]);
 
-  // Players never receive the video id, so ask the server for it whenever the round changes.
+  // Players never receive the video id, so ask the server for it. Runs on every state update until this
+  // round has a reply, which also retries after a reconnect; a reply with a null id counts as answered.
   useEffect(() => {
-    if (!lyricsState || !["playing", "guessing", "results"].includes(lyricsState.phase)) return;
-    if (lyricsAudio?.videoId && lyricsAudio.roundIndex === lyricsState.currentRoundIndex) return;
-    send({ type: "GET_LYRICS_AUDIO", hostId: hostIdRef.current });
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- runs on round/phase changes only
-  }, [lyricsState?.phase, lyricsState?.currentRoundIndex]);
+    if (needsLyricsAudio(lyricsState, lyricsAudio)) send({ type: "GET_LYRICS_AUDIO", hostId: hostIdRef.current });
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- send is stable enough; re-run on new state or reply
+  }, [lyricsState, lyricsAudio]);
 
   function send(msg: ClientMessage) {
     socket.send(JSON.stringify(msg));
@@ -1006,7 +1007,7 @@ export default function HostPage() {
       )}
 
       {/* Lyrics Mode audio: plays at round start, pauses on Cut (guessing), resumes on results */}
-      {lyricsAudioProps(lyricsState, lyricsAudio).videoId && <LyricsPlayer {...lyricsAudioProps(lyricsState, lyricsAudio)} />}
+      {isAudioPhase(lyricsState) && <LyricsPlayer {...lyricsAudioProps(lyricsState, lyricsAudio)} />}
 
       {/* Song metadata panel */}
       {diagnostic && phase !== "lobby" && (
