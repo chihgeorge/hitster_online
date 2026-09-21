@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import type { Card, GamePhase } from "@/lib/game";
+import { whenYouTubeApiReady } from "@/lib/youtube-iframe-api";
 
 interface Props {
   currentSong: Card | null;
@@ -18,13 +19,7 @@ export default function MusicPlayer({ currentSong, phase, placementCount, onReve
   useEffect(() => {
     if (!currentSong || typeof window === "undefined") return;
 
-    // Load YouTube IFrame API once — guard against duplicate injection on re-renders
-    if (!window.YT && !document.querySelector('script[src*="youtube.com/iframe_api"]')) {
-      const tag = document.createElement("script");
-      tag.src = "https://www.youtube.com/iframe_api";
-      document.head.appendChild(tag);
-    }
-
+    let cancelled = false;
     let player: YT.Player | null = null;
 
     function initPlayer() {
@@ -44,13 +39,10 @@ export default function MusicPlayer({ currentSong, phase, placementCount, onReve
       });
     }
 
-    if (window.YT?.Player) {
-      initPlayer();
-    } else {
-      window.onYouTubeIframeAPIReady = initPlayer;
-    }
+    whenYouTubeApiReady(() => { if (!cancelled) initPlayer(); });
 
     return () => {
+      cancelled = true;
       player?.destroy();
       setPlayerReady(false);
     };
@@ -140,13 +132,4 @@ export default function MusicPlayer({ currentSong, phase, placementCount, onReve
       </div>
     </div>
   );
-}
-
-// Extend window type for YouTube IFrame API
-declare global {
-  interface Window {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    YT: any;
-    onYouTubeIframeAPIReady: () => void;
-  }
 }

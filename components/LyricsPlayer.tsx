@@ -1,12 +1,26 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { whenYouTubeApiReady } from "@/lib/youtube-iframe-api";
 
 interface Props {
   /** Video for the current round, or null when nothing should be loaded (lobby, preview, ended). */
   videoId: string | null;
   /** true = audible (round start and results), false = paused (host has cut the song). */
   playing: boolean;
+}
+
+/**
+ * Maps the lyrics game state plus the host-only LYRICS_AUDIO reply to what the player should do:
+ * audible in `playing` and `results`, paused on Cut. An audio reply for another round is ignored.
+ */
+export function lyricsAudioProps(
+  state: { phase: string; currentRoundIndex: number } | null,
+  audio: { videoId: string | null; roundIndex: number } | null
+): Props {
+  const active = state && ["playing", "guessing", "results"].includes(state.phase);
+  if (!active || !audio?.videoId || audio.roundIndex !== state.currentRoundIndex) return { videoId: null, playing: false };
+  return { videoId: audio.videoId, playing: state.phase !== "guessing" };
 }
 
 // Host-side audio for Lyrics Mode. One persistent YouTube player: it autoplays when a round starts,
@@ -19,6 +33,7 @@ export default function LyricsPlayer({ videoId, playing }: Props) {
   const wantRef = useRef({ videoId, playing });
   wantRef.current = { videoId, playing };
   const [blocked, setBlocked] = useState(false);
+  const [failedId, setFailedId] = useState<string | null>(null); // video the embed refused to play
 
   function sync() {
     const p = playerRef.current;
@@ -26,6 +41,7 @@ export default function LyricsPlayer({ videoId, playing }: Props) {
     const want = wantRef.current;
     if (!want.videoId) {
       p.pauseVideo();
+      loadedRef.current = null; // a repeat of the same song later must restart, not resume
       return;
     }
     if (loadedRef.current !== want.videoId) {
@@ -43,35 +59,31 @@ export default function LyricsPlayer({ videoId, playing }: Props) {
 
     function create() {
       if (cancelled || !targetRef.current) return;
-      playerRef.current = new window.YT.Player(targetRef.current, {
+      // YT.Player replaces its target with an iframe, so give every create its own element
+      const el = document.createElement("div");
+      targetRef.current.appendChild(el);
+      playerRef.current = new window.YT.Player(el, {
+        // 200px is the smallest size YouTube embeds reliably play at; the wrapper below clips it to 1px
         width: "200",
         height: "200",
         playerVars: { autoplay: 1, controls: 0, playsinline: 1, rel: 0 },
         events: {
           onReady: () => sync(),
           onAutoplayBlocked: () => setBlocked(true),
+          onStateChange: (e: { data: number }) => { if (e.data === 1) setBlocked(false); }, // 1 = playing
+          // Embedding blocked, video removed or age-restricted: the round continues, just without audio
+          onError: () => setFailedId(wantRef.current.videoId),
         },
       });
     }
 
-    if (window.YT?.Player) {
-      create();
-    } else {
-      if (!document.querySelector('script[src*="youtube.com/iframe_api"]')) {
-        const tag = document.createElement("script");
-        tag.src = "https://www.youtube.com/iframe_api";
-        document.head.appendChild(tag);
-      }
-      const previous = window.onYouTubeIframeAPIReady;
-      window.onYouTubeIframeAPIReady = () => {
-        previous?.();
-        create();
-      };
-    }
+    whenYouTubeApiReady(create);
 
     return () => {
       cancelled = true;
-      playerRef.current?.destroy();
+      const p = playerRef.current;
+      if (typeof p?.destroy === "function") p.destroy(); // absent until onReady on the real API
+      targetRef.current?.replaceChildren();
       playerRef.current = null;
       loadedRef.current = null;
     };
@@ -92,16 +104,28 @@ export default function LyricsPlayer({ videoId, playing }: Props) {
       >
         <div ref={targetRef} />
       </div>
-      {blocked && playing && videoId && (
-        <button
-          type="button"
-          data-testid="lyrics-play-btn"
-          onClick={() => { setBlocked(false); playerRef.current?.playVideo(); }}
-          style={{ background: "#FFF0E8", border: "2px solid rgba(255,107,53,.3)", borderRadius: 12, padding: "10px 14px", fontSize: 13, fontWeight: 700, color: "#1A1A2E", cursor: "pointer", fontFamily: "var(--font-zh)" }}
+      {/* Fixed so the host sees it whatever the scroll position */}
+      {(failedId === videoId && videoId) || (blocked && playing && videoId) ? (
+        <div
+          role="status"
+          style={{ position: "fixed", left: "50%", bottom: 16, transform: "translateX(-50%)", zIndex: 50, width: "min(92vw, 420px)" }}
         >
-          🔊 瀏覽器擋住了自動播放，點此播放 · Click to play
-        </button>
-      )}
+          {failedId === videoId ? (
+            <div data-testid="lyrics-audio-error" style={{ background: "#FFF0E8", border: "2px solid rgba(255,59,92,.4)", borderRadius: 14, padding: "12px 16px", fontSize: 14, fontWeight: 700, color: "#1A1A2E", textAlign: "center", fontFamily: "var(--font-zh)", boxShadow: "0 6px 20px rgba(0,0,0,.15)" }}>
+              ⚠️ 這首歌無法播放，本回合沒有音樂 · This song can&apos;t be played, no audio this round
+            </div>
+          ) : (
+            <button
+              type="button"
+              data-testid="lyrics-play-btn"
+              onClick={() => { setBlocked(false); playerRef.current?.playVideo(); }}
+              style={{ width: "100%", minHeight: 48, background: "#FF6B35", border: "none", borderRadius: 14, padding: "12px 16px", fontSize: 15, fontWeight: 900, color: "white", cursor: "pointer", fontFamily: "var(--font-zh)", boxShadow: "0 6px 20px rgba(255,107,53,.4)" }}
+            >
+              🔊 瀏覽器擋住了自動播放，點此播放 · Click to play
+            </button>
+          )}
+        </div>
+      ) : null}
     </>
   );
 }

@@ -112,7 +112,8 @@ export type ClientMessage =
   | { type: "SHOW_LYRICS_RESULTS"; hostId: string }
   | { type: "NEXT_LYRICS_ROUND"; hostId: string }
   | { type: "RESET_LYRICS_GAME"; hostId: string }
-  | { type: "CONFIRM_LYRICS_PREVIEW"; hostId: string };
+  | { type: "CONFIRM_LYRICS_PREVIEW"; hostId: string }
+  | { type: "GET_LYRICS_AUDIO"; hostId: string };
 
 export type SongDiagnostic = {
   title: string;
@@ -141,6 +142,8 @@ export type ServerMessage =
   | { type: "STATE"; state: GameState }
   | { type: "LYRICS_STATE"; state: PublicLyricsGameState }
   | { type: "LYRICS_ABORTED" }
+  // Sent only to the host: the current round's video id (players never receive it)
+  | { type: "LYRICS_AUDIO"; videoId: string | null; roundIndex: number }
   | { type: "PLACEMENT_ACK"; playerId: string }
   | { type: "ERROR"; error: string }
   | { type: "DIAGNOSTIC"; songs: SongDiagnostic[]; status: DiagnosticStatus; skippedEmbeddingCount?: number }

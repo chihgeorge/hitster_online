@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { useParams } from "next/navigation";
 import usePartySocket from "partysocket/react";
 import MusicPlayer from "@/components/MusicPlayer";
-import LyricsPlayer from "@/components/LyricsPlayer";
+import LyricsPlayer, { lyricsAudioProps } from "@/components/LyricsPlayer";
 import PlayerList from "@/components/PlayerList";
 import PlaylistEditor from "@/components/PlaylistEditor";
 import type { GameState, ServerMessage, ClientMessage, SongDiagnostic, DiagnosticStatus, EditableSong, PublicLyricsGameState, PublicLyricsRound, LyricsGameConfig } from "@/lib/game";
@@ -67,6 +67,7 @@ export default function HostPage() {
   // Lyrics Mode
   const [gameMode, setGameMode] = useState<"timeline" | "lyrics">("timeline");
   const [lyricsState, setLyricsState] = useState<PublicLyricsGameState | null>(null);
+  const [lyricsAudio, setLyricsAudio] = useState<{ videoId: string | null; roundIndex: number } | null>(null);
   const [lyricsPreview, setLyricsPreview] = useState<PublicLyricsRound[]>([]);
   const [lyricsPreviewLoading, setLyricsPreviewLoading] = useState(false);
   const [lyricOverrides, setLyricOverrides] = useState<Record<string, { lyricContext?: string; blankSentence?: string }>>({});
@@ -167,7 +168,8 @@ export default function HostPage() {
           setLyricsTimerLeft(null);
         }
       }
-      if (msg.type === "LYRICS_ABORTED") setLyricsState(null);
+      if (msg.type === "LYRICS_ABORTED") { setLyricsState(null); setLyricsAudio(null); }
+      if (msg.type === "LYRICS_AUDIO") setLyricsAudio({ videoId: msg.videoId, roundIndex: msg.roundIndex });
       if (msg.type === "LYRICS_PREVIEW") {
         setLyricsPreviewLoading(msg.loading);
         if (!msg.loading) setLyricsPreview(msg.rounds);
@@ -190,6 +192,14 @@ export default function HostPage() {
     const id = setInterval(tick, 200);
     return () => clearInterval(id);
   }, [lyricsState?.phase, lyricsState?.roundStart, lyricsState?.timerSeconds]);
+
+  // Players never receive the video id, so ask the server for it whenever the round changes.
+  useEffect(() => {
+    if (!lyricsState || !["playing", "guessing", "results"].includes(lyricsState.phase)) return;
+    if (lyricsAudio?.videoId && lyricsAudio.roundIndex === lyricsState.currentRoundIndex) return;
+    send({ type: "GET_LYRICS_AUDIO", hostId: hostIdRef.current });
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- runs on round/phase changes only
+  }, [lyricsState?.phase, lyricsState?.currentRoundIndex]);
 
   function send(msg: ClientMessage) {
     socket.send(JSON.stringify(msg));
@@ -996,12 +1006,7 @@ export default function HostPage() {
       )}
 
       {/* Lyrics Mode audio: plays at round start, pauses on Cut (guessing), resumes on results */}
-      {lyricsState && (
-        <LyricsPlayer
-          videoId={["playing", "guessing", "results"].includes(lyricsState.phase) ? (lyricsState.currentRound?.videoId ?? null) : null}
-          playing={lyricsState.phase === "playing" || lyricsState.phase === "results"}
-        />
-      )}
+      {lyricsAudioProps(lyricsState, lyricsAudio).videoId && <LyricsPlayer {...lyricsAudioProps(lyricsState, lyricsAudio)} />}
 
       {/* Song metadata panel */}
       {diagnostic && phase !== "lobby" && (

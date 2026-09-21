@@ -1638,3 +1638,58 @@ describe("Lyrics Mode: adversarial-review hardening", () => {
     expect(room.lyricsState?.answers[P1]).toBeUndefined();
   });
 });
+
+describe("Lyrics Mode: video id is host-only", () => {
+  // Regression guard: players could open the lyric video from the broadcast and read the answer
+  it("never broadcasts the current round's video id", async () => {
+    const { room, hostConn } = await setupLyricsGame();
+    const broadcast = room.room.broadcast as ReturnType<typeof vi.fn>;
+    broadcast.mockClear(); // the review step still broadcasts the whole deck (see TODOS.md), only the round is in scope here
+    await send(room, hostConn, { type: "START_LYRICS_ROUND", hostId: "host-uuid" });
+    const realId = room.lyricsState!.currentRound!.videoId;
+    expect(realId).toBeTruthy();
+    const raw = broadcast.mock.calls.map((c: any[]) => c[0]).join("\n");
+    expect(raw).not.toContain(realId);
+    expect(lastBroadcast(room).state.currentRound.videoId).toBe("");
+  });
+
+  it("does not leak the id to a player who connects mid-round", async () => {
+    const { room, hostConn } = await setupLyricsGame();
+    await send(room, hostConn, { type: "START_LYRICS_ROUND", hostId: "host-uuid" });
+    const late = makeConn("late-player");
+    await room.onConnect(late);
+    const raw = (late.send as ReturnType<typeof vi.fn>).mock.calls.map((c: any[]) => c[0]).join("\n");
+    expect(raw).not.toContain(room.lyricsState!.currentRound!.videoId);
+  });
+
+  it("GET_LYRICS_AUDIO gives the host the id and round index, to the host only", async () => {
+    const { room, hostConn } = await setupLyricsGame();
+    await send(room, hostConn, { type: "START_LYRICS_ROUND", hostId: "host-uuid" });
+    const broadcast = room.room.broadcast as ReturnType<typeof vi.fn>;
+    broadcast.mockClear();
+    await send(room, hostConn, { type: "GET_LYRICS_AUDIO", hostId: "host-uuid" });
+    expect(lastSentTo(hostConn)).toEqual({
+      type: "LYRICS_AUDIO",
+      videoId: room.lyricsState!.currentRound!.videoId,
+      roundIndex: room.lyricsState!.currentRoundIndex,
+    });
+    expect(broadcast).not.toHaveBeenCalled();
+  });
+
+  it("refuses GET_LYRICS_AUDIO from a non-host", async () => {
+    const { room, hostConn, p1Conn } = await setupLyricsGame();
+    await send(room, hostConn, { type: "START_LYRICS_ROUND", hostId: "host-uuid" });
+    await send(room, p1Conn, { type: "GET_LYRICS_AUDIO", hostId: "not-the-host" });
+    const reply = lastSentTo(p1Conn);
+    expect(reply?.type).toBe("ERROR");
+    expect(JSON.stringify(reply)).not.toContain(room.lyricsState!.currentRound!.videoId);
+  });
+
+  it("replies with a null id when no lyrics game is running", async () => {
+    const room = new HitsterRoom(makeRoom() as any);
+    const host = makeConn("h");
+    await send(room, host, { type: "LOAD_PLAYLIST", hostId: "host-uuid", playlistUrl: "hitster://cpop-test" });
+    await send(room, host, { type: "GET_LYRICS_AUDIO", hostId: "host-uuid" });
+    expect(lastSentTo(host)).toMatchObject({ type: "LYRICS_AUDIO", videoId: null });
+  });
+});
