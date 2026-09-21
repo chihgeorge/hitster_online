@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { useParams } from "next/navigation";
 import usePartySocket from "partysocket/react";
 import MusicPlayer from "@/components/MusicPlayer";
+import LyricsPlayer from "@/components/LyricsPlayer";
 import PlayerList from "@/components/PlayerList";
 import PlaylistEditor from "@/components/PlaylistEditor";
 import type { GameState, ServerMessage, ClientMessage, SongDiagnostic, DiagnosticStatus, EditableSong, PublicLyricsGameState, PublicLyricsRound, LyricsGameConfig } from "@/lib/game";
@@ -992,6 +993,14 @@ export default function HostPage() {
             再玩一次 · Play Again
           </button>
         </div>
+      )}
+
+      {/* Lyrics Mode audio: plays at round start, pauses on Cut (guessing), resumes on results */}
+      {lyricsState && (
+        <LyricsPlayer
+          videoId={["playing", "guessing", "results"].includes(lyricsState.phase) ? (lyricsState.currentRound?.videoId ?? null) : null}
+          playing={lyricsState.phase === "playing" || lyricsState.phase === "results"}
+        />
       )}
 
       {/* Song metadata panel */}
