@@ -41,6 +41,7 @@ export default function PlayPage() {
   const [lyricsState, setLyricsState] = useState<PublicLyricsGameState | null>(null);
   const [lyricsAnswer, setLyricsAnswer] = useState("");
   const [lyricsSubmitted, setLyricsSubmitted] = useState(false);
+  const [lyricsTooLate, setLyricsTooLate] = useState(false);
   const [lyricsTimerLeft, setLyricsTimerLeft] = useState<number | null>(null);
   const [selectedPosition, setSelectedPosition] = useState<number | null>(null);
   const [hasPlaced, setHasPlaced] = useState(false);
@@ -65,6 +66,7 @@ export default function PlayPage() {
     if (lyricsState?.phase === "playing" || lyricsState?.phase === "loading") {
       setLyricsAnswer("");
       setLyricsSubmitted(false);
+      setLyricsTooLate(false);
       setLyricsTimerLeft(null);
     }
   }, [lyricsState?.phase, lyricsState?.currentRoundIndex]);
@@ -121,6 +123,8 @@ export default function PlayPage() {
           break;
         case "TOO_LATE":
           setTooLate(true);
+          setLyricsTooLate(true);
+          setLyricsSubmitted(false);
           break;
       }
     },
@@ -137,7 +141,7 @@ export default function PlayPage() {
 
   function handleSubmitLyricsAnswer() {
     const text = lyricsAnswer.trim();
-    if (!text || lyricsSubmitted) return;
+    if (!text || lyricsSubmitted || lyricsTimerLeft === 0) return;
     setLyricsSubmitted(true);
     send({ type: "SUBMIT_LYRICS_ANSWER", playerId: playerIdRef.current, text, ts: Date.now() });
   }
@@ -225,6 +229,11 @@ export default function PlayPage() {
         {lyricsSubmitted ? (
           <div style={{ textAlign: "center", display: "flex", flexDirection: "column", gap: 6, alignItems: "center" }}>
             <p style={{ fontSize: 16, fontWeight: 900, color: "#00C896" }}>✓ 已送出 · Submitted!</p>
+            <p style={{ fontSize: 12, color: "#B0AFBC" }}>等待揭曉…</p>
+          </div>
+        ) : lyricsTimerLeft === 0 || lyricsTooLate ? (
+          <div style={{ textAlign: "center", display: "flex", flexDirection: "column", gap: 6, alignItems: "center" }}>
+            <p style={{ fontSize: 16, fontWeight: 900, color: "#FF3B5C" }}>⏰ 時間到 · Time&apos;s up!</p>
             <p style={{ fontSize: 12, color: "#B0AFBC" }}>等待揭曉…</p>
           </div>
         ) : (

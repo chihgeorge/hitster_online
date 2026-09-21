@@ -136,3 +136,24 @@
 - [ ] **P3** Replace hardcoded hex values with CSS variables  
   CSS tokens (`--orange`, `--ink`, `--bg`, `--text2`, etc.) are defined in `globals.css` `:root` but all component files use raw hex strings inline (`#FF6B35`, `#1A1A2E`, etc.). A palette change requires grep-and-replace across 4 files. Migrate to `var(--orange)` etc. at call sites.  
   _Surfaced by /design-review on 2026-09-16_
+
+## QA findings 2026-09-21 (deferred)
+
+- [ ] **P3** Joining a nonexistent room code shows "waiting for host" forever  
+  PartyKit creates rooms on demand, so any code "exists". Needs a room registry or a host-presence check with an error message. Found by /qa on 2026-09-21.
+- [ ] **P2** Decide whether Lyrics Mode should play audio  
+  Host round screen has a "Cut" button but only Timeline mode mounts `MusicPlayer`. Found by /qa on 2026-09-21.
+- [ ] **P3** Room state is in memory only: a PartyKit reload or eviction wipes the game and leaves host/player pages stale  
+  Persist minimal game state to `room.storage` or detect a fresh server and reset clients. Found by /qa on 2026-09-21.
+- [x] **P3** Unit test for the Lyrics "Time's up" state on the play page (needs a mocked partysocket harness)  
+  Regression for ISSUE-001, deferred by /qa on 2026-09-21. **Completed:** v0.4.2.1 (2026-09-21), `app/__tests__/play-page.test.tsx`.
+- [ ] **P2** Server should stamp answer time itself instead of trusting the client `ts`  
+  `party/index.ts` handleSubmitLyricsAnswer compares a client-supplied `ts` to the deadline and `computePoints` uses it, so a player can answer late or claim max points by spoofing it. Found by /ship adversarial review on 2026-09-21.
+- [ ] **P2** Bind Lyrics answers to the sending connection  
+  Any player can answer as another player (ids are visible in broadcast state). Needs a conn.id to playerId map that survives REJOIN. Found by /ship adversarial review on 2026-09-21.
+- [ ] **P3** `handleStartLyricsGame` has no re-entrancy guard  
+  A second START_LYRICS_GAME (double click) can let a stale loader abort or overwrite the newer game. Reject START while a game is active and bail after each await if a sequence token changed. Found by /ship adversarial review on 2026-09-21.
+- [ ] **P3** Player shows "Submitted!" before the server acknowledges  
+  Server silently drops answers for unknown/late-joining players. Send an ack or derive submitted from `lyricsState.answers[playerId]`. Also tag SUBMIT/TOO_LATE with the round index. Found by /ship adversarial review on 2026-09-21.
+- [ ] **P3** Client countdown uses the device clock against the server's `roundStart`  
+  A device clock ahead by more than the round timer shows "Time's up" immediately. Send a server time offset. Found by /ship adversarial review on 2026-09-21.
