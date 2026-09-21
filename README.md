@@ -41,7 +41,7 @@ npm run dev:party
 ## Testing
 
 ```bash
-# Unit tests (Vitest)
+# Unit + component tests (Vitest: lib/, party/, and app/**/*.test.tsx)
 npm test
 
 # e2e tests (Playwright — auto-starts dev server if not already running)

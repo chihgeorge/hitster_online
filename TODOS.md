@@ -145,8 +145,8 @@
   Host round screen has a "Cut" button but only Timeline mode mounts `MusicPlayer`. Found by /qa on 2026-09-21.
 - [ ] **P3** Room state is in memory only: a PartyKit reload or eviction wipes the game and leaves host/player pages stale  
   Persist minimal game state to `room.storage` or detect a fresh server and reset clients. Found by /qa on 2026-09-21.
-- [ ] **P3** Unit test for the Lyrics "Time's up" state on the play page (needs a mocked partysocket harness)  
-  Regression for ISSUE-001, deferred by /qa on 2026-09-21.
+- [x] **P3** Unit test for the Lyrics "Time's up" state on the play page (needs a mocked partysocket harness)  
+  Regression for ISSUE-001, deferred by /qa on 2026-09-21. **Completed:** v0.4.2.1 (2026-09-21), `app/__tests__/play-page.test.tsx`.
 - [ ] **P2** Server should stamp answer time itself instead of trusting the client `ts`  
   `party/index.ts` handleSubmitLyricsAnswer compares a client-supplied `ts` to the deadline and `computePoints` uses it, so a player can answer late or claim max points by spoofing it. Found by /ship adversarial review on 2026-09-21.
 - [ ] **P2** Bind Lyrics answers to the sending connection  
