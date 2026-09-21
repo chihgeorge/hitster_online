@@ -175,8 +175,11 @@ export default class HitsterRoom implements Party.Server {
 
   onConnect(conn: Party.Connection) {
     if (!this.hostConnId) this.hostConnId = conn.id;
-    this.sendTo(conn, { type: "STATE", state: this.sanitizedState() });
     const ls = this.sanitizedLyricsState();
+    // A reconnecting client keeps its old lyricsState; with no game running, tell it to drop it
+    // (sent before STATE so STATE stays the first-class snapshot).
+    if (!ls) this.sendTo(conn, { type: "LYRICS_ABORTED" });
+    this.sendTo(conn, { type: "STATE", state: this.sanitizedState() });
     if (ls) this.sendTo(conn, { type: "LYRICS_STATE", state: ls });
   }
 
@@ -401,7 +404,8 @@ export default class HitsterRoom implements Party.Server {
             videoId: `dQw4w9WgXcQ_${i}`, title: `Test Song ${1960 + i * 3}`,
             artist: "Test Artist", year: 1960 + i * 3,
           }));
-      this.pendingPlaylist = { playlistId, songs: testSongs, allSongs: testSongs, diagnostics: [], spotifyRateLimited: false, kgBlocked: false };
+      const seedCards: Card[] = testSongs.map((song, i) => ({ id: `seed-${i}`, ...song, yearSource: "manual" as const }));
+      this.pendingPlaylist = { playlistId, songs: seedCards, allSongs: testSongs, diagnostics: [], spotifyRateLimited: false, kgBlocked: false };
       this.sendTo(conn, { type: "PLAYLIST_READY", songCount: testSongs.length, songs: testSongs });
       return;
     }
@@ -1075,6 +1079,8 @@ export default class HitsterRoom implements Party.Server {
 
   private handleSubmitLyricsAnswer(conn: Party.Connection, playerId: string, text: string, ts: number) {
     if (!isValidPlayerId(playerId)) return;
+    // Untrusted client input: a non-numeric ts would slip past the deadline check and NaN the score.
+    if (typeof text !== "string" || typeof ts !== "number" || !Number.isFinite(ts)) return;
     const ls = this.lyricsState;
     if (!ls || ls.phase !== "guessing" || !ls.currentRound || ls.roundStart === null) return;
     if (!ls.players[playerId]) return;
@@ -1151,8 +1157,9 @@ export default class HitsterRoom implements Party.Server {
       this.sendTo(conn, { type: "ERROR", error: "wrong_phase" });
       return;
     }
-    this.lyricsState = null;
     this.lyricsDeck = [];
+    // Clients keep their own lyricsState; tell them it is gone so players leave the winner screen.
+    this.abortLyricsStart();
     this.broadcastState();
   }
 

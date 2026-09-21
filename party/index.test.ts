@@ -1380,6 +1380,23 @@ describe("Lyrics Mode: RESET_LYRICS_GAME", () => {
   });
 });
 
+describe("Lyrics Mode: RESET_LYRICS_GAME tells clients to drop lyrics state", () => {
+  // Regression: ISSUE-002 — players stayed on the WINNER screen after the host clicked Play Again
+  // Found by /qa on 2026-09-21
+  it("broadcasts LYRICS_ABORTED before the lobby STATE so players leave the ended screen", async () => {
+    const { room, hostConn } = await setupLyricsGame();
+    await send(room, hostConn, { type: "START_LYRICS_ROUND", hostId: "host-uuid" });
+    await send(room, hostConn, { type: "SHOW_LYRICS_RESULTS", hostId: "host-uuid" });
+    await send(room, hostConn, { type: "NEXT_LYRICS_ROUND", hostId: "host-uuid" });
+    const broadcast = room.room.broadcast as ReturnType<typeof vi.fn>;
+    broadcast.mockClear();
+    await send(room, hostConn, { type: "RESET_LYRICS_GAME", hostId: "host-uuid" });
+    const types = broadcast.mock.calls.map((c: any[]) => JSON.parse(c[0]).type);
+    expect(types).toContain("LYRICS_ABORTED");
+    expect(types.indexOf("LYRICS_ABORTED")).toBeLessThan(types.lastIndexOf("STATE"));
+  });
+});
+
 describe("Lyrics Mode: onConnect sends LYRICS_STATE when active", () => {
   it("sends lyricsState to new connections when game is active", async () => {
     const { room } = await setupLyricsGame();
@@ -1532,5 +1549,92 @@ describe("Lyrics Mode: generateLyricsPreview broadcasts LYRICS_PREVIEW", () => {
     expect(finalPreview?.rounds.length).toBeGreaterThan(0);
     // resolveLyricsForTracks should NOT be called (all cached)
     expect(vi.mocked(resolveLyricsForTracks)).not.toHaveBeenCalled();
+  });
+});
+
+describe("Lyrics Mode: answer deadline boundary and reset side effects", () => {
+  async function startGuessing() {
+    const setup = await setupLyricsGame();
+    await send(setup.room, setup.hostConn, { type: "START_LYRICS_ROUND", hostId: "host-uuid" });
+    const { roundStart, timerSeconds } = lastBroadcast(setup.room).state;
+    return { ...setup, deadline: roundStart + timerSeconds * 1000 };
+  }
+
+  it("accepts an answer inside the 500ms grace window past the timer", async () => {
+    const { room, p1Conn, deadline } = await startGuessing();
+    await send(room, p1Conn, { type: "SUBMIT_LYRICS_ANSWER", playerId: P1, text: "grace", ts: deadline + 400 });
+    expect(lastBroadcast(room)?.state?.answers[P1]?.text).toBe("grace");
+  });
+
+  it("sends TOO_LATE and stores nothing just past the grace window", async () => {
+    const { room, p1Conn, deadline } = await startGuessing();
+    const broadcast = room.room.broadcast as ReturnType<typeof vi.fn>;
+    broadcast.mockClear();
+    await send(room, p1Conn, { type: "SUBMIT_LYRICS_ANSWER", playerId: P1, text: "late", ts: deadline + 501 });
+    expect(lastSentTo(p1Conn)?.type).toBe("TOO_LATE");
+    expect(broadcast).not.toHaveBeenCalled();
+  });
+
+  it("does not broadcast LYRICS_ABORTED when reset is rejected before the game ended", async () => {
+    const { room, hostConn } = await setupLyricsGame();
+    const broadcast = room.room.broadcast as ReturnType<typeof vi.fn>;
+    broadcast.mockClear();
+    await send(room, hostConn, { type: "RESET_LYRICS_GAME", hostId: "host-uuid" });
+    expect(broadcast).not.toHaveBeenCalled();
+    expect(room.lyricsState?.phase).toBe("playing");
+  });
+
+  it("does not replay LYRICS_STATE to a player who connects after reset", async () => {
+    const { room, hostConn } = await setupLyricsGame();
+    await send(room, hostConn, { type: "START_LYRICS_ROUND", hostId: "host-uuid" });
+    await send(room, hostConn, { type: "SHOW_LYRICS_RESULTS", hostId: "host-uuid" });
+    await send(room, hostConn, { type: "NEXT_LYRICS_ROUND", hostId: "host-uuid" });
+    await send(room, hostConn, { type: "RESET_LYRICS_GAME", hostId: "host-uuid" });
+    const late = makeConn("late-conn");
+    await room.onConnect(late);
+    const types = (late.send as ReturnType<typeof vi.fn>).mock.calls.map((c: any[]) => JSON.parse(c[0]).type);
+    expect(types).not.toContain("LYRICS_STATE");
+  });
+});
+
+describe("Lyrics Mode: adversarial-review hardening", () => {
+  // Regression: reconnecting players kept the ended screen because LYRICS_ABORTED was edge-triggered
+  // Found by /ship adversarial review on 2026-09-21
+  it("tells a connecting client to drop stale lyrics state when no game is running", async () => {
+    const room = new HitsterRoom(makeRoom() as any);
+    const conn = makeConn("reconnector");
+    await room.onConnect(conn);
+    const types = (conn.send as ReturnType<typeof vi.fn>).mock.calls.map((c: any[]) => JSON.parse(c[0]).type);
+    expect(types).toContain("LYRICS_ABORTED");
+    expect(types.at(-1)).toBe("STATE");
+  });
+
+  it("does not send LYRICS_ABORTED to a client connecting mid-game", async () => {
+    const { room } = await setupLyricsGame();
+    const conn = makeConn("mid-game");
+    await room.onConnect(conn);
+    const types = (conn.send as ReturnType<typeof vi.fn>).mock.calls.map((c: any[]) => JSON.parse(c[0]).type);
+    expect(types).not.toContain("LYRICS_ABORTED");
+    expect(types).toContain("LYRICS_STATE");
+  });
+
+  // Regression: a non-numeric ts passed `ts > deadline` (false) and NaN-poisoned the player's score
+  it.each([
+    ["missing ts", undefined],
+    ["string ts", "0"],
+    ["NaN ts", NaN],
+    ["Infinity ts", Infinity],
+  ])("ignores an answer with %s", async (_label, badTs) => {
+    const { room, hostConn, p1Conn } = await setupLyricsGame();
+    await send(room, hostConn, { type: "START_LYRICS_ROUND", hostId: "host-uuid" });
+    await send(room, p1Conn, { type: "SUBMIT_LYRICS_ANSWER", playerId: P1, text: "x", ts: badTs });
+    expect(room.lyricsState?.answers[P1]).toBeUndefined();
+  });
+
+  it("ignores an answer whose text is not a string instead of throwing", async () => {
+    const { room, hostConn, p1Conn } = await setupLyricsGame();
+    await send(room, hostConn, { type: "START_LYRICS_ROUND", hostId: "host-uuid" });
+    await send(room, p1Conn, { type: "SUBMIT_LYRICS_ANSWER", playerId: P1, text: { a: 1 }, ts: Date.now() });
+    expect(room.lyricsState?.answers[P1]).toBeUndefined();
   });
 });
