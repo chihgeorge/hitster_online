@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.4.2] — 2026-09-21
+
+### Fixed
+- **Lyrics Mode start no longer hangs or silently fails**
+  - Sonnet 5 hidden thinking could use the whole `max_tokens` budget and return no text, yielding zero questions. Thinking is now disabled and `max_tokens` raised to 4000 (about 3x faster)
+  - `hitster://cpop-test` loaded 20 fake songs in `LOAD_PLAYLIST`; it now loads the real 8-song C-pop seed (shared `CPOP_SEED`)
+  - A failed Start Lyrics left the "preparing lyrics" spinner up forever. New `LYRICS_ABORTED` message clears it on host and players; host shows the error banner
+- **Playable questions**
+  - `lyricContext` must contain a blank (repaired from the answer, or the song is dropped) so the answer is never shown to players
+  - Blank length now matches the answer (one `_` per letter/character, punctuation ignored)
+  - Simplified Chinese is rejected for zh-TW output; Claude is told to convert Simplified lrclib lyrics to Traditional
+  - CJK blanks must be 2-6 characters
+- **Host layout** — lobby setup is hidden during the lyrics game so each screen stands alone; question card is centered and larger
+
 ## [0.4.1] — 2026-09-17
 
 ### Added
