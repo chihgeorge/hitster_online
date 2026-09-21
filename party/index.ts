@@ -229,6 +229,9 @@ export default class HitsterRoom implements Party.Server {
       case "CONFIRM_LYRICS_PREVIEW":
         this.handleConfirmLyricsPreview(sender, msg.hostId);
         break;
+      case "GET_LYRICS_AUDIO":
+        this.handleGetLyricsAudio(sender, msg.hostId);
+        break;
       case "START_LYRICS_ROUND":
         this.handleStartLyricsRound(sender, msg.hostId);
         break;
@@ -843,7 +846,9 @@ export default class HitsterRoom implements Party.Server {
     const round = ls.currentRound;
     const publicRound = round
       ? {
-          videoId: round.videoId,
+          // Players must not get the video id: opening a lyric video would reveal the answer.
+          // The host fetches it through GET_LYRICS_AUDIO instead.
+          videoId: "",
           title: round.title,
           artist: round.artist,
           language: round.language,
@@ -1045,6 +1050,19 @@ export default class HitsterRoom implements Party.Server {
   private abortLyricsStart() {
     this.lyricsState = null;
     this.broadcast({ type: "LYRICS_ABORTED" });
+  }
+
+  // Host-only: players never receive the video id (see sanitizedLyricsState).
+  private handleGetLyricsAudio(conn: Party.Connection, hostId: string) {
+    if (!this.isValidHostId(hostId)) {
+      this.sendTo(conn, { type: "ERROR", error: "unauthorized" });
+      return;
+    }
+    this.sendTo(conn, {
+      type: "LYRICS_AUDIO",
+      videoId: this.lyricsState?.currentRound?.videoId ?? null,
+      roundIndex: this.lyricsState?.currentRoundIndex ?? 0,
+    });
   }
 
   private handleConfirmLyricsPreview(conn: Party.Connection, hostId: string) {

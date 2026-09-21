@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { useParams } from "next/navigation";
 import usePartySocket from "partysocket/react";
 import MusicPlayer from "@/components/MusicPlayer";
+import LyricsPlayer, { lyricsAudioProps, isAudioPhase, needsLyricsAudio } from "@/components/LyricsPlayer";
 import PlayerList from "@/components/PlayerList";
 import PlaylistEditor from "@/components/PlaylistEditor";
 import type { GameState, ServerMessage, ClientMessage, SongDiagnostic, DiagnosticStatus, EditableSong, PublicLyricsGameState, PublicLyricsRound, LyricsGameConfig } from "@/lib/game";
@@ -66,6 +67,7 @@ export default function HostPage() {
   // Lyrics Mode
   const [gameMode, setGameMode] = useState<"timeline" | "lyrics">("timeline");
   const [lyricsState, setLyricsState] = useState<PublicLyricsGameState | null>(null);
+  const [lyricsAudio, setLyricsAudio] = useState<{ videoId: string | null; roundIndex: number } | null>(null);
   const [lyricsPreview, setLyricsPreview] = useState<PublicLyricsRound[]>([]);
   const [lyricsPreviewLoading, setLyricsPreviewLoading] = useState(false);
   const [lyricOverrides, setLyricOverrides] = useState<Record<string, { lyricContext?: string; blankSentence?: string }>>({});
@@ -162,11 +164,14 @@ export default function HostPage() {
       }
       if (msg.type === "LYRICS_STATE") {
         setLyricsState(msg.state);
+        // A new game must not match audio left over from the previous one
+        if (["loading", "preview", "ended"].includes(msg.state.phase)) setLyricsAudio(null);
         if (msg.state.phase === "lobby" || msg.state.phase === "ended") {
           setLyricsTimerLeft(null);
         }
       }
-      if (msg.type === "LYRICS_ABORTED") setLyricsState(null);
+      if (msg.type === "LYRICS_ABORTED") { setLyricsState(null); setLyricsAudio(null); }
+      if (msg.type === "LYRICS_AUDIO") setLyricsAudio({ videoId: msg.videoId, roundIndex: msg.roundIndex });
       if (msg.type === "LYRICS_PREVIEW") {
         setLyricsPreviewLoading(msg.loading);
         if (!msg.loading) setLyricsPreview(msg.rounds);
@@ -189,6 +194,13 @@ export default function HostPage() {
     const id = setInterval(tick, 200);
     return () => clearInterval(id);
   }, [lyricsState?.phase, lyricsState?.roundStart, lyricsState?.timerSeconds]);
+
+  // Players never receive the video id, so ask the server for it. Runs on every state update until this
+  // round has a reply, which also retries after a reconnect; a reply with a null id counts as answered.
+  useEffect(() => {
+    if (needsLyricsAudio(lyricsState, lyricsAudio)) send({ type: "GET_LYRICS_AUDIO", hostId: hostIdRef.current });
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- send is stable enough; re-run on new state or reply
+  }, [lyricsState, lyricsAudio]);
 
   function send(msg: ClientMessage) {
     socket.send(JSON.stringify(msg));
@@ -993,6 +1005,9 @@ export default function HostPage() {
           </button>
         </div>
       )}
+
+      {/* Lyrics Mode audio: plays at round start, pauses on Cut (guessing), resumes on results */}
+      {isAudioPhase(lyricsState) && <LyricsPlayer {...lyricsAudioProps(lyricsState, lyricsAudio)} />}
 
       {/* Song metadata panel */}
       {diagnostic && phase !== "lobby" && (
