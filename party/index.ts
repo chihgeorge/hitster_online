@@ -33,6 +33,18 @@ const MAX_TARGET_CARD_COUNT = 20;
 const MAX_PLAYERS_SOFT = 8;
 const PLAYLIST_ID_PATTERN = /^[A-Za-z0-9_-]{5,64}$/;
 
+// Real C-pop seed for hitster://cpop-test (used by both classic and Lyrics Mode).
+const CPOP_SEED = [
+  { videoId: "KqjgLbKZ1h0", title: "那些年", artist: "胡夏", year: 2012 },
+  { videoId: "vsBf_0gDxSM", title: "可惜沒如果", artist: "林俊傑 JJ Lin", year: 2014 },
+  { videoId: "_sQSXwdtxlY", title: "小幸運", artist: "田馥甄 Hebe Tien", year: 2015 },
+  { videoId: "bu7nU9Mhpyo", title: "告白氣球", artist: "周杰倫 Jay Chou", year: 2016 },
+  { videoId: "T4SimnaiktU", title: "光年之外", artist: "G.E.M. 鄧紫棋", year: 2016 },
+  { videoId: "wSBXfzgqHtE", title: "你，好不好？", artist: "周興哲 Eric Chou", year: 2016 },
+  { videoId: "sg_WE0ToJjM", title: "體面", artist: "于文文", year: 2017 },
+  { videoId: "Dnj5Tcpev0Q", title: "年少有為", artist: "李榮浩 Ronghao Li", year: 2018 },
+];
+
 // Lyrics Mode defaults
 const LYRICS_DEFAULT_TIMER = 60;
 const LYRICS_DEFAULT_ROUNDS = 10;
@@ -383,12 +395,14 @@ export default class HitsterRoom implements Party.Server {
 
     // Test seeds: signal ready immediately.
     if (playlistUrl === "hitster://test" || playlistUrl === "hitster://cpop-test") {
-      const testSongs = Array.from({ length: 20 }, (_, i) => ({
-        videoId: `dQw4w9WgXcQ_${i}`, title: `Test Song ${1960 + i * 3}`,
-        artist: "Test Artist", year: 1960 + i * 3,
-      }));
+      const testSongs = playlistUrl === "hitster://cpop-test"
+        ? CPOP_SEED
+        : Array.from({ length: 20 }, (_, i) => ({
+            videoId: `dQw4w9WgXcQ_${i}`, title: `Test Song ${1960 + i * 3}`,
+            artist: "Test Artist", year: 1960 + i * 3,
+          }));
       this.pendingPlaylist = { playlistId, songs: testSongs, allSongs: testSongs, diagnostics: [], spotifyRateLimited: false, kgBlocked: false };
-      this.sendTo(conn, { type: "PLAYLIST_READY", songCount: 20, songs: testSongs });
+      this.sendTo(conn, { type: "PLAYLIST_READY", songCount: testSongs.length, songs: testSongs });
       return;
     }
 
@@ -657,16 +671,7 @@ export default class HitsterRoom implements Party.Server {
     // ── Test seeds ───────────────────────────────────────────────────────────
     if (playlistUrl === "hitster://cpop-test") {
       this.state.targetCardCount = 3;
-      const cpopSongs: Card[] = [
-        { id: "cpop-0", videoId: "KqjgLbKZ1h0", title: "那些年", artist: "胡夏", year: 2012, yearSource: "ytmusic" },
-        { id: "cpop-1", videoId: "vsBf_0gDxSM", title: "可惜沒如果", artist: "林俊傑 JJ Lin", year: 2014, yearSource: "ytmusic" },
-        { id: "cpop-2", videoId: "_sQSXwdtxlY", title: "小幸運", artist: "田馥甄 Hebe Tien", year: 2015, yearSource: "ytmusic" },
-        { id: "cpop-3", videoId: "bu7nU9Mhpyo", title: "告白氣球", artist: "周杰倫 Jay Chou", year: 2016, yearSource: "ytmusic" },
-        { id: "cpop-4", videoId: "T4SimnaiktU", title: "光年之外", artist: "G.E.M. 鄧紫棋", year: 2016, yearSource: "ytmusic" },
-        { id: "cpop-5", videoId: "wSBXfzgqHtE", title: "你，好不好？", artist: "周興哲 Eric Chou", year: 2016, yearSource: "ytmusic" },
-        { id: "cpop-6", videoId: "sg_WE0ToJjM", title: "體面", artist: "于文文", year: 2017, yearSource: "ytmusic" },
-        { id: "cpop-7", videoId: "Dnj5Tcpev0Q", title: "年少有為", artist: "李榮浩 Ronghao Li", year: 2018, yearSource: "ytmusic" },
-      ];
+      const cpopSongs: Card[] = CPOP_SEED.map((c, i) => ({ id: `cpop-${i}`, ...c, yearSource: "ytmusic" as const }));
       this.state.songs = cpopSongs;
       this.broadcast({ type: "DIAGNOSTIC", songs: cpopSongs.map((s) => ({ title: s.title, artist: s.artist, year: s.year, yearSource: "ytmusic" as const })), status: { spotifyRateLimited: false, kgBlocked: false } });
       this.dealStartingCardsAndStart();
@@ -919,13 +924,13 @@ export default class HitsterRoom implements Party.Server {
         tracks = await fetchPlaylistItems(playlistId, youtubeKey);
       } else {
         this.sendTo(conn, { type: "ERROR", error: "playlist_load_failed" });
-        this.lyricsState = null;
+        this.abortLyricsStart();
         return;
       }
 
       if (tracks.length === 0) {
         this.sendTo(conn, { type: "ERROR", error: "not_enough_songs" });
-        this.lyricsState = null;
+        this.abortLyricsStart();
         return;
       }
 
@@ -1014,7 +1019,7 @@ export default class HitsterRoom implements Party.Server {
 
       if (deck.length === 0) {
         this.sendTo(conn, { type: "ERROR", error: "not_enough_songs" });
-        this.lyricsState = null;
+        this.abortLyricsStart();
         return;
       }
 
@@ -1027,8 +1032,15 @@ export default class HitsterRoom implements Party.Server {
       this.broadcastLyricsState();
     } catch (err) {
       this.sendTo(conn, { type: "ERROR", error: this.parseErrorCode(err) });
-      this.lyricsState = null;
+      this.abortLyricsStart();
     }
+  }
+
+  // Clears lyrics state and tells all clients, so the "preparing lyrics" spinner
+  // doesn't hang forever (broadcastLyricsState skips a null state).
+  private abortLyricsStart() {
+    this.lyricsState = null;
+    this.broadcast({ type: "LYRICS_ABORTED" });
   }
 
   private handleConfirmLyricsPreview(conn: Party.Connection, hostId: string) {

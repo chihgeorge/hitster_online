@@ -192,6 +192,78 @@ describe("resolveLyricsForTracks — lrclib miss fallback", () => {
     const result = await resolveLyricsForTracks([TRACK], "key");
     expect(result.size).toBe(0);
   });
+
+  it("repairs a lyricContext missing ___ by blanking the answer, and drops one that lacks the answer", async () => {
+    const miss = { ok: false, json: () => Promise.resolve({}) } as Response;
+    const empty = { ok: true, json: () => Promise.resolve([]) } as Response;
+    mockFetch.mockResolvedValueOnce(miss).mockResolvedValueOnce(empty);
+    mockFetch.mockResolvedValueOnce(miss).mockResolvedValueOnce(empty);
+    mockFetch.mockResolvedValueOnce(
+      anthropicResponse([
+        { v: "v1", language: "en", lyricContext: "line one\nthe chorus phrase here", blankSentence: "chorus phrase", acceptableVariants: [] },
+        { v: "v2", language: "en", lyricContext: "no answer in here", blankSentence: "chorus phrase", acceptableVariants: [] },
+      ])
+    );
+
+    const result = await resolveLyricsForTracks([TRACK, { ...TRACK, videoId: "v2" }], "key");
+    expect(result.get("v1")?.lyricContext).toBe("line one\nthe ______ ______ here");
+    expect(result.has("v2")).toBe(false);
+  });
+
+  it("sizes the blank to the answer length", async () => {
+    const miss = { ok: false, json: () => Promise.resolve({}) } as Response;
+    const empty = { ok: true, json: () => Promise.resolve([]) } as Response;
+    mockFetch.mockResolvedValueOnce(miss).mockResolvedValueOnce(empty);
+    mockFetch.mockResolvedValueOnce(
+      anthropicResponse([{ v: "v1", language: "zh-TW", lyricContext: "那些年___\n那些年錯過的愛情", blankSentence: "錯過的大雨", acceptableVariants: [] }])
+    );
+    const result = await resolveLyricsForTracks([TRACK], "key");
+    expect(result.get("v1")?.lyricContext).toBe("那些年_____\n那些年錯過的愛情");
+  });
+
+  it("drops zh-TW questions containing Simplified characters and ignores punctuation when sizing the blank", async () => {
+    const miss = { ok: false, json: () => Promise.resolve({}) } as Response;
+    const empty = { ok: true, json: () => Promise.resolve([]) } as Response;
+    mockFetch.mockResolvedValueOnce(miss).mockResolvedValueOnce(empty);
+    mockFetch.mockResolvedValueOnce(miss).mockResolvedValueOnce(empty);
+    mockFetch.mockResolvedValueOnce(
+      anthropicResponse([
+        { v: "v1", language: "zh-TW", lyricContext: "又回到最初的起点\n那些年___", blankSentence: "错过的大雨", acceptableVariants: [] },
+        { v: "v2", language: "zh-TW", lyricContext: "那些年___", blankSentence: "錯過的大雨！", acceptableVariants: [] },
+      ])
+    );
+    const result = await resolveLyricsForTracks([TRACK, { ...TRACK, videoId: "v2" }], "key");
+    expect(result.has("v1")).toBe(false);
+    expect(result.get("v2")?.lyricContext).toBe("那些年_____");
+  });
+
+  it("drops CJK questions whose blank is not 2-6 characters, but not English ones", async () => {
+    const aiReply = anthropicResponse([
+        { v: "v1", language: "zh-TW", lyricContext: "那些年___", blankSentence: "錯過的大雨啊啊", acceptableVariants: [] }, // 7
+        { v: "v2", language: "zh-TW", lyricContext: "那些年___", blankSentence: "愛", acceptableVariants: [] }, // 1
+        { v: "v3", language: "zh-TW", lyricContext: "那些年___", blankSentence: "錯過的大雨", acceptableVariants: [] }, // 5
+        { v: "v4", language: "en", lyricContext: "I want to ___", blankSentence: "remember everything", acceptableVariants: [] },
+      ]);
+    // lrclib lookups (parallel) all miss; only the Anthropic call returns content.
+    mockFetch.mockImplementation((url: string) =>
+      Promise.resolve(String(url).includes("anthropic") ? aiReply : ({ ok: false, json: () => Promise.resolve({}) } as Response))
+    );
+    const tracks = ["v1", "v2", "v3", "v4"].map((videoId) => ({ ...TRACK, videoId }));
+    const result = await resolveLyricsForTracks(tracks, "key");
+    expect([...result.keys()].sort()).toEqual(["v3", "v4"]);
+    mockFetch.mockReset(); // drop the URL-based implementation so it cannot leak into later tests
+  });
+
+  it("collapses adjacent ___ placeholders into one answer-sized blank", async () => {
+    const miss = { ok: false, json: () => Promise.resolve({}) } as Response;
+    const empty = { ok: true, json: () => Promise.resolve([]) } as Response;
+    mockFetch.mockResolvedValueOnce(miss).mockResolvedValueOnce(empty);
+    mockFetch.mockResolvedValueOnce(
+      anthropicResponse([{ v: "v1", language: "zh-TW", lyricContext: "繼續讓我 ___ ___ 陪你老", blankSentence: "多一點 愛", acceptableVariants: [] }])
+    );
+    const result = await resolveLyricsForTracks([TRACK], "key");
+    expect(result.get("v1")?.lyricContext).toBe("繼續讓我 ___ _ 陪你老");
+  });
 });
 
 // ---------------------------------------------------------------------------

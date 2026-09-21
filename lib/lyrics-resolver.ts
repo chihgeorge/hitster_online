@@ -18,6 +18,9 @@ const MODEL_GAME = "claude-sonnet-5";             // accurate, for the actual ga
 const BATCH_SIZE = 10;
 const MAX_CONCURRENT = 4;
 
+// Common Simplified-only characters (none are valid Traditional). Used to reject zh-TW output that slipped through.
+const SIMPLIFIED_ONLY = /[这们说么还对给爱时间会点见开关无为过来长应该谁难听记忆终涩风让门问头样现实发话请从边东车马鱼鸟龙书买读写认识泪梦厌国乐]/;
+
 export function detectLanguageHint(title: string, artist: string): string {
   const text = title + " " + artist;
   if (/[ぁ-ん゛゜ァ-ヴーｦ-ﾟ]/.test(text)) return "Japanese";
@@ -73,13 +76,15 @@ Return ONLY a JSON array, one object per input, same order:
 Rules:
 1. Pick a COUPLET from the chorus (two consecutive lines that go together naturally).
 2. Choose ONE memorable phrase within one of those lines to blank out — replace it with ___ in lyricContext. Keep the rest of both lines intact.
-   - Good: "我要送你___\n我要唱心內的話乎你聽"  →  blankSentence: "九十九朵玫瑰花"
+   - Good: "我要送你九十九朵___\n我要唱心內的話乎你聽"  →  blankSentence: "玫瑰花"
    - Bad: blank an entire line; bad: blank a single common word.
+   - For Chinese, Japanese and Korean the blank MUST be 2 to 6 characters long (never longer).
 3. blankSentence MUST NOT be the same as (or nearly the same as) the song title.
 4. blankSentence: the exact blanked phrase as a fan would type it — no punctuation at start/end unless essential.
 5. acceptableVariants: 1-3 alternate forms fans commonly type (typos, shorter forms). [] is fine.
 6. Output in the ORIGINAL language of the song. For Chinese: Traditional Chinese (繁體中文) ONLY.
-7. Preserve CJK characters exactly. Never translate.`;
+7. Preserve CJK characters exactly. Never translate.
+8. If supplied lyrics are Simplified Chinese, convert them to Traditional (繁體) character by character — same words, only the character forms change. lyricContext and blankSentence must contain no Simplified characters.`;
 
   const res = await fetch(ANTHROPIC_API, {
     method: "POST",
@@ -90,7 +95,9 @@ Rules:
     },
     body: JSON.stringify({
       model,
-      max_tokens: 2000,
+      max_tokens: 4000,
+      // Sonnet 5 thinks by default and hidden thinking can eat the whole budget, returning no text.
+      thinking: { type: "disabled" },
       system: systemPrompt,
       messages: [{ role: "user", content: prompt }],
     }),
@@ -128,7 +135,21 @@ Rules:
     const language = (["zh-TW", "en", "ja", "ko"].includes(item.language as string)
       ? (item.language as LyricsResult["language"])
       : "en");
-    const lyricContext = typeof item.lyricContext === "string" ? item.lyricContext.trim() : "___";
+    let lyricContext = typeof item.lyricContext === "string" ? item.lyricContext.trim() : "";
+    // Players see lyricContext verbatim: without a ___ it leaks the answer. Repair by
+    // blanking the answer in place, or drop the song if it isn't in the context at all.
+    if (!lyricContext.includes("___")) {
+      if (!lyricContext.includes(blankSentence)) continue;
+      lyricContext = lyricContext.replace(blankSentence, "___");
+    }
+    if (language === "zh-TW" && SIMPLIFIED_ONLY.test(lyricContext + blankSentence)) continue;
+    // Size the blank to the answer: one _ per letter/character, spaces kept, punctuation ignored.
+    const blank = blankSentence.replace(/[\p{L}\p{N}]/gu, "_").replace(/[^_\s]/g, "").trim();
+    if (!blank) continue;
+    // CJK blanks must be 2-6 characters (English is left alone: words are long).
+    const blankChars = blank.replace(/\s/g, "").length;
+    if (language !== "en" && (blankChars < 2 || blankChars > 6)) continue;
+    lyricContext = lyricContext.replace(/_{3,}(?:[ \t]+_{3,})*/, () => blank);
     const acceptableVariants = Array.isArray(item.acceptableVariants)
       ? (item.acceptableVariants as unknown[]).filter((v): v is string => typeof v === "string")
       : [];

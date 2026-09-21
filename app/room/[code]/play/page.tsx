@@ -113,6 +113,9 @@ export default function PlayPage() {
         case "LYRICS_STATE":
           setLyricsState(msg.state);
           break;
+        case "LYRICS_ABORTED":
+          setLyricsState(null);
+          break;
         case "PLACEMENT_ACK":
           if (msg.playerId === playerIdRef.current) setHasPlaced(true);
           break;
