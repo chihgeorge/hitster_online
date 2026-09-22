@@ -26,6 +26,16 @@ body {
   text-rendering: optimizeLegibility;
 }
 
+/* Generated (not AI-rasterized — no image-gen tool in this environment) vinyl-groove + music-note
+   tile for the two "waiting for people to join" surfaces: /screen's lobby and the host lobby.
+   Kept faint (4-7% opacity) so it never competes with foreground text, per DESIGN.md's
+   room-distance-legibility rule on /screen and the host's dense form UI. */
+.bg-vinyl-pattern {
+  background-color: var(--bg);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='240' height='240'%3E%3Cg fill='none' stroke='%23FF6B35' stroke-width='1.5' opacity='0.07'%3E%3Ccircle cx='40' cy='44' r='30'/%3E%3Ccircle cx='40' cy='44' r='19'/%3E%3Ccircle cx='40' cy='44' r='7'/%3E%3Ccircle cx='196' cy='168' r='36'/%3E%3Ccircle cx='196' cy='168' r='23'/%3E%3Ccircle cx='196' cy='168' r='9'/%3E%3C/g%3E%3Cg fill='%23FFD600' opacity='0.08'%3E%3Cpath d='M128 26q6-4 6 4v33a8 8 0 1 1-4-7V29q0-3-2-3z'/%3E%3C/g%3E%3Cg fill='%23FF6B35' opacity='0.06'%3E%3Cpath d='M58 182q5-3 5 3v25a7 7 0 1 1-3.5-6v-17q0-2.5-1.5-2.5z'/%3E%3C/g%3E%3C/svg%3E");
+  background-size: 240px 240px;
+}
+
 /* ── animations ── */
 @keyframes vinyl-spin  { to { transform: rotate(360deg); } }
 @keyframes wave-bar    { from { height: 4px; opacity: .35; } to { height: var(--h, 22px); opacity: .95; } }
