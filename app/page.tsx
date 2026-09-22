@@ -2,8 +2,8 @@
 
 import { Suspense, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import Link from "next/link";
 import Vinyl from "@/components/Vinyl";
+import { generateRoomCode } from "@/lib/game";
 
 // useSearchParams() (for the QR-embedded ?code=) requires a Suspense boundary on a statically
 // prerendered page, or `next build` fails: "useSearchParams() should be wrapped in a suspense
@@ -43,6 +43,14 @@ function HomePageContent() {
     if (!name) { setError("請輸入你的名字"); return; }
     if (code.length !== 4) { setError("請輸入 4 碼房間代碼"); return; }
     router.push(`/room/${code}/play?name=${encodeURIComponent(name)}`);
+  }
+
+  // Room creation is an explicit, deliberate action — not something a page load does on its
+  // own. The site is public: anyone can reach this page, so nothing here creates a room just
+  // from being visited (see /room/[code]/screen's isCreator comment for the rest of that story).
+  function handleCreateRoom() {
+    const code = generateRoomCode();
+    router.push(`/room/${code}/screen?created=1`);
   }
 
   return (
@@ -144,9 +152,20 @@ function HomePageContent() {
         )}
       </form>
 
-      <Link href="/screen" style={{ fontSize: 13, color: "var(--text2)", textDecoration: "underline" }}>
-        設定電視 / 大螢幕 → Setting up the TV?
-      </Link>
+      {/* Room creation lives here, not on a page that creates one just by being loaded — see
+          handleCreateRoom. Goes to /screen (the big-screen lobby with the join QR), not
+          straight to /host: this device gets a private host link there, same as before. */}
+      <button
+        type="button"
+        onClick={handleCreateRoom}
+        style={{
+          background: "white", color: "var(--orange)", border: "2px solid rgba(255,107,53,.25)", borderRadius: 16,
+          padding: "13px 28px", fontSize: 14, fontWeight: 800, cursor: "pointer",
+          fontFamily: "var(--font-zh)", boxShadow: "0 4px 14px rgba(255,107,53,.08)",
+        }}
+      >
+        📺 建立房間 · Create a Room
+      </button>
 
       <p style={{ fontSize: 11, color: "#C0B8B0", textAlign: "center" }}>
         Fan project · Not affiliated with Jumbo/Helvetiq

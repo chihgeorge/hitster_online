@@ -94,6 +94,39 @@ describe("ScreenPage: waiting / lobby", () => {
     expect(screen.getByText("ABCD")).toBeTruthy();
   });
 
+  it("shows no player chips before anyone has joined", () => {
+    render(<ScreenPage />);
+    // Reassurance chips only render once state.players is non-empty (see lobbyState above).
+    expect(screen.queryByText("A")).toBeNull(); // Alice's avatar initial, if it existed
+  });
+
+  it("shows a chip with each joined player's name as they join, while still in the lobby", () => {
+    render(<ScreenPage />);
+    serverSends({
+      type: "STATE",
+      state: { ...lobbyState, players: { [P1]: { name: "Alice", cardCount: 0, timeline: [], connected: true } } },
+    });
+    expect(screen.getByText("Alice")).toBeTruthy();
+    // Still the waiting screen, not gameplay — the QR/join prompt stays visible alongside the chips.
+    expect(screen.getByText(/掃描加入/)).toBeTruthy();
+  });
+
+  it("shows a chip per player once several have joined", () => {
+    render(<ScreenPage />);
+    serverSends({
+      type: "STATE",
+      state: {
+        ...lobbyState,
+        players: {
+          [P1]: { name: "Alice", cardCount: 0, timeline: [], connected: true },
+          [P2]: { name: "Bob", cardCount: 0, timeline: [], connected: true },
+        },
+      },
+    });
+    expect(screen.getByText("Alice")).toBeTruthy();
+    expect(screen.getByText("Bob")).toBeTruthy();
+  });
+
   it("shows the private manage-as-host link only for the connection that created the room", () => {
     searchParamsValue = new URLSearchParams("created=1");
     render(<ScreenPage />);

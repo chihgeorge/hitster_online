@@ -5,7 +5,7 @@ test.describe("Landing page", () => {
   test("shows the HITSTER! heading and room entry controls", async ({ page }) => {
     await page.goto("/");
     await expect(page.getByRole("heading", { name: /HITSTER/i })).toBeVisible();
-    await expect(page.getByRole("link", { name: /設定電視/i })).toBeVisible();
+    await expect(page.getByRole("button", { name: /Create a Room/i })).toBeVisible();
     await expect(page.getByPlaceholder("房間代碼")).toBeVisible();
   });
 

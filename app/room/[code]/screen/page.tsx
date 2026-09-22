@@ -113,6 +113,25 @@ export default function ScreenPage() {
                 或在 <Link href="/" style={{ color: "var(--orange)" }}>hitster</Link> 輸入房間代碼 <strong style={{ color: "var(--ink)", fontFamily: "var(--font-mono)" }}>{params.code}</strong>
               </p>
 
+              {/* Joined players so far — reassures whoever's watching the TV that people are
+                  actually landing in the room, not just scanning into a void. Simple chips, not
+                  the full PlayerList: there's no round/timeline yet to show. */}
+              {Object.keys(state?.players ?? {}).length > 0 && (
+                <div style={{ display: "flex", gap: 10, flexWrap: "wrap", justifyContent: "center", maxWidth: 560, marginTop: 4 }}>
+                  {Object.entries(state?.players ?? {}).map(([id, p]) => (
+                    <div key={id} style={{ display: "flex", alignItems: "center", gap: 8, background: "var(--surface2)", borderRadius: 999, padding: "6px 14px 6px 6px" }}>
+                      <span style={{
+                        width: 24, height: 24, borderRadius: "50%", background: "var(--orange)", color: "white",
+                        fontSize: 12, fontWeight: 900, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0,
+                      }}>
+                        {p.name.slice(0, 1).toUpperCase()}
+                      </span>
+                      <span style={{ fontSize: 14, fontWeight: 600, color: "var(--ink)" }}>{p.name}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+
               {/* Private to this browser only — never shown to anyone scanning the QR above
                   (see the isCreator comment). Gated to lobby so it can never resurface mid-game
                   on a reload, per the outside-voice finding from /plan-eng-review. */}
