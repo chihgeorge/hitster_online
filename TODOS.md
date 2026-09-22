@@ -133,9 +133,10 @@
   `app/page.tsx:7–25` (Vinyl) and `app/room/[code]/play/page.tsx:19–33` (SmallVinyl) copy-paste the same `radial-gradient` string verbatim. Extract to `components/Vinyl.tsx` with a `size` prop.  
   _Surfaced by /design-review on 2026-09-16_
 
-- [ ] **P3** Replace hardcoded hex values with CSS variables  
+- [x] **P3** Replace hardcoded hex values with CSS variables  
   CSS tokens (`--orange`, `--ink`, `--bg`, `--text2`, etc.) are defined in `globals.css` `:root` but all component files use raw hex strings inline (`#FF6B35`, `#1A1A2E`, etc.). A palette change requires grep-and-replace across 4 files. Migrate to `var(--orange)` etc. at call sites.  
-  _Surfaced by /design-review on 2026-09-16_
+  _Surfaced by /design-review on 2026-09-16_  
+  **Completed:** v0.6.2.0 — 312 occurrences across 13 files migrated to `var(--token)`. Left as literal hex (with a comment): `app/layout.tsx`'s `themeColor` (a `<meta>` tag, can't resolve custom properties) and `components/Qr.tsx`'s `QRCode.toDataURL()` color option (a canvas-drawing library option, not a DOM style).
 
 ## QA findings 2026-09-21 (deferred)
 
@@ -176,8 +177,9 @@
   The existing e2e suite still passes (the Timeline-mode host contract — reveal-btn/next-round-btn — was kept intact) but nothing automated exercises `/screen` itself: video-only-on-screen, the preview-leak fix, screen reconnect. Manually verified in a real browser by `/qa` on 2026-09-22 instead. Found by `/plan-eng-review` on 2026-09-21 (T8), still open.
 - [ ] **P3** Check the host header's new QR panel at phone width  
   Added in the host/screen split; not checked at narrow mobile viewports (the rest of `/host` is unchanged and already phone-first). Found by `/qa` on 2026-09-22.
-- [ ] **P3** Tokenize the DESIGN.md color palette as CSS custom properties or a shared constants module  
-  `app/room/[code]/screen/page.tsx` and `app/room/[code]/host/page.tsx` both hardcode the same 8 hex literals (`#1A1A2E`, `#7B7B9A`, etc.) that DESIGN.md now names as tokens (colors.ink, colors.text-muted, ...); a future palette tweak needs a manual find-and-replace across files. Pre-existing pattern across the app (LyricsPlayer, MusicPlayer, PlaylistEditor all do this too), not unique to this branch, but DESIGN.md existing now makes it worth fixing properly rather than per-file. Found by `/ship` maintainability specialist review on 2026-09-22.
+- [x] **P3** Tokenize the DESIGN.md color palette as CSS custom properties or a shared constants module  
+  `app/room/[code]/screen/page.tsx` and `app/room/[code]/host/page.tsx` both hardcode the same 8 hex literals (`#1A1A2E`, `#7B7B9A`, etc.) that DESIGN.md now names as tokens (colors.ink, colors.text-muted, ...); a future palette tweak needs a manual find-and-replace across files. Pre-existing pattern across the app (LyricsPlayer, MusicPlayer, PlaylistEditor all do this too), not unique to this branch, but DESIGN.md existing now makes it worth fixing properly rather than per-file. Found by `/ship` maintainability specialist review on 2026-09-22.  
+  **Completed:** v0.6.2.0 — same fix as the "Replace hardcoded hex values with CSS variables" item above (these were the same gap, found twice).
 - [ ] **P3** The screen credential trusts whoever asks first, not that they're actually the TV  
   `claimOrValidateScreen` (party/index.ts) accepts any non-empty client-supplied string as the screen credential and grants it on first use — there's nothing that distinguishes the real `/screen` tab from a player's own game tab. A player would have to deliberately open devtools and send `{"type":"GET_LYRICS_AUDIO","screenId":"x"}` by hand to get the current round's video id early; this is a house game for friends, not an adversarial environment, so the realistic risk is low — but it's a real gap, not a hardened one, so it's worth fixing properly at some point. Once claimed there's also no re-claim path, so a deliberate (or accidental duplicate) claim locks the real screen out for the rest of the game. Real fix: a host-minted screen token (a new host-authorized message, e.g. `MINT_SCREEN_TOKEN`, callable only with a valid `hostId`; the QR link on `/host` embeds the minted token; `/screen` reads it from the URL instead of self-generating one via localStorage). Found by `/ship`'s adversarial review on 2026-09-22; user reviewed and chose to ship as-is.
 
