@@ -97,8 +97,8 @@ export default function MusicPlayer({ currentSong, phase }: Props) {
       {/* Reveal phase: show song info */}
       {phase === "reveal" && (
         <div style={{ background: "rgba(255,214,0,.08)", borderRadius: 14, padding: "14px 16px", border: "1.5px solid rgba(255,214,0,.2)" }}>
-          <p style={{ fontWeight: 900, fontSize: 16, color: "white" }}>{currentSong.title}</p>
-          <p style={{ fontFamily: "var(--font-mono)", color: "#FFD600", fontSize: 22, fontWeight: 700, marginTop: 2 }}>{currentSong.year}</p>
+          <p style={{ fontWeight: 900, fontSize: 16, color: "#1A1A2E" }}>{currentSong.title}</p>
+          <p style={{ fontFamily: "var(--font-mono)", color: "#FF6B35", fontSize: 22, fontWeight: 700, marginTop: 2 }}>{currentSong.year}</p>
           <p style={{ color: "#7B7B9A", fontSize: 12, marginTop: 2 }}>{currentSong.artist}</p>
         </div>
       )}
