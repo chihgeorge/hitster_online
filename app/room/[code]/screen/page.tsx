@@ -12,9 +12,7 @@ import { Stage } from "@/components/Stage";
 import { getOrCreatePersistedId } from "@/lib/device-id";
 import type { GameState, ServerMessage, PublicLyricsGameState } from "@/lib/game";
 
-// TODO: set once a victory song is picked (a YouTube video id, e.g. "dQw4w9WgXcQ" from
-// https://www.youtube.com/watch?v=dQw4w9WgXcQ). null plays no music, confetti/trophy still show.
-const VICTORY_VIDEO_ID: string | null = null;
+const VICTORY_VIDEO_ID: string | null = "bqon4TM2MgM";
 
 // Read-only spectator view for a TV/projector — see DESIGN.md. No controls, no hostId: this page
 // never issues a game command, only the screenId credential GET_LYRICS_AUDIO needs.
