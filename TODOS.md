@@ -174,4 +174,6 @@
   The existing e2e suite still passes (the Timeline-mode host contract — reveal-btn/next-round-btn — was kept intact) but nothing automated exercises `/screen` itself: video-only-on-screen, the preview-leak fix, screen reconnect. Manually verified in a real browser by `/qa` on 2026-09-22 instead. Found by `/plan-eng-review` on 2026-09-21 (T8), still open.
 - [ ] **P3** Check the host header's new QR panel at phone width  
   Added in the host/screen split; not checked at narrow mobile viewports (the rest of `/host` is unchanged and already phone-first). Found by `/qa` on 2026-09-22.
+- [ ] **P3** Tokenize the DESIGN.md color palette as CSS custom properties or a shared constants module  
+  `app/room/[code]/screen/page.tsx` and `app/room/[code]/host/page.tsx` both hardcode the same 8 hex literals (`#1A1A2E`, `#7B7B9A`, etc.) that DESIGN.md now names as tokens (colors.ink, colors.text-muted, ...); a future palette tweak needs a manual find-and-replace across files. Pre-existing pattern across the app (LyricsPlayer, MusicPlayer, PlaylistEditor all do this too), not unique to this branch, but DESIGN.md existing now makes it worth fixing properly rather than per-file. Found by `/ship` maintainability specialist review on 2026-09-22.
 
