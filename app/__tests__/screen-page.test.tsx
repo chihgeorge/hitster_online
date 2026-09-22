@@ -82,6 +82,18 @@ describe("ScreenPage: waiting / lobby", () => {
     render(<ScreenPage />);
     expect(screen.getByText(/等待主持人開始遊戲/)).toBeTruthy();
   });
+
+  // Regression for TODOS.md P2 "Timeline mode exposes the real video id to all players" — the
+  // screen must claim its screenId on connect, mode-independent, or it never becomes privileged
+  // during a Timeline-mode game (which never sends GET_LYRICS_AUDIO). See handleJoinScreen.
+  it("claims the screen credential on connect with its persisted screenId", () => {
+    render(<ScreenPage />);
+    act(() => socketOpts.onOpen?.());
+    const sent = JSON.parse(sendSpy.mock.calls.at(-1)?.[0] as string);
+    expect(sent.type).toBe("JOIN_SCREEN");
+    expect(sent.screenId).toBe(localStorage.getItem("hitster_screen_id"));
+    expect(sent.screenId).toBeTruthy();
+  });
 });
 
 describe("ScreenPage: Timeline mode", () => {
