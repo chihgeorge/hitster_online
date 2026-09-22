@@ -13,6 +13,8 @@ export const metadata: Metadata = {
 };
 
 export const viewport: Viewport = {
+  // Literal hex, not var(--orange): this becomes a <meta name="theme-color"> tag, which the
+  // browser reads before CSS loads and can't resolve a custom property from anyway.
   themeColor: "#FF6B35",
 };
 

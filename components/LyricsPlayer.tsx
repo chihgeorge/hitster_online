@@ -133,7 +133,7 @@ export default function LyricsPlayer({ videoId, playing }: Props) {
           style={{ position: "fixed", left: "50%", bottom: 16, transform: "translateX(-50%)", zIndex: 50, width: "min(92vw, 420px)" }}
         >
           {failed ? (
-            <div data-testid="lyrics-audio-error" style={{ background: "#FFF0E8", border: "2px solid rgba(255,59,92,.4)", borderRadius: 14, padding: "12px 16px", fontSize: 14, fontWeight: 700, color: "#1A1A2E", textAlign: "center", fontFamily: "var(--font-zh)", boxShadow: "0 6px 20px rgba(0,0,0,.15)" }}>
+            <div data-testid="lyrics-audio-error" style={{ background: "var(--surface2)", border: "2px solid rgba(255,59,92,.4)", borderRadius: 14, padding: "12px 16px", fontSize: 14, fontWeight: 700, color: "var(--ink)", textAlign: "center", fontFamily: "var(--font-zh)", boxShadow: "0 6px 20px rgba(0,0,0,.15)" }}>
               ⚠️ 這首歌無法播放，本回合沒有音樂 · This song can&apos;t be played, no audio this round
             </div>
           ) : (
@@ -141,7 +141,7 @@ export default function LyricsPlayer({ videoId, playing }: Props) {
               type="button"
               data-testid="lyrics-play-btn"
               onClick={() => { setBlocked(false); playerRef.current?.playVideo(); }}
-              style={{ width: "100%", minHeight: 48, background: "#FF6B35", border: "none", borderRadius: 14, padding: "12px 16px", fontSize: 15, fontWeight: 900, color: "white", cursor: "pointer", fontFamily: "var(--font-zh)", boxShadow: "0 6px 20px rgba(255,107,53,.4)" }}
+              style={{ width: "100%", minHeight: 48, background: "var(--orange)", border: "none", borderRadius: 14, padding: "12px 16px", fontSize: 15, fontWeight: 900, color: "white", cursor: "pointer", fontFamily: "var(--font-zh)", boxShadow: "0 6px 20px rgba(255,107,53,.4)" }}
             >
               🔊 瀏覽器擋住了自動播放，點此播放 · Click to play
             </button>
