@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.6.3.0] — 2026-09-22
+
+### Fixed
+- **The big screen could silently lose Timeline mode's audio.** If `/screen` was opened after a round had already started, the song's video player could end up broken — no sound, no error, nothing visibly wrong. Fixed by loading songs into one persistent player instead of rebuilding it every round. Also added a one-tap "enable sound" prompt for the (common) case where the browser itself blocks autoplaying audio on a screen nobody has touched yet — Lyrics Mode already had this, Timeline mode didn't
+
 ## [0.6.2.0] — 2026-09-22
 
 ### Changed
