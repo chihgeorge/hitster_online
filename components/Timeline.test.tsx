@@ -68,4 +68,17 @@ describe("Timeline: guess marker", () => {
     );
     expect(screen.queryByTestId("guess-marker")).toBeNull();
   });
+
+  it("marks the end of the timeline (placed after the last card)", () => {
+    render(
+      <Timeline
+        {...baseProps}
+        timeline={[card("a", 1990), card("b", 2000)]}
+        phase="guessing"
+        selectedPosition={2}
+        hasPlaced
+      />
+    );
+    expect(screen.getByTestId("guess-marker")).toBeTruthy();
+  });
 });

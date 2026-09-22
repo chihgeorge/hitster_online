@@ -42,26 +42,35 @@ export default function PlayerList({ players, placements, targetCardCount, activ
               </div>
             </div>
 
-            {/* Horizontal timeline tiles */}
-            {player.timeline.length > 0 ? (
-              <div className="flex flex-wrap gap-1.5">
-                {/* Where this player's guess landed, before reveal confirms it was right — everyone
-                    watching (not just the guessing player) sees the position, never the year. */}
-                {isActive && phase === "guessing" && placements[playerId] === 0 && <MiniGuessMarker />}
-                {player.timeline.map((card, i) => (
-                  <div key={card.id ?? i} style={{ display: "flex", gap: 6 }}>
-                    <MiniTile card={card} />
-                    {isActive && phase === "guessing" && placements[playerId] === i + 1 && <MiniGuessMarker />}
+            {/* Where this player's guess landed, before reveal confirms it was right — everyone
+                watching (not just the guessing player) sees the position, never the year. Rendered
+                outside the timeline.length branch below: a player with an empty timeline (their
+                very first-ever placement — e.g. joining mid-game) can still guess at position 0,
+                and must still get a marker. */}
+            {(() => {
+              const showGuessMarker = isActive && phase === "guessing" && placements[playerId] !== undefined;
+              if (player.timeline.length > 0) {
+                return (
+                  <div className="flex flex-wrap gap-1.5">
+                    {showGuessMarker && placements[playerId] === 0 && <MiniGuessMarker />}
+                    {player.timeline.map((card, i) => (
+                      <div key={card.id ?? i} style={{ display: "flex", gap: 6 }}>
+                        <MiniTile card={card} />
+                        {showGuessMarker && placements[playerId] === i + 1 && <MiniGuessMarker />}
+                      </div>
+                    ))}
                   </div>
-                ))}
-              </div>
-            ) : (
-              <div style={{ display: "flex", gap: 4 }}>
-                {Array.from({ length: Math.min(targetCardCount, 12) }).map((_, i) => (
-                  <div key={i} style={{ height: 6, width: 20, borderRadius: 4, background: "rgba(255,107,53,.15)", flexShrink: 0 }} />
-                ))}
-              </div>
-            )}
+                );
+              }
+              if (showGuessMarker) return <MiniGuessMarker />;
+              return (
+                <div style={{ display: "flex", gap: 4 }}>
+                  {Array.from({ length: Math.min(targetCardCount, 12) }).map((_, i) => (
+                    <div key={i} style={{ height: 6, width: 20, borderRadius: 4, background: "rgba(255,107,53,.15)", flexShrink: 0 }} />
+                  ))}
+                </div>
+              );
+            })()}
           </div>
         );
       })}

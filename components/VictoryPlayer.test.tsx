@@ -23,7 +23,12 @@ beforeEach(() => {
   w.YT = { Player: FakePlayer };
   vi.spyOn(document.head, "appendChild").mockImplementation(((n: HTMLElement) => n) as never);
 });
-afterEach(() => { cleanup(); vi.restoreAllMocks(); delete w.YT; });
+afterEach(() => {
+  cleanup();
+  vi.restoreAllMocks();
+  delete w.YT;
+  delete (window as unknown as { onYouTubeIframeAPIReady?: unknown }).onYouTubeIframeAPIReady;
+});
 
 describe("VictoryPlayer", () => {
   it("renders nothing and creates no player when no song is configured", () => {
@@ -53,5 +58,22 @@ describe("VictoryPlayer", () => {
     const instance = FakePlayer.instances[0];
     unmount();
     expect(instance.destroy).toHaveBeenCalled();
+  });
+
+  it("keeps the page alive when the YouTube API throws creating the player", () => {
+    w.YT = { Player: class { constructor() { throw new Error("Invalid video id"); } } };
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    expect(() => render(<VictoryPlayer videoId="bad-id" />)).not.toThrow();
+    expect(warn).toHaveBeenCalled();
+  });
+
+  it("does not create a player if unmounted before the API is ready", () => {
+    delete w.YT; // API not loaded yet — whenYouTubeApiReady queues create() instead of calling it
+    const { unmount } = render(<VictoryPlayer videoId="vid-1" />);
+    unmount();
+    w.YT = { Player: FakePlayer };
+    // Simulate the API finishing its load after unmount — create() must be a no-op (cancelled).
+    (window as unknown as { onYouTubeIframeAPIReady?: () => void }).onYouTubeIframeAPIReady?.();
+    expect(FakePlayer.instances).toHaveLength(0);
   });
 });

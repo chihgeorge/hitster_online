@@ -36,6 +36,11 @@ vi.mock("@/components/LyricsPlayer", async (importOriginal) => {
     ),
   };
 });
+// Same reasoning — VictoryPlayer's own single-creation/autoplay-blocked behavior is covered by
+// its own test file; here only the winner screen's wiring (that it's passed the right id) matters.
+vi.mock("@/components/VictoryPlayer", () => ({
+  default: (props: { videoId: string | null }) => <div data-testid="victory-player" data-video={props.videoId ?? ""} />,
+}));
 
 import ScreenPage from "@/app/room/[code]/screen/page";
 
@@ -121,6 +126,18 @@ describe("ScreenPage: Timeline mode", () => {
     serverSends({ type: "STATE", state: { ...guessingState, phase: "ended", winner: P1 } });
     expect(screen.getByText(/Winner!/)).toBeTruthy();
     expect(screen.getByRole("heading", { name: "Alice" })).toBeTruthy();
+  });
+
+  // Integration coverage gap found by /ship's audit: nothing verified the confetti/trophy/victory
+  // music actually wire up on the winner screen, only that the winner's name renders.
+  it("shows confetti, a trophy, and the victory music on the winner screen", () => {
+    render(<ScreenPage />);
+    serverSends({ type: "STATE", state: { ...guessingState, phase: "ended", winner: P1 } });
+    expect(screen.getByText("🏆")).toBeTruthy();
+    expect(screen.getByTestId("victory-player")).toBeTruthy();
+    // The victory song is hardcoded in the page (VICTORY_VIDEO_ID), not server state — just prove
+    // VictoryPlayer is actually mounted with a non-empty id, not silently passed null.
+    expect(screen.getByTestId("victory-player").getAttribute("data-video")).not.toBe("");
   });
 });
 
