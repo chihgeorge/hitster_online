@@ -12,31 +12,57 @@ interface Props {
 // Display-only: the video, its guessing-phase overlay, and the reveal-phase song info.
 // Reveal/Next Round are host controls, not display — they live on /host, not here.
 export default function MusicPlayer({ currentSong, phase }: Props) {
-  const playerRef = useRef<HTMLDivElement>(null);
-  const [playerReady, setPlayerReady] = useState(false);
+  const targetRef = useRef<HTMLDivElement>(null);
+  const playerRef = useRef<YT.Player | null>(null);
+  const loadedRef = useRef<string | null>(null);
+  const wantIdRef = useRef<string | null>(currentSong?.videoId ?? null);
+  wantIdRef.current = currentSong?.videoId ?? null;
+  const [blocked, setBlocked] = useState(false);
+  const [failedId, setFailedId] = useState<string | null>(null);
+
+  function sync() {
+    const p = playerRef.current;
+    if (!p || typeof p.loadVideoById !== "function") return; // API not ready yet; onReady calls sync again
+    const wantId = wantIdRef.current;
+    if (!wantId || loadedRef.current === wantId) return;
+    loadedRef.current = wantId;
+    try {
+      p.loadVideoById(wantId);
+    } catch (err) {
+      // A malformed id makes the API throw; the round stays playable without audio/video.
+      console.warn("MusicPlayer: could not load the video", err);
+      setFailedId(wantId);
+    }
+  }
 
   useEffect(() => {
-    if (!currentSong || typeof window === "undefined") return;
-
     let cancelled = false;
-    let player: YT.Player | null = null;
 
-    function initPlayer() {
-      if (!playerRef.current || !currentSong) return;
-      // The YouTube API throws "Invalid video id" for a malformed id (e.g. a hand-made saved playlist).
-      // Thrown inside this effect it would take down the whole host page, so keep the round playable without audio.
+    function create() {
+      if (cancelled || !targetRef.current) return;
+      // YT.Player replaces its target with an iframe, so give every create its own child element,
+      // and only ever create ONE player for the life of this component — song changes flow through
+      // sync()/loadVideoById below, never a second `new YT.Player(...)`. Recreating the player on
+      // every videoId change (the old code did this via a `[currentSong?.videoId]` effect dep) reused
+      // the same now-detached target across constructions: the second construction silently produced
+      // a player with no video loaded — no error, no video, no audio, invisible in a screenshot because
+      // the guessing-phase CSS overlay renders regardless of whether the player behind it works. This
+      // was the exact shape of the "screen has no audio" bug: it only hit connections that mounted
+      // MusicPlayer with a not-yet-privileged (redacted, empty) videoId first and a real one moments
+      // later — i.e. /screen opened after the round had already started (see JOIN_SCREEN in party/index.ts).
+      const el = document.createElement("div");
+      // YT.Player carries the target element's class over to the iframe that replaces it — without
+      // this, the player falls back to YouTube's default 640x390 instead of filling the container.
+      el.className = "w-full aspect-video";
+      targetRef.current.appendChild(el);
       try {
-        player = new window.YT.Player(playerRef.current, {
-          videoId: currentSong.videoId,
-          playerVars: {
-            autoplay: 1,
-            controls: 0,
-            modestbranding: 1,
-            playsinline: 1, // required for iOS Safari to stay in-page
-            rel: 0,
-          },
+        playerRef.current = new window.YT.Player(el, {
+          playerVars: { autoplay: 1, controls: 0, modestbranding: 1, playsinline: 1, rel: 0 },
           events: {
-            onReady: () => setPlayerReady(true),
+            onReady: () => sync(),
+            onAutoplayBlocked: () => setBlocked(true),
+            onStateChange: (e: { data: number }) => { if (e.data === 1) setBlocked(false); }, // 1 = playing
+            onError: () => setFailedId(wantIdRef.current),
           },
         });
       } catch (err) {
@@ -44,13 +70,22 @@ export default function MusicPlayer({ currentSong, phase }: Props) {
       }
     }
 
-    whenYouTubeApiReady(() => { if (!cancelled) initPlayer(); });
+    whenYouTubeApiReady(() => { if (!cancelled) create(); });
 
     return () => {
       cancelled = true;
-      if (typeof player?.destroy === "function") player.destroy(); // absent until onReady on the real API
-      setPlayerReady(false);
+      const p = playerRef.current;
+      if (typeof p?.destroy === "function") p.destroy(); // absent until onReady on the real API
+      targetRef.current?.replaceChildren();
+      playerRef.current = null;
+      loadedRef.current = null;
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- create once; sync reads the latest id via wantIdRef
+  }, []);
+
+  useEffect(() => {
+    sync();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- sync reads the latest id via wantIdRef
   }, [currentSong?.videoId]);
 
   if (!currentSong) {
@@ -61,15 +96,18 @@ export default function MusicPlayer({ currentSong, phase }: Props) {
     );
   }
 
+  const failed = failedId === currentSong.videoId;
+  const showBlocked = !failed && blocked;
+
   return (
     <div className="flex flex-col gap-4">
       {/* Video + overlay — self-contained, overflow-hidden for rounded corners */}
       <div className="relative rounded-2xl overflow-hidden bg-black">
         {/* YouTube IFrame target */}
-        <div ref={playerRef} className="w-full aspect-video" />
+        <div ref={targetRef} className="w-full aspect-video" />
 
         {/* Overlay — covers video during guessing phase */}
-        {phase === "guessing" && (
+        {phase === "guessing" && !failed && !showBlocked && (
           <div
             className="absolute inset-0 flex flex-col items-center justify-center bg-[var(--ink)]/90 backdrop-blur-sm"
             style={{ willChange: "opacity" }}
@@ -90,6 +128,30 @@ export default function MusicPlayer({ currentSong, phase }: Props) {
               ))}
             </div>
             <p style={{ color: "var(--text3)", fontSize: 13 }}>聆聽中… Listening</p>
+          </div>
+        )}
+
+        {/* Browser blocked unmuted autoplay (common on /screen, which nobody taps) — one click unlocks
+            audio for the rest of the page's lifetime, same fix LyricsPlayer already uses on /host. */}
+        {showBlocked && (
+          <button
+            type="button"
+            data-testid="music-play-btn"
+            onClick={() => { setBlocked(false); playerRef.current?.playVideo(); }}
+            className="absolute inset-0 flex items-center justify-center"
+            style={{ background: "var(--ink)", border: "none", cursor: "pointer" }}
+          >
+            <span style={{ background: "var(--orange)", borderRadius: 14, padding: "12px 20px", fontSize: 15, fontWeight: 900, color: "white", fontFamily: "var(--font-zh)", boxShadow: "0 6px 20px rgba(255,107,53,.4)" }}>
+              🔊 瀏覽器擋住了自動播放，點此播放 · Click to play
+            </span>
+          </button>
+        )}
+
+        {failed && (
+          <div className="absolute inset-0 flex items-center justify-center" style={{ background: "var(--ink)" }}>
+            <p data-testid="music-audio-error" style={{ color: "var(--text3)", fontSize: 14, fontWeight: 700, textAlign: "center", padding: "0 20px", fontFamily: "var(--font-zh)" }}>
+              ⚠️ 這首歌無法播放，本回合沒有音樂 · This song can&apos;t be played, no audio this round
+            </p>
           </div>
         )}
       </div>
