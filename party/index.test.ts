@@ -1316,6 +1316,26 @@ describe("Lyrics Mode: preview deck is host/screen-only (regression for the revi
     expect(lyricsMsg?.state.rounds.length).toBeGreaterThan(0);
   });
 
+  // Regression: a /screen connected before the host confirms the preview never becomes privileged
+  // during preview (it only claims via GET_LYRICS_AUDIO, which fires in playing/guessing/results,
+  // never preview) — broadcastLyricsState used to skip it entirely, leaving it stuck on the
+  // "loading" spinner through the whole review window instead of showing its "ready" UI.
+  // Found by /ship's adversarial review on 2026-09-22.
+  it("a connected-but-not-yet-privileged screen gets a redacted (not stale) preview update", async () => {
+    const { room } = await setupLyricsGame();
+    const screenConn = makeConn("screen-conn-not-yet-privileged");
+    room.onConnect(screenConn); // connected, but never sent GET_LYRICS_AUDIO — not privileged
+    (screenConn.send as ReturnType<typeof vi.fn>).mockClear();
+    room.lyricsState!.phase = "preview";
+    room.lyricsState!.rounds = [room.lyricsState!.currentRound!];
+    (room as any).broadcastLyricsState();
+    const toScreen = (screenConn.send as ReturnType<typeof vi.fn>).mock.calls.map((c: any[]) => JSON.parse(c[0] as string));
+    const lyricsMsg = toScreen.find((m: any) => m.type === "LYRICS_STATE");
+    expect(lyricsMsg).toBeDefined(); // got SOMETHING, not silently skipped
+    expect(lyricsMsg.state.phase).toBe("preview");
+    expect(lyricsMsg.state.rounds).toEqual([]); // redacted, not the answer-bearing deck
+  });
+
   it("a screen that has claimed via GET_LYRICS_AUDIO also gets the preview deck", async () => {
     const { room, hostConn } = await setupLyricsGame();
     // setupLyricsGame already advances past preview; re-derive a fresh preview round the same way
