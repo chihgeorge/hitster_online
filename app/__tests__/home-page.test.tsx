@@ -1,8 +1,9 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, cleanup, fireEvent } from "@testing-library/react";
 
-// Regression coverage for /plan-eng-review "screen-first room creation": the homepage lost its
-// Create-a-Room button (moved to /screen) and gained ?code= auto-fill from the player-join QR.
+// Regression coverage for /plan-eng-review "restore explicit Create a Room" (the site is public,
+// so nothing should create a room just from a page load — see app/page.tsx's handleCreateRoom):
+// the homepage keeps its Create-a-Room button alongside ?code= auto-fill from the player-join QR.
 const pushSpy = vi.fn();
 let searchParamsValue = new URLSearchParams("");
 vi.mock("next/navigation", () => ({
@@ -19,15 +20,12 @@ beforeEach(() => {
 afterEach(() => cleanup());
 
 describe("HomePage", () => {
-  it("has no Create a Room button — room creation lives at /screen now", () => {
+  it("creates a room and navigates to its screen lobby, marked as the creator", () => {
     render(<HomePage />);
-    expect(screen.queryByText(/Create a Room/)).toBeNull();
-  });
-
-  it("links to /screen for setting up the TV", () => {
-    render(<HomePage />);
-    const link = screen.getByText(/Setting up the TV/).closest("a");
-    expect(link?.getAttribute("href")).toBe("/screen");
+    fireEvent.click(screen.getByText(/Create a Room/));
+    expect(pushSpy).toHaveBeenCalledTimes(1);
+    const dest = pushSpy.mock.calls[0][0] as string;
+    expect(dest).toMatch(/^\/room\/[A-Z]{4}\/screen\?created=1$/);
   });
 
   it("shows the manual room-code field when no ?code= is present", () => {
