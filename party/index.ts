@@ -131,6 +131,11 @@ export default class HitsterRoom implements Party.Server {
   // ones that get the full preview-phase deck (see broadcastLyricsState and onConnect).
   // Cleaned up on disconnect (see onClose).
   private privilegedConns = new Set<Party.Connection>();
+  // Every currently-open connection (added in onConnect, removed in onClose — markPrivileged also
+  // adds, so a privileged connection is always a member even in tests that skip onConnect). Lets
+  // broadcastLyricsState reach a not-yet-privileged /screen during preview with a redacted payload
+  // instead of silently skipping it (see the comment there).
+  private allConns = new Set<Party.Connection>();
 
   constructor(readonly room: Party.Room) {
     this.state = this.emptyState();
@@ -187,6 +192,7 @@ export default class HitsterRoom implements Party.Server {
 
   onConnect(conn: Party.Connection) {
     if (!this.hostConnId) this.hostConnId = conn.id;
+    this.allConns.add(conn);
     const ls = this.sanitizedLyricsState();
     // A reconnecting client keeps its old lyricsState; with no game running, tell it to drop it
     // (sent before STATE so STATE stays the first-class snapshot).
@@ -272,6 +278,7 @@ export default class HitsterRoom implements Party.Server {
   onClose(conn: Party.Connection) {
     // No connection→playerId map in v1; players reconnect via REJOIN with their stored playerId.
     this.privilegedConns.delete(conn);
+    this.allConns.delete(conn);
   }
 
   private handleJoin(conn: Party.Connection, playerId: string, rawName: string) {
@@ -424,6 +431,7 @@ export default class HitsterRoom implements Party.Server {
 
   private markPrivileged(conn: Party.Connection) {
     this.privilegedConns.add(conn);
+    this.allConns.add(conn);
   }
 
   private resolveEnv() {
@@ -917,11 +925,15 @@ export default class HitsterRoom implements Party.Server {
       return;
     }
     // Preview phase: state.rounds carries the full deck with answers revealed, for the host/screen
-    // to review before the game starts. Players get nothing this phase — the play page has no
-    // preview-phase UI (it only reacts to loading/playing/guessing/results/ended), so there is
-    // nothing for them to lose by not receiving it, and it's the one phase with a secret to protect.
-    for (const conn of this.privilegedConns) {
-      this.sendTo(conn, { type: "LYRICS_STATE", state });
+    // to review before the game starts. Non-privileged connections (including a /screen that
+    // hasn't claimed via GET_LYRICS_AUDIO yet — it only does that in playing/guessing/results, never
+    // preview, see isAudioPhase) get the same redacted shape onConnect already sends them, so a
+    // /screen open during the whole review window shows its "ready, waiting for host" UI instead of
+    // being silently stuck on the previous "loading" screen. Players' own page has no preview-phase
+    // UI either way, so this changes nothing visible for them.
+    const redacted: PublicLyricsGameState = { ...state, rounds: [] };
+    for (const conn of this.allConns) {
+      this.sendTo(conn, { type: "LYRICS_STATE", state: this.privilegedConns.has(conn) ? state : redacted });
     }
   }
 
