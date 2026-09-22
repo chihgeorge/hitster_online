@@ -23,7 +23,9 @@ vi.mock("next/navigation", () => ({
 // files — stub the default export so this page's own conditional-rendering logic is what's
 // under test, but keep the real (pure, already-tested) helper exports LyricsPlayer provides.
 vi.mock("@/components/MusicPlayer", () => ({
-  default: (props: { phase: string }) => <div data-testid="music-player" data-phase={props.phase} />,
+  default: (props: { phase: string; currentSong: { videoId: string } | null }) => (
+    <div data-testid="music-player" data-phase={props.phase} data-video={props.currentSong?.videoId ?? ""} />
+  ),
 }));
 vi.mock("@/components/LyricsPlayer", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/components/LyricsPlayer")>();
@@ -82,6 +84,18 @@ describe("ScreenPage: waiting / lobby", () => {
     render(<ScreenPage />);
     expect(screen.getByText(/等待主持人開始遊戲/)).toBeTruthy();
   });
+
+  // Regression for TODOS.md P2 "Timeline mode exposes the real video id to all players" — the
+  // screen must claim its screenId on connect, mode-independent, or it never becomes privileged
+  // during a Timeline-mode game (which never sends GET_LYRICS_AUDIO). See handleJoinScreen.
+  it("claims the screen credential on connect with its persisted screenId", () => {
+    render(<ScreenPage />);
+    act(() => socketOpts.onOpen?.());
+    const sent = JSON.parse(sendSpy.mock.calls.at(-1)?.[0] as string);
+    expect(sent.type).toBe("JOIN_SCREEN");
+    expect(sent.screenId).toBe(localStorage.getItem("hitster_screen_id"));
+    expect(sent.screenId).toBeTruthy();
+  });
 });
 
 describe("ScreenPage: Timeline mode", () => {
@@ -91,6 +105,15 @@ describe("ScreenPage: Timeline mode", () => {
     expect(screen.getByTestId("music-player").getAttribute("data-phase")).toBe("guessing");
     expect(screen.getByText(/Alice 的回合/)).toBeTruthy();
     expect(screen.getByText("Alice")).toBeTruthy(); // from PlayerList
+  });
+
+  // Coverage gap found by /ship's coverage audit: the redaction/privilege logic is tested at the
+  // server boundary (party/index.test.ts), but nothing confirmed the client actually WIRES the
+  // videoId it receives into MusicPlayer — this is the user-visible payoff of the whole fix.
+  it("passes currentSong.videoId through to MusicPlayer once the server sends it", () => {
+    render(<ScreenPage />);
+    serverSends({ type: "STATE", state: guessingState });
+    expect(screen.getByTestId("music-player").getAttribute("data-video")).toBe(guessingState.currentSong?.videoId);
   });
 
   it("shows the winner heading when the game ends", () => {

@@ -115,7 +115,8 @@ export type ClientMessage =
   | { type: "NEXT_LYRICS_ROUND"; hostId: string }
   | { type: "RESET_LYRICS_GAME"; hostId: string }
   | { type: "CONFIRM_LYRICS_PREVIEW"; hostId: string }
-  | { type: "GET_LYRICS_AUDIO"; screenId: string };
+  | { type: "GET_LYRICS_AUDIO"; screenId: string }
+  | { type: "JOIN_SCREEN"; screenId: string };
 
 export type SongDiagnostic = {
   title: string;
