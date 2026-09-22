@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.8.0.0] — 2026-09-22
+
+### Changed
+- **The big screen is now the front door.** Opening `/screen` on the TV or projector generates the room and shows a join QR code plus the room code right away — no more starting from the homepage. Players scan the code (or type it on the homepage) and only need to enter their name, no room name required
+- **Host access is a private, same-device link.** Whoever loaded `/screen` on their device gets a "manage as host" link, shown only to them, only in the lobby — no secret code to type or broadcast. The homepage's old "Create a Room" button is gone; it's replaced by a small "Setting up the TV?" link to `/screen`
+
+### Fixed
+- The party server used to trust whichever connection claimed host *first* (`hostConnId`), which would have broken host access the moment `/screen` always connects before the host does. Host and screen claims now share one first-come, first-served rule, unaffected by connection order
+
 ## [0.7.0.0] — 2026-09-22
 
 ### Added
