@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.6.1.0] — 2026-09-22
+
+### Fixed
+- **Timeline mode no longer reveals the song's real video before the guess.** The full remaining deck and the current round both used to include the real YouTube video id in every update sent to players — a leftover from before the big screen split, and the same class of leak as the Lyrics Mode fix in the previous release. Only the host and the big screen (which plays it) get the real id now; players get nothing to look ahead with
+
 ## [0.6.0.0] — 2026-09-22
 
 ### Added
