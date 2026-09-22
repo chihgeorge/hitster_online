@@ -121,18 +121,20 @@ export default class HitsterRoom implements Party.Server {
   private lyricsPreviewMap: Map<string, LyricsResult> = new Map();
   private abortLoad = false;
   private loadSeq = 0;
-  private hostConnId = "";
-  // The room's screen credential (a /screen page's persisted token). Claimed the same way
-  // hostId is: the first GET_LYRICS_AUDIO with a non-empty screenId claims it, later callers
-  // must match exactly. Unlike hostId, no "first connection" race guard applies — the screen
-  // is expected to be a second device, connecting after the host.
+  // hostId and screenId (state.hostId / this.screenId below) both claim through the same
+  // first-non-empty-value-wins model — see claimOrValidateFirstClaim. Neither depends on
+  // connection order any more: a room's very first WebSocket connection is now always /screen
+  // (it's what creates the room, see app/screen/page.tsx), so a connection-order gate would
+  // permanently lock the real host out. Whoever sends the right value first, from any
+  // connection, claims it.
   //
-  // KNOWN GAP (TODOS.md, P3, accepted 2026-09-22): screenId is just "whichever connection asks
-  // first," not "actually the TV" — a player would have to deliberately open devtools and send
-  // one WS message by hand to get the current round's video id early, then they'd keep receiving
-  // every future round's full answer deck via privilegedConns. Also permanently locks out the
-  // real screen once taken. Low realistic risk for a house game with friends; real fix is a
-  // host-minted token, deferred, not built here.
+  // KNOWN GAP (TODOS.md, P3, accepted 2026-09-22): "whichever connection asks first" is not
+  // "actually the TV / actually the host" — a player would have to deliberately open devtools
+  // and send a WS message by hand to squat either slot. Low realistic risk for a house game
+  // with friends; real fix (a minted token) deferred, not built here. Host's real mitigation is
+  // that its hostId is never transmitted anywhere but the host's own device (see
+  // app/room/[code]/screen/page.tsx's private, same-device-only "manage as host" link) — unlike
+  // screenId, there's no QR/URL carrying it for a player to intercept in the first place.
   private screenId = "";
   // Connections that have proven themselves host or screen (see markPrivileged) — the only
   // ones that get the full preview-phase deck (see broadcastLyricsState and onConnect).
@@ -219,7 +221,6 @@ export default class HitsterRoom implements Party.Server {
   }
 
   onConnect(conn: Party.Connection) {
-    if (!this.hostConnId) this.hostConnId = conn.id;
     this.allConns.add(conn);
     const ls = this.sanitizedLyricsState();
     // A reconnecting client keeps its old lyricsState; with no game running, tell it to drop it
@@ -427,17 +428,22 @@ export default class HitsterRoom implements Party.Server {
   }
 
   /**
-   * The four entry points where a room's host is established: LOAD_PLAYLIST, LOAD_SAVED_PLAYLIST,
-   * START_GAME, START_LYRICS_GAME. First caller (from the room's first-ever connection, hostConnId)
-   * claims hostId; everyone else must match the claimed value exactly. Also marks the connection
-   * privileged, same as authorizeHost.
+   * Shared first-non-empty-value-wins claim: whichever connection sends `value` first claims
+   * it (via `setValue`); every later caller must match `current` exactly. Marks the connection
+   * privileged on success either way. Used identically by hostId and screenId — see the two
+   * thin wrappers below and the class-field comment above `screenId` for the accepted risk
+   * this model carries (any connection can claim by guessing/squatting first).
    */
-  private claimOrValidateHost(conn: Party.Connection, hostId: string): boolean {
-    if (this.state.hostId === "") {
-      if (this.hostConnId !== "" && conn.id !== this.hostConnId) return false;
-      this.state.hostId = hostId;
-      this.hostConnId = conn.id;
-    } else if (!this.isValidHostId(hostId)) {
+  private claimOrValidateFirstClaim(
+    current: string,
+    value: string,
+    setValue: (v: string) => void,
+    conn: Party.Connection
+  ): boolean {
+    if (typeof value !== "string" || value === "") return false;
+    if (current === "") {
+      setValue(value);
+    } else if (value !== current) {
       return false;
     }
     this.markPrivileged(conn);
@@ -445,19 +451,32 @@ export default class HitsterRoom implements Party.Server {
   }
 
   /**
-   * The room's screen credential works like hostId but claims lazily on first use — either from
-   * JOIN_SCREEN (sent once on mount, so Timeline mode's video id starts flowing right away) or
-   * GET_LYRICS_AUDIO (Lyrics mode's per-round request; claims it too if JOIN_SCREEN raced it).
+   * The four entry points where a room's host is established: LOAD_PLAYLIST, LOAD_SAVED_PLAYLIST,
+   * START_GAME, START_LYRICS_GAME. First caller to send a non-empty hostId claims it; everyone
+   * else must match the claimed value exactly. Also marks the connection privileged, same as
+   * authorizeHost.
+   */
+  private claimOrValidateHost(conn: Party.Connection, hostId: string): boolean {
+    return this.claimOrValidateFirstClaim(
+      this.state.hostId,
+      hostId,
+      (v) => { this.state.hostId = v; },
+      conn
+    );
+  }
+
+  /**
+   * The room's screen credential works exactly like hostId, claimed lazily on first use — either
+   * from JOIN_SCREEN (sent once on mount, so Timeline mode's video id starts flowing right away)
+   * or GET_LYRICS_AUDIO (Lyrics mode's per-round request; claims it too if JOIN_SCREEN raced it).
    */
   private claimOrValidateScreen(conn: Party.Connection, screenId: string): boolean {
-    if (typeof screenId !== "string" || screenId === "") return false;
-    if (this.screenId === "") {
-      this.screenId = screenId;
-    } else if (screenId !== this.screenId) {
-      return false;
-    }
-    this.markPrivileged(conn);
-    return true;
+    return this.claimOrValidateFirstClaim(
+      this.screenId,
+      screenId,
+      (v) => { this.screenId = v; },
+      conn
+    );
   }
 
   private markPrivileged(conn: Party.Connection) {
