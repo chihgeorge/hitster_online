@@ -21,6 +21,7 @@
  */
 
 import { test, expect, type Page } from "@playwright/test";
+import { createRoomAsHost } from "./helpers";
 
 // ── helpers ──────────────────────────────────────────────────────────────────
 
@@ -68,11 +69,7 @@ test.describe("C-pop multiplayer with metadata verification", () => {
 
       try {
         // ── 1. Create room ───────────────────────────────────────────────────
-        await hostPage.goto("/");
-        await hostPage.getByRole("button", { name: /Create a Room/i }).click();
-        await hostPage.waitForURL(/\/room\/[A-Z]+\/host$/);
-        const roomCode = hostPage.url().match(/\/room\/([A-Z]+)\/host$/)![1];
-        expect(roomCode).toHaveLength(4);
+        const roomCode = await createRoomAsHost(hostPage);
 
         // ── 2. Alice joins first, Bob second ─────────────────────────────────
         await joinRoom(p1Page, "Alice", roomCode);

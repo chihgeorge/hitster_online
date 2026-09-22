@@ -16,6 +16,7 @@
  */
 
 import { test, expect, type Page, type APIRequestContext } from "@playwright/test";
+import { createRoomAsHost } from "./helpers";
 
 const PARTYKIT_HOST = process.env.NEXT_PUBLIC_PARTYKIT_HOST ?? "localhost:1999";
 const PARTY_URL = (id: string) => `http://${PARTYKIT_HOST}/parties/playlist/${id}`;
@@ -89,11 +90,7 @@ test.describe("Two-player full game", () => {
 
       try {
         // ── 1. Create room ───────────────────────────────────────────────────
-        await hostPage.goto("/");
-        await hostPage.getByRole("button", { name: /Create a Room/i }).click();
-        await hostPage.waitForURL(/\/room\/[A-Z]+\/host$/);
-        const roomCode = hostPage.url().match(/\/room\/([A-Z]+)\/host$/)![1];
-        expect(roomCode).toHaveLength(4);
+        const roomCode = await createRoomAsHost(hostPage);
 
         // ── 2. Alice joins first, then Bob (order determines starting cards) ─
         await joinRoom(p1Page, "Alice", roomCode);
@@ -169,10 +166,7 @@ test.describe("Two-player game using saved playlist", () => {
 
       try {
         // ── 1. Create room ───────────────────────────────────────────────────
-        await hostPage.goto("/");
-        await hostPage.getByRole("button", { name: /Create a Room/i }).click();
-        await hostPage.waitForURL(/\/room\/[A-Z]+\/host$/);
-        const roomCode = hostPage.url().match(/\/room\/([A-Z]+)\/host$/)![1];
+        const roomCode = await createRoomAsHost(hostPage);
 
         // ── 2. Both players join ─────────────────────────────────────────────
         await joinRoom(p1Page, "Alice", roomCode);
