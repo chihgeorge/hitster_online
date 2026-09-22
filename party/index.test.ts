@@ -914,6 +914,58 @@ describe("Timeline mode: currentSong.videoId is screen/host-only", () => {
     await send(room, host, { type: "REVEAL", hostId: "h1" }); // authorizeHost marks this conn privileged
     expect(lastSentTo(host)?.state.currentSong?.videoId).toBe("REAL_ID");
   });
+
+  // Coverage gap found by /ship's coverage audit: JOIN_SCREEN shares claimOrValidateScreen with
+  // GET_LYRICS_AUDIO (which has these exact negative-path tests — see "Lyrics Mode: video id is
+  // screen-only" below), but the new entry point itself was never directly exercised.
+  it("refuses JOIN_SCREEN with an empty screenId", async () => {
+    const room = new HitsterRoom(makeRoom() as any);
+    const conn = makeConn();
+    await send(room, conn, { type: "JOIN_SCREEN", screenId: "" });
+    expect(lastSentTo(conn)?.type).toBe("ERROR");
+  });
+
+  it("refuses JOIN_SCREEN with a non-string screenId", async () => {
+    const room = new HitsterRoom(makeRoom() as any);
+    const conn = makeConn();
+    await send(room, conn, { type: "JOIN_SCREEN", screenId: 12345 as unknown as string });
+    expect(lastSentTo(conn)?.type).toBe("ERROR");
+  });
+
+  it("refuses JOIN_SCREEN from an impostor once the real screen has claimed the slot", async () => {
+    const room = new HitsterRoom(makeRoom() as any);
+    const screen = makeConn("screen-1");
+    await send(room, screen, { type: "JOIN_SCREEN", screenId: "real-token" });
+    expect(lastSentTo(screen)?.type).toBe("STATE"); // successful claim resends STATE, not ERROR
+
+    const impostor = makeConn("impostor-1");
+    await send(room, impostor, { type: "JOIN_SCREEN", screenId: "guessed-token" });
+    expect(lastSentTo(impostor)?.type).toBe("ERROR");
+  });
+
+  // Coverage gap: broadcastState's privileged-exclusion array was only ever exercised with one
+  // privileged connection at a time. Host AND screen privileged simultaneously covers the
+  // `privileged.length > 1` branch of both the room.broadcast(..., without) exclusion and the
+  // per-connection sendTo loop.
+  it("broadcastState sends the real videoId to both a privileged host and a privileged screen at once", async () => {
+    const room = new HitsterRoom(makeRoom() as any);
+    room.state.phase = "guessing";
+    room.state.hostId = "h1";
+    room.state.currentSong = { id: "s1", videoId: "REAL_ID", title: "Song A", artist: "Artist", year: 1985 };
+    const host = makeConn("host-1");
+    const screen = makeConn("screen-1");
+    await send(room, host, { type: "REVEAL", hostId: "h1" }); // claims host privilege
+    await send(room, screen, { type: "JOIN_SCREEN", screenId: "screen-token" }); // claims screen privilege
+    const player = makeConn("player-1");
+    room.onConnect(player);
+
+    // A broadcastState-triggering event every connection observes:
+    await send(room, player, { type: "JOIN", playerId: "00000000-0000-0000-0000-000000000005", name: "Eve" });
+
+    expect(lastSentTo(host)?.state.currentSong?.videoId).toBe("REAL_ID");
+    expect(lastSentTo(screen)?.state.currentSong?.videoId).toBe("REAL_ID");
+    expect(lastSentTo(player)?.state.currentSong?.videoId).toBe("");
+  });
 });
 
 // ─── UUID validation ──────────────────────────────────────────────────────────

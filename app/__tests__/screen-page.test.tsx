@@ -23,7 +23,9 @@ vi.mock("next/navigation", () => ({
 // files — stub the default export so this page's own conditional-rendering logic is what's
 // under test, but keep the real (pure, already-tested) helper exports LyricsPlayer provides.
 vi.mock("@/components/MusicPlayer", () => ({
-  default: (props: { phase: string }) => <div data-testid="music-player" data-phase={props.phase} />,
+  default: (props: { phase: string; currentSong: { videoId: string } | null }) => (
+    <div data-testid="music-player" data-phase={props.phase} data-video={props.currentSong?.videoId ?? ""} />
+  ),
 }));
 vi.mock("@/components/LyricsPlayer", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/components/LyricsPlayer")>();
@@ -103,6 +105,15 @@ describe("ScreenPage: Timeline mode", () => {
     expect(screen.getByTestId("music-player").getAttribute("data-phase")).toBe("guessing");
     expect(screen.getByText(/Alice 的回合/)).toBeTruthy();
     expect(screen.getByText("Alice")).toBeTruthy(); // from PlayerList
+  });
+
+  // Coverage gap found by /ship's coverage audit: the redaction/privilege logic is tested at the
+  // server boundary (party/index.test.ts), but nothing confirmed the client actually WIRES the
+  // videoId it receives into MusicPlayer — this is the user-visible payoff of the whole fix.
+  it("passes currentSong.videoId through to MusicPlayer once the server sends it", () => {
+    render(<ScreenPage />);
+    serverSends({ type: "STATE", state: guessingState });
+    expect(screen.getByTestId("music-player").getAttribute("data-video")).toBe(guessingState.currentSong?.videoId);
   });
 
   it("shows the winner heading when the game ends", () => {
