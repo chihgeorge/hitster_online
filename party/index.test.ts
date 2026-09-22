@@ -1851,11 +1851,14 @@ describe("Lyrics Mode: video id is screen-only", () => {
   // Regression/documentation: unlike hostId, claimOrValidateScreen has no "first connection"
   // race guard (see the comment on it in party/index.ts) — whoever sends GET_LYRICS_AUDIO with
   // a non-empty screenId FIRST claims the room's screen slot, even a connection that was never
-  // meant to be the screen. This is a known, accepted limitation (same shape as hostId's own
-  // claim race), not a bug — this test pins the current behavior so a future change to the
-  // claim logic is a deliberate, reviewed decision rather than an accidental regression.
-  // Found by /ship's coverage audit on 2026-09-22.
-  it("an early GET_LYRICS_AUDIO from any connection claims the screen slot first — known limitation, not a guard", async () => {
+  // meant to be the screen. This is NOT merely a denial-of-service squatting concern: the
+  // squatter's own connection receives LYRICS_AUDIO directly (see the assertion below), i.e. any
+  // player can self-issue the current round's video id from their own tab. Known, accepted gap
+  // (TODOS.md P1, real fix is a host-minted token) — this test pins the current behavior so a
+  // future change to the claim logic is a deliberate, reviewed decision, not an accidental
+  // regression. Found by /ship's coverage audit on 2026-09-22, severity corrected by the
+  // adversarial review on 2026-09-22.
+  it("an early GET_LYRICS_AUDIO from any connection claims the screen slot first, receiving the video id directly — known gap, not a guard", async () => {
     const { room, hostConn } = await setupLyricsGame();
     await send(room, hostConn, { type: "START_LYRICS_ROUND", hostId: "host-uuid" });
     // Some other connection (not the real /screen page) races in with a made-up token first.
