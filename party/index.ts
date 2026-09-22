@@ -168,23 +168,44 @@ export default class HitsterRoom implements Party.Server {
     this.room.broadcast(JSON.stringify(msg));
   }
 
-  private sanitizedState(): GameState {
+  private sanitizedState(forPrivileged = false): GameState {
     const { hostId: _h, ...rest } = this.state;
     return {
       ...rest,
       hostId: "",
-      // Strip year from deck — future answers must not be visible to clients
-      songs: rest.songs.map((s) => ({ ...s, year: 0 })),
-      // Strip year from currentSong during guessing — answer not yet revealed
-      currentSong:
-        rest.currentSong && rest.phase === "guessing"
-          ? { ...rest.currentSong, year: 0 }
-          : rest.currentSong,
+      // Strip year AND video id from the whole remaining deck — a player reading `songs[]`
+      // straight off the WebSocket (no rendering needed) could otherwise look up every future
+      // round's real video id in advance, not just the current one. Same mechanism as
+      // currentSong below; caught by adversarial review while fixing that one.
+      songs: rest.songs.map((s) => ({ ...s, year: 0, videoId: forPrivileged ? s.videoId : "" })),
+      currentSong: rest.currentSong
+        ? {
+            ...rest.currentSong,
+            // Strip year from currentSong during guessing — answer not yet revealed
+            year: rest.phase === "guessing" ? 0 : rest.currentSong.year,
+            // Players must not get the video id: opening the real YouTube link reveals the true
+            // title/upload date, defeating the year guess (same bug class as the Lyrics Mode leak
+            // fixed in v0.5.0.0/v0.5.1.0 — see sanitizedLyricsState). Only the host and the big
+            // screen (which actually plays it) get the real id.
+            videoId: forPrivileged ? rest.currentSong.videoId : "",
+          }
+        : null,
     };
   }
 
   private broadcastState() {
-    this.broadcast({ type: "STATE", state: this.sanitizedState() });
+    // Everyone gets the redacted STATE via the normal room broadcast, except privileged
+    // connections (host, screen) — they're excluded here and sent the real video id directly
+    // below instead. Keeps the common case a single room.broadcast, same as before this fix.
+    const privileged = [...this.privilegedConns];
+    this.room.broadcast(
+      JSON.stringify({ type: "STATE", state: this.sanitizedState(false) }),
+      privileged.map((c) => c.id)
+    );
+    if (privileged.length > 0) {
+      const full = { type: "STATE" as const, state: this.sanitizedState(true) };
+      for (const conn of privileged) this.sendTo(conn, full);
+    }
   }
 
   private sendTo(conn: Party.Connection, msg: ServerMessage) {
@@ -263,6 +284,9 @@ export default class HitsterRoom implements Party.Server {
         break;
       case "GET_LYRICS_AUDIO":
         this.handleGetLyricsAudio(sender, msg.screenId);
+        break;
+      case "JOIN_SCREEN":
+        this.handleJoinScreen(sender, msg.screenId);
         break;
       case "START_LYRICS_ROUND":
         this.handleStartLyricsRound(sender, msg.hostId);
@@ -421,9 +445,9 @@ export default class HitsterRoom implements Party.Server {
   }
 
   /**
-   * The room's screen credential works like hostId but claims lazily on first use (there is no
-   * separate JOIN_SCREEN message — GET_LYRICS_AUDIO is the only place a screen ever has to prove
-   * itself, so claiming there avoids a whole extra message type).
+   * The room's screen credential works like hostId but claims lazily on first use — either from
+   * JOIN_SCREEN (sent once on mount, so Timeline mode's video id starts flowing right away) or
+   * GET_LYRICS_AUDIO (Lyrics mode's per-round request; claims it too if JOIN_SCREEN raced it).
    */
   private claimOrValidateScreen(conn: Party.Connection, screenId: string): boolean {
     if (typeof screenId !== "string" || screenId === "") return false;
@@ -1120,13 +1144,28 @@ export default class HitsterRoom implements Party.Server {
     this.broadcast({ type: "LYRICS_ABORTED" });
   }
 
+  // Sent once by /screen on mount, independent of game mode — claims the screen credential right
+  // away so Timeline mode's currentSong.videoId (see sanitizedState) starts flowing on the very
+  // next broadcastState instead of waiting for a Lyrics-only GET_LYRICS_AUDIO that may never come.
+  private handleJoinScreen(conn: Party.Connection, screenId: string) {
+    if (!this.authorizeScreen(conn, screenId)) return;
+    // onConnect already sent this connection a redacted STATE (it wasn't privileged yet at that
+    // point) — resend the real one now instead of leaving /screen stuck without video until the
+    // next unrelated state change.
+    this.sendTo(conn, { type: "STATE", state: this.sanitizedState(true) });
+  }
+
+  /** Shared by JOIN_SCREEN and GET_LYRICS_AUDIO — see claimOrValidateScreen. */
+  private authorizeScreen(conn: Party.Connection, screenId: string): boolean {
+    if (this.claimOrValidateScreen(conn, screenId)) return true;
+    this.sendTo(conn, { type: "ERROR", error: "unauthorized" });
+    return false;
+  }
+
   // Screen-only: players never receive the video id (see sanitizedLyricsState). screenId
   // claims lazily here — see claimOrValidateScreen.
   private handleGetLyricsAudio(conn: Party.Connection, screenId: string) {
-    if (!this.claimOrValidateScreen(conn, screenId)) {
-      this.sendTo(conn, { type: "ERROR", error: "unauthorized" });
-      return;
-    }
+    if (!this.authorizeScreen(conn, screenId)) return;
     this.sendTo(conn, {
       type: "LYRICS_AUDIO",
       videoId: this.lyricsState?.currentRound?.videoId ?? null,

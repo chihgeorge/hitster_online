@@ -38,6 +38,14 @@ yarn-error.log*
 # vercel
 .vercel
 
+# partykit local dev state (Durable Object sqlite files — churns every `partykit dev` run,
+# was polluting /ship's evidence fingerprint since it wasn't ignored)
+.partykit/
+
+# playwright output — writes itself as untracked content mid test-run, same fingerprint issue
+/playwright-report/
+/test-results/
+
 # typescript
 *.tsbuildinfo
 next-env.d.ts
