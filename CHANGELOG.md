@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.6.0.0] — 2026-09-22
+
+### Added
+- **A big screen for TVs and projectors.** Opening `/room/<code>/screen` shows a read-only, room-distance-legible view of the game — the song, the timeline, the current lyric round with a giant countdown, scores, and results — separate from the host's phone. The host's own screen (`/room/<code>/host`) is now controls-only: buttons, the setup form, and a QR code that opens the big screen
+- **DESIGN.md**, documenting the app's existing visual system for the first time and the new screen's design decisions
+
+### Fixed
+- **The review step no longer leaks the answer deck.** Before confirming a Lyrics game, the full deck (with answers) used to go to every connected client, including players — both on the initial broadcast and, separately, to anyone who joined or reconnected mid-review. Now only the host and the big screen ever receive it
+- Player names and song info were unreadable on the new big screen (white text left over from an older dark background) — fixed to match the rest of the app
+- A lost connection could silently stop the big screen (and the host, for Lyrics answers) from getting updates; one dead connection no longer blocks delivery to everyone else
+
+### Changed
+- Lyrics Mode's audio now plays from the big screen instead of the host's own phone
+
 ## [0.5.1.0] — 2026-09-21
 
 ### Fixed

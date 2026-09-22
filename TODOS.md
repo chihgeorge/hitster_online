@@ -158,8 +158,9 @@
   Server silently drops answers for unknown/late-joining players. Send an ack or derive submitted from `lyricsState.answers[playerId]`. Also tag SUBMIT/TOO_LATE with the round index. Found by /ship adversarial review on 2026-09-21.
 - [ ] **P3** Client countdown uses the device clock against the server's `roundStart`  
   A device clock ahead by more than the round timer shows "Time's up" immediately. Send a server time offset. Found by /ship adversarial review on 2026-09-21.
-- [ ] **P2** The review step broadcasts the whole deck (video ids and answers) to every client  
-  `sanitizedLyricsState` sends `rounds` with answers revealed to all connections during `preview` so the host can review them. Players can read it from the WebSocket. Needs per-connection state (host gets the deck, players get an empty list). Found by /ship review on 2026-09-21.
+- [x] **P2** The review step broadcasts the whole deck (video ids and answers) to every client  
+  `sanitizedLyricsState` sends `rounds` with answers revealed to all connections during `preview` so the host can review them. Players can read it from the WebSocket. Needs per-connection state (host gets the deck, players get an empty list). Found by /ship review on 2026-09-21.  
+  **Completed:** v0.6.0.0 (2026-09-22) — the host/screen split's `privilegedConns`/`allConns` model routes the full deck only to the host and the big screen (`broadcastLyricsState`, and separately `onConnect` for a client that joins mid-review).
 - [ ] **P3** Play a video that can't be embedded: skip to the next song automatically  
   LyricsPlayer now warns the host, but the round still runs without audio. A skip message would need adding (the unused `LYRICS_ROUND_FAILED` type was removed in v0.5.1.0). Found by /ship adversarial review on 2026-09-21.
 - [ ] **P3** Timeline mode: tell the host when a song's video can't start  
