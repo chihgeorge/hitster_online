@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.5.1.0] — 2026-09-21
+
+### Fixed
+- **A bad video id can no longer crash the host page.** YouTube's player throws for a malformed video id (for example in a hand-made saved playlist). In Timeline mode that used to take down the whole host screen in round 2 ("This page couldn't load"). Now the round simply runs without audio, and Lyrics Mode shows its "can't play" notice
+- The song data table now labels songs with a hand-entered year as "manual" instead of leaving the source blank
+
+### Removed
+- The retired Spotify, iTunes, Google Knowledge Graph and YT Music year-lookup code (about 950 lines with tests). The AI metadata resolver replaced it in v0.2.0 and nothing used it
+- The host page's Spotify and Knowledge Graph warnings, which could never appear, and the unused `/room/:code/lobby` page (players join at `/play`)
+- Leftover starter images, an unused helper, unused message types and constants, and two unused dev dependencies
+
+### Changed
+- A misleading error hint no longer claims a missing Anthropic key causes "API key not configured"
+
 ## [0.5.0.0] — 2026-09-21
 
 ### Added

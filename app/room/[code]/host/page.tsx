@@ -7,7 +7,7 @@ import MusicPlayer from "@/components/MusicPlayer";
 import LyricsPlayer, { lyricsAudioProps, isAudioPhase, needsLyricsAudio } from "@/components/LyricsPlayer";
 import PlayerList from "@/components/PlayerList";
 import PlaylistEditor from "@/components/PlaylistEditor";
-import type { GameState, ServerMessage, ClientMessage, SongDiagnostic, DiagnosticStatus, EditableSong, PublicLyricsGameState, PublicLyricsRound, LyricsGameConfig } from "@/lib/game";
+import type { GameState, ServerMessage, ClientMessage, SongDiagnostic, EditableSong, PublicLyricsGameState, PublicLyricsRound, LyricsGameConfig } from "@/lib/game";
 
 const PARTYKIT_HOST = process.env.NEXT_PUBLIC_PARTYKIT_HOST || "localhost:1999";
 
@@ -49,7 +49,6 @@ export default function HostPage() {
   const [readySongCount, setReadySongCount] = useState(0);
   const [starting, setStarting] = useState(false);
   const [diagnostic, setDiagnostic] = useState<SongDiagnostic[] | null>(null);
-  const [diagnosticStatus, setDiagnosticStatus] = useState<DiagnosticStatus | null>(null);
   const [showDiagnostic, setShowDiagnostic] = useState(false);
   const [showContinuePrompt, setShowContinuePrompt] = useState(false);
   // Saved playlists
@@ -117,7 +116,6 @@ export default function HostPage() {
           setLoadStatus("idle");
           setDiagnostic(null);
           setSkippedEmbeddingCount(0);
-          setDiagnosticStatus(null);
           setPlaylistUrl("");
           setReadySongs([]);
           setShowSavePanel(false);
@@ -133,7 +131,6 @@ export default function HostPage() {
       }
       if (msg.type === "DIAGNOSTIC") {
         setDiagnostic(msg.songs);
-        setDiagnosticStatus(msg.status);
         if (msg.skippedEmbeddingCount) setSkippedEmbeddingCount(msg.skippedEmbeddingCount);
       }
       if (msg.type === "PLAYLIST_READY") {
@@ -212,7 +209,6 @@ export default function HostPage() {
     setError("");
     setDiagnostic(null);
     setSkippedEmbeddingCount(0);
-    setDiagnosticStatus(null);
     setLoadStatus("loading");
     setShowContinuePrompt(false);
     pendingStartAfterAbortRef.current = false;
@@ -327,7 +323,6 @@ export default function HostPage() {
     setError("");
     setDiagnostic(null);
     setSkippedEmbeddingCount(0);
-    setDiagnosticStatus(null);
     setLoadStatus("loading");
     const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
     if (!UUID_RE.test(id)) {
@@ -462,7 +457,6 @@ export default function HostPage() {
                     setLoadStatus("idle");
                     setDiagnostic(null);
                     setSkippedEmbeddingCount(0);
-                    setDiagnosticStatus(null);
                   }
                 }}
                 style={{ ...inp, flex: 1 }}
@@ -572,20 +566,6 @@ export default function HostPage() {
                 <div style={{ display: "flex", alignItems: "flex-start", gap: 6, fontSize: 12, color: "#E85520" }}>
                   <span style={{ marginTop: 1 }}>⚠</span>
                   <span>{skippedEmbeddingCount} 個影片已跳過 — 版權持有人停用了嵌入播放，這些歌曲在本遊戲中無法播放。這是 YouTube 的限制，與 API 金鑰無關。</span>
-                </div>
-              )}
-              {diagnosticStatus && (diagnosticStatus.spotifyRateLimited || diagnosticStatus.kgBlocked) && (
-                <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                  {diagnosticStatus.spotifyRateLimited && (
-                    <div style={{ display: "flex", alignItems: "flex-start", gap: 6, fontSize: 12, color: "#E85520" }}>
-                      <span>⚠</span><span>Spotify 請求過於頻繁 — 部分年份可能遺失，請稍後再試。</span>
-                    </div>
-                  )}
-                  {diagnosticStatus.kgBlocked && (
-                    <div style={{ display: "flex", alignItems: "flex-start", gap: 6, fontSize: 12, color: "#E85520" }}>
-                      <span>⚠</span><span>Google Knowledge Graph 未啟用 — 請在 Google Cloud Console 中啟用以獲得更好的覆蓋率。</span>
-                    </div>
-                  )}
                 </div>
               )}
               {showSavePanel && (
@@ -1063,11 +1043,8 @@ function DiagnosticTable({ songs, compact, hideYears }: { songs: SongDiagnostic[
                 <td style={{ padding: "7px 12px" }}>
                   {s.yearSource === "description" && <span style={{ color: "#00C896" }}>YouTube</span>}
                   {s.yearSource === "title" && <span style={{ color: "#5B8DEF" }}>title</span>}
-                  {s.yearSource === "ytmusic" && <span style={{ color: "#FF3B5C" }}>YT Music</span>}
-                  {s.yearSource === "spotify" && <span style={{ color: "#8B5CF6" }}>Spotify</span>}
-                  {s.yearSource === "itunes" && <span style={{ color: "#EC4899" }}>iTunes</span>}
-                  {s.yearSource === "google" && <span style={{ color: "#0EA5E9" }}>Google</span>}
                   {s.yearSource === "ai" && <span style={{ color: "#7C3AED" }}>AI</span>}
+                  {s.yearSource === "manual" && <span style={{ color: "#B0AFBC" }}>manual</span>}
                   {s.yearSource === null && <span style={{ color: "#B0AFBC" }}>not found</span>}
                 </td>
               </tr>
@@ -1106,12 +1083,12 @@ function errorInfo(code: string): { message: string; detail?: string; hint?: str
   };
   if (code === "not_enough_songs") return {
     message: "Not enough songs with known release years",
-    detail: "Fewer than 2 songs had a resolvable year (from description, title, or Spotify).",
+    detail: "Fewer than 2 songs had a resolvable year (from description, title, or AI lookup).",
     hint: "Try a playlist with more mainstream tracks, or one from YouTube Music.",
   };
   if (code === "api_key_missing") return {
     message: "API key not configured",
-    detail: "The server is missing YOUTUBE_API_KEY or Spotify credentials.",
+    detail: "The server is missing YOUTUBE_API_KEY.",
     hint: "Check that the environment variables are set in the PartyKit deployment.",
   };
   if (code === "playlist_forbidden") return {
@@ -1123,11 +1100,6 @@ function errorInfo(code: string): { message: string; detail?: string; hint?: str
     message: "Playlist not found (404)",
     detail: "YouTube returned a 404 for this playlist ID.",
     hint: "Double-check the URL — the playlist may have been deleted or set to private.",
-  };
-  if (code === "spotify_error") return {
-    message: "Spotify API error",
-    detail: "Could not get a Spotify access token. Client ID or secret may be wrong.",
-    hint: "Year lookup will fail for any songs without years in their title or description.",
   };
   if (code.startsWith("youtube_error:")) {
     const status = code.split(":")[1];

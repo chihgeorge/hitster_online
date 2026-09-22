@@ -49,7 +49,6 @@ const CPOP_SEED = [
 const LYRICS_DEFAULT_TIMER = 60;
 const LYRICS_DEFAULT_ROUNDS = 10;
 const LYRICS_ANSWER_GRACE_MS = 500;
-const LYRICS_MAX_CONSECUTIVE_SKIPS = 3;
 
 // Player name constraints
 const MAX_NAME_LENGTH = 20;
@@ -70,8 +69,6 @@ type PendingPlaylist = {
   songs: Card[];
   allSongs: EditableSong[];
   diagnostics: SongDiagnostic[];
-  spotifyRateLimited: boolean;
-  kgBlocked: boolean;
 };
 
 // ── Shared playlist resolution helpers ──────────────────────────────────────
@@ -109,7 +106,7 @@ function buildCardsFromAI(
     diagnostics.push({ title: cleanTitle, artist: cleanArtist, year, yearSource });
     allSongs.push({ videoId: t.videoId, title: cleanTitle, artist: cleanArtist, year });
     if (year) {
-      songs.push({ id: t.videoId, videoId: t.videoId, title: cleanTitle, artist: cleanArtist, year, yearSource: yearSource as Card["yearSource"] });
+      songs.push({ id: t.videoId, videoId: t.videoId, title: cleanTitle, artist: cleanArtist, year });
     }
   }
   return { songs, allSongs, diagnostics };
@@ -119,7 +116,7 @@ export default class HitsterRoom implements Party.Server {
   state: GameState;
   lyricsState: LyricsGameState | null = null;
   private lyricsConfig: LyricsGameConfig = { timerSeconds: LYRICS_DEFAULT_TIMER, totalRounds: LYRICS_DEFAULT_ROUNDS, fuzzyEnabled: false };
-  private lyricsDeck: (LyricsRound & { failed?: boolean })[] = [];
+  private lyricsDeck: LyricsRound[] = [];
   private pendingPlaylist: PendingPlaylist | null = null;
   private lyricsPreviewMap: Map<string, LyricsResult> = new Map();
   private abortLoad = false;
@@ -376,7 +373,6 @@ export default class HitsterRoom implements Party.Server {
     if (msg.includes("403")) return "playlist_forbidden";
     if (msg.includes("404")) return "playlist_not_found";
     if (msg.includes("YouTube API error")) return `youtube_error:${msg.match(/\d{3}/)?.[0] ?? "unknown"}`;
-    if (msg.includes("Spotify")) return "spotify_error";
     return "playlist_load_failed";
   }
 
@@ -407,8 +403,8 @@ export default class HitsterRoom implements Party.Server {
             videoId: `dQw4w9WgXcQ_${i}`, title: `Test Song ${1960 + i * 3}`,
             artist: "Test Artist", year: 1960 + i * 3,
           }));
-      const seedCards: Card[] = testSongs.map((song, i) => ({ id: `seed-${i}`, ...song, yearSource: "manual" as const }));
-      this.pendingPlaylist = { playlistId, songs: seedCards, allSongs: testSongs, diagnostics: [], spotifyRateLimited: false, kgBlocked: false };
+      const seedCards: Card[] = testSongs.map((song, i) => ({ id: `seed-${i}`, ...song }));
+      this.pendingPlaylist = { playlistId, songs: seedCards, allSongs: testSongs, diagnostics: [] };
       this.sendTo(conn, { type: "PLAYLIST_READY", songCount: testSongs.length, songs: testSongs });
       return;
     }
@@ -443,7 +439,6 @@ export default class HitsterRoom implements Party.Server {
       this.sendTo(conn, {
         type: "DIAGNOSTIC",
         songs: tracks.map((t, i) => ({ title: t.title, artist: metas[i].artist, year: null, yearSource: null })),
-        status: { spotifyRateLimited: false, kgBlocked: false },
         ...(skippedCount > 0 ? { skippedEmbeddingCount: skippedCount } : {}),
       });
 
@@ -451,8 +446,8 @@ export default class HitsterRoom implements Party.Server {
       const aiResults = await this.resolveAIWithCache(tracks, anthropicKey, (accumulated) => {
         if (this.abortLoad || mySeq !== this.loadSeq) return;
         const { songs: partialSongs, allSongs: partialAll, diagnostics: diagSongs } = buildCardsFromAI(tracks, metas, accumulated);
-        this.pendingPlaylist = { playlistId, songs: partialSongs, allSongs: partialAll, diagnostics: diagSongs, spotifyRateLimited: false, kgBlocked: false };
-        this.sendTo(conn, { type: "DIAGNOSTIC", songs: diagSongs, status: { spotifyRateLimited: false, kgBlocked: false } });
+        this.pendingPlaylist = { playlistId, songs: partialSongs, allSongs: partialAll, diagnostics: diagSongs };
+        this.sendTo(conn, { type: "DIAGNOSTIC", songs: diagSongs });
       });
 
       // Abort checkpoint after AI pass.
@@ -467,7 +462,7 @@ export default class HitsterRoom implements Party.Server {
       }
 
       const { songs, allSongs, diagnostics } = buildCardsFromAI(tracks, metas, aiResults);
-      this.pendingPlaylist = { playlistId, songs, allSongs, diagnostics, spotifyRateLimited: false, kgBlocked: false };
+      this.pendingPlaylist = { playlistId, songs, allSongs, diagnostics };
 
       if (allSongs.length < 2) {
         this.sendTo(conn, { type: "PLAYLIST_LOAD_ERROR", error: "not_enough_songs" });
@@ -610,7 +605,6 @@ export default class HitsterRoom implements Party.Server {
         title: sanitizeText(s.title, 200),
         artist: sanitizeText(s.artist ?? "", 100),
         year: s.year as number,
-        yearSource: "manual" as const,
       }));
     const allSongs: EditableSong[] = validSongs.map((s) => ({
       videoId: s.videoId,
@@ -634,8 +628,6 @@ export default class HitsterRoom implements Party.Server {
         year: s.year,
         yearSource: null,
       })),
-      spotifyRateLimited: false,
-      kgBlocked: false,
     };
 
     this.sendTo(conn, {
@@ -678,9 +670,9 @@ export default class HitsterRoom implements Party.Server {
     // ── Test seeds ───────────────────────────────────────────────────────────
     if (playlistUrl === "hitster://cpop-test") {
       this.state.targetCardCount = 3;
-      const cpopSongs: Card[] = CPOP_SEED.map((c, i) => ({ id: `cpop-${i}`, ...c, yearSource: "ytmusic" as const }));
+      const cpopSongs: Card[] = CPOP_SEED.map((c, i) => ({ id: `cpop-${i}`, ...c }));
       this.state.songs = cpopSongs;
-      this.broadcast({ type: "DIAGNOSTIC", songs: cpopSongs.map((s) => ({ title: s.title, artist: s.artist, year: s.year, yearSource: "ytmusic" as const })), status: { spotifyRateLimited: false, kgBlocked: false } });
+      this.broadcast({ type: "DIAGNOSTIC", songs: cpopSongs.map((s) => ({ title: s.title, artist: s.artist, year: s.year, yearSource: "manual" as const })) });
       this.dealStartingCardsAndStart();
       return;
     }
@@ -689,7 +681,7 @@ export default class HitsterRoom implements Party.Server {
       this.state.targetCardCount = 3;
       this.state.songs = Array.from({ length: 20 }, (_, i) => ({
         id: `test-${i}`, videoId: "dQw4w9WgXcQ", title: `Test Song ${1960 + i * 3}`,
-        artist: "Test Artist", year: 1960 + i * 3, yearSource: "manual" as const,
+        artist: "Test Artist", year: 1960 + i * 3,
       } satisfies Card));
       this.dealStartingCardsAndStart();
       return;
@@ -709,7 +701,7 @@ export default class HitsterRoom implements Party.Server {
         const artist = sanitizeText(ov?.artist || s.artist, 100) || s.artist;
         const rawYear = (ov?.year != null && isValidYear(ov.year)) ? ov.year : s.year;
         if (rawYear != null && isValidYear(rawYear)) {
-          resolvedCards.push({ id: s.videoId, videoId: s.videoId, title, artist, year: rawYear, yearSource: "manual" });
+          resolvedCards.push({ id: s.videoId, videoId: s.videoId, title, artist, year: rawYear });
         }
       }
       if (resolvedCards.length < 2) {
@@ -717,7 +709,7 @@ export default class HitsterRoom implements Party.Server {
         return;
       }
       this.state.songs = [...resolvedCards].sort(() => Math.random() - 0.5);
-      this.broadcast({ type: "DIAGNOSTIC", songs: pending.diagnostics, status: { spotifyRateLimited: pending.spotifyRateLimited, kgBlocked: pending.kgBlocked } });
+      this.broadcast({ type: "DIAGNOSTIC", songs: pending.diagnostics });
       this.pendingPlaylist = null;
       this.dealStartingCardsAndStart();
       return;

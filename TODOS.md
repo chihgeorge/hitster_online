@@ -161,4 +161,9 @@
 - [ ] **P2** The review step broadcasts the whole deck (video ids and answers) to every client  
   `sanitizedLyricsState` sends `rounds` with answers revealed to all connections during `preview` so the host can review them. Players can read it from the WebSocket. Needs per-connection state (host gets the deck, players get an empty list). Found by /ship review on 2026-09-21.
 - [ ] **P3** Play a video that can't be embedded: skip to the next song automatically  
-  LyricsPlayer now warns the host, but the round still runs without audio. `LYRICS_ROUND_FAILED` exists in `lib/game.ts` with no sender. Found by /ship adversarial review on 2026-09-21.
+  LyricsPlayer now warns the host, but the round still runs without audio. A skip message would need adding (the unused `LYRICS_ROUND_FAILED` type was removed in v0.5.1.0). Found by /ship adversarial review on 2026-09-21.
+- [ ] **P3** Timeline mode: tell the host when a song's video can't start  
+  MusicPlayer now survives a malformed video id (v0.5.1.0) but the round runs silently with no music and no notice; Lyrics Mode shows one. Reuse the LyricsPlayer "can't play" banner. Found by /ship adversarial review on 2026-09-21.
+- [ ] **P3** Reject malformed video ids when a playlist is saved or loaded  
+  `LOAD_SAVED_PLAYLIST` and the playlist party only check that `videoId` is a non-empty string. A server-side `/^[\w-]{11}$/` check would stop a bad id reaching the player at all. Found by /ship adversarial review on 2026-09-21.
+

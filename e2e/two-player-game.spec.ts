@@ -61,7 +61,7 @@ async function expectSpectating(page: Page, activePlayerName: string) {
 async function createSavedPlaylist(request: APIRequestContext): Promise<string> {
   const id = crypto.randomUUID();
   const songs = Array.from({ length: 20 }, (_, i) => ({
-    videoId: `sv_${i}`,
+    videoId: `svid${String(i).padStart(7, "0")}`, // 11 chars like a real YouTube id; the player API throws on malformed ids
     title: `Saved Song ${1960 + i * 3}`,
     artist: "Saved Artist",
     year: 1960 + i * 3,
@@ -207,15 +207,21 @@ test.describe("Two-player game using saved playlist", () => {
         await expect(hostPage.locator("[data-testid='next-round-btn']")).toBeVisible({ timeout: 10_000 });
         await hostPage.locator("[data-testid='next-round-btn']").click();
 
-        // ── 6. Round 3 (Alice's turn) — Alice wins ───────────────────────────
+        // ── 6. Round 3 (Alice's turn) — the game keeps going ─────────────────
+        // Unlike the hitster://test seed (forced 3-card win), a saved playlist uses the host's win target
+        // (slider minimum 5), so nobody wins yet: assert the game carries on into round 4 instead.
         await appendCard(p1Page);
         await expectSpectating(p2Page, "Alice");
 
         await expect(hostPage.locator("[data-testid='reveal-btn']")).toBeVisible({ timeout: 10_000 });
         await hostPage.locator("[data-testid='reveal-btn']").click();
+        await expect(hostPage.locator("[data-testid='next-round-btn']")).toBeVisible({ timeout: 10_000 });
+        await expect(p1Page.getByRole("heading", { name: "WINNER!" })).not.toBeVisible();
+        await hostPage.locator("[data-testid='next-round-btn']").click();
 
-        await expect(p1Page.getByRole("heading", { name: "WINNER!" })).toBeVisible({ timeout: 10_000 });
-        await expect(hostPage.getByText(/Winner!/i)).toBeVisible({ timeout: 10_000 });
+        // ── 7. Round 4 (Bob's turn) starts ───────────────────────────────────
+        await expectSpectating(p1Page, "Bob");
+        await expect(hostPage.locator("[data-testid='reveal-btn']")).toBeVisible({ timeout: 10_000 });
       } finally {
         await hostCtx.close();
         await p1Ctx.close();
