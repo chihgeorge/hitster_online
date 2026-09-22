@@ -127,11 +127,12 @@ export default class HitsterRoom implements Party.Server {
   // must match exactly. Unlike hostId, no "first connection" race guard applies — the screen
   // is expected to be a second device, connecting after the host.
   //
-  // KNOWN GAP (TODOS.md, P1, accepted 2026-09-22): screenId is just "whichever connection asks
-  // first," not "actually the TV" — any player can self-issue it from their own tab (devtools,
-  // one WS message) and get the current round's video id sent straight to them, then keeps
-  // receiving every future round's full answer deck via privilegedConns. Also permanently locks
-  // out the real screen once taken. Real fix is a host-minted token; deferred, not built here.
+  // KNOWN GAP (TODOS.md, P3, accepted 2026-09-22): screenId is just "whichever connection asks
+  // first," not "actually the TV" — a player would have to deliberately open devtools and send
+  // one WS message by hand to get the current round's video id early, then they'd keep receiving
+  // every future round's full answer deck via privilegedConns. Also permanently locks out the
+  // real screen once taken. Low realistic risk for a house game with friends; real fix is a
+  // host-minted token, deferred, not built here.
   private screenId = "";
   // Connections that have proven themselves host or screen (see markPrivileged) — the only
   // ones that get the full preview-phase deck (see broadcastLyricsState and onConnect).
