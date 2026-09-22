@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useParams, useSearchParams } from "next/navigation";
+import Link from "next/link";
 import usePartySocket from "partysocket/react";
 import Timeline from "@/components/Timeline";
 import Vinyl from "@/components/Vinyl";
@@ -358,6 +359,16 @@ export default function PlayPage() {
             <p style={{ color: "var(--orange-dk)", fontSize: 13, fontWeight: 700 }}>
               等待超過 90 秒？請確認房間代碼是否正確。
             </p>
+            {/* PartyKit creates rooms on demand — any 4-char code "exists", so the server can never
+                tell a genuinely wrong code from "the host just hasn't started yet". This can't become
+                a hard error, only an honest nudge with an actual way out instead of a dead-end
+                message. Found by /qa on 2026-09-21. */}
+            <Link href="/" style={{
+              display: "inline-block", marginTop: 10, fontSize: 13, fontWeight: 700,
+              color: "var(--orange)", textDecoration: "underline",
+            }}>
+              返回首頁重新輸入 → Back to homepage
+            </Link>
           </div>
         )}
       </main>

@@ -141,8 +141,9 @@
 
 ## QA findings 2026-09-21 (deferred)
 
-- [ ] **P3** Joining a nonexistent room code shows "waiting for host" forever  
-  PartyKit creates rooms on demand, so any code "exists". Needs a room registry or a host-presence check with an error message. Found by /qa on 2026-09-21.
+- [x] **P3** Joining a nonexistent room code shows "waiting for host" forever  
+  PartyKit creates rooms on demand, so any code "exists" — a real room registry or host-presence check is out of scope for the current in-memory room model (see the still-open "Room state is in memory only" item below).  
+  **Completed 2026-09-22:** the existing 90s warning (present since v0.1.0.0) was dead-end text with no way to act on it. Added a "返回首頁重新輸入 → Back to homepage" link next to it — an honest nudge with a real way out, not a hard error the server can't actually detect.
 - [x] **P2** Decide whether Lyrics Mode should play audio  
   Host round screen has a "Cut" button but only Timeline mode mounts `MusicPlayer`. Found by /qa on 2026-09-21.  
   **Completed:** v0.5.0.0 (2026-09-21) — host-side LyricsPlayer.
