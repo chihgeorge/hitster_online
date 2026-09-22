@@ -33,6 +33,11 @@ body {
 @keyframes dz-pulse    { 0%,100%{border-color:rgba(255,107,53,.3)} 50%{border-color:rgba(255,107,53,.7);background:rgba(255,107,53,.05)} }
 @keyframes sparkle     { from{opacity:.3;transform:scale(.7) rotate(-10deg)} to{opacity:1;transform:scale(1.15) rotate(10deg)} }
 @keyframes fade-up     { from{opacity:0;transform:translateY(10px)} to{opacity:1;transform:translateY(0)} }
+@keyframes confetti-fall {
+  0%   { transform: translateY(-10vh) rotate(0deg); opacity: 1; }
+  100% { transform: translateY(110vh) rotate(360deg); opacity: .9; }
+}
+@keyframes trophy-bounce { 0%,100%{transform:translateY(0) scale(1)} 50%{transform:translateY(-10px) scale(1.05)} }
 
 .animate-vinyl     { animation: vinyl-spin 9s linear infinite; }
 .animate-wave      { animation: wave-bar .7s ease-in-out infinite alternate; }
@@ -40,6 +45,8 @@ body {
 .animate-dz-pulse  { animation: dz-pulse 2s ease-in-out infinite; }
 .animate-sparkle   { animation: sparkle 2.2s ease-in-out infinite alternate; }
 .animate-fade-up   { animation: fade-up .3s ease-out; }
+.animate-confetti  { animation: confetti-fall linear infinite; }
+.animate-trophy    { animation: trophy-bounce 1.6s ease-in-out infinite; }
 
 /* ── outlined game title ── */
 .title-outlined {

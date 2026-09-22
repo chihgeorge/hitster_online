@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { useParams, useSearchParams } from "next/navigation";
 import usePartySocket from "partysocket/react";
 import Timeline from "@/components/Timeline";
+import Vinyl from "@/components/Vinyl";
 import type { GameState, ServerMessage, ClientMessage, Player, PublicLyricsGameState } from "@/lib/game";
 
 function getOrCreatePlayerId(): string {
@@ -14,22 +15,6 @@ function getOrCreatePlayerId(): string {
     localStorage.setItem(key, id);
   }
   return id;
-}
-
-function SmallVinyl({ size = 80 }: { size?: number }) {
-  return (
-    <div className="animate-vinyl rounded-full mx-auto" style={{
-      width: size, height: size,
-      background: "radial-gradient(circle, var(--orange) 0%, var(--orange-dk) 34%, var(--ink) 36%, var(--ink) 42%, var(--orange-dk) 44%, var(--ink) 46%, var(--ink) 56%, var(--orange-dk) 58%, var(--ink) 60%, var(--ink) 100%)",
-      boxShadow: "0 8px 28px rgba(255,107,53,.35)",
-      position: "relative", flexShrink: 0,
-    }}>
-      <div className="absolute rounded-full" style={{
-        top: "50%", left: "50%", transform: "translate(-50%,-50%)",
-        width: size * 0.2, height: size * 0.2, background: "var(--bg)",
-      }} />
-    </div>
-  );
 }
 
 export default function PlayPage() {
@@ -159,7 +144,7 @@ export default function PlayPage() {
     return (
       <main className="flex min-h-screen flex-col items-center justify-center gap-6 px-5 py-12"
         style={{ background: "var(--bg)" }}>
-        <SmallVinyl size={80} />
+        <Vinyl size={80} />
         <div style={{ textAlign: "center" }}>
           <p style={{ fontSize: 14, fontWeight: 700, color: "var(--ink)" }}>AI 正在準備歌詞…</p>
           <p style={{ fontSize: 12, color: "var(--text3)", marginTop: 4 }}>Preparing lyrics — almost ready!</p>
@@ -177,7 +162,7 @@ export default function PlayPage() {
     return (
       <main className="flex min-h-screen flex-col items-center justify-center gap-6 px-5 py-12"
         style={{ background: "var(--bg)" }}>
-        <SmallVinyl size={70} />
+        <Vinyl size={70} />
         <div style={{ textAlign: "center" }}>
           <p style={{ fontSize: 11, color: "var(--text3)", textTransform: "uppercase", letterSpacing: ".1em", marginBottom: 4 }}>
             第 {(lyricsState.currentRoundIndex ?? 0) + 1} / {lyricsState.totalRounds} 回合
@@ -264,7 +249,7 @@ export default function PlayPage() {
     return (
       <main className="flex min-h-screen flex-col items-center gap-6 px-5 py-12"
         style={{ background: "var(--bg)" }}>
-        <SmallVinyl size={70} />
+        <Vinyl size={70} />
         <p style={{ fontSize: 14, fontWeight: 700, color: "var(--ink)" }}>第 {lyricsState.currentRoundIndex + 1} 回合結果</p>
 
         {/* Correct answer */}
@@ -306,7 +291,7 @@ export default function PlayPage() {
     return (
       <main className="flex min-h-screen flex-col items-center justify-center gap-6 px-5 py-12"
         style={{ background: "var(--bg)" }}>
-        <SmallVinyl size={90} />
+        <Vinyl size={90} />
         <div style={{ textAlign: "center" }}>
           {isWinner ? (
             <>
@@ -341,7 +326,7 @@ export default function PlayPage() {
     return (
       <main className="flex min-h-screen flex-col items-center justify-center gap-6 px-5 py-12"
         style={{ background: "var(--bg)" }}>
-        <SmallVinyl size={80} />
+        <Vinyl size={80} />
         <h1 className="title-outlined" style={{ fontSize: 40, lineHeight: 1 }}>HITSTER!</h1>
 
         <div style={{
@@ -386,7 +371,7 @@ export default function PlayPage() {
     return (
       <main className="flex min-h-screen flex-col items-center justify-center gap-6 px-5 py-12"
         style={{ background: "var(--bg)" }}>
-        <SmallVinyl size={90} />
+        <Vinyl size={90} />
         <div style={{ textAlign: "center" }}>
           {isWinner ? (
             <>

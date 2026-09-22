@@ -125,10 +125,11 @@ Radius scale: 8px (chips, small badges) / 12px (buttons, inputs) / 16px (panels,
 - **Approach:** intentional, and deliberately calmer on `/screen` than on `/host`/`/play` — a shared, passive-viewing room reacts worse to busy motion than one person holding a phone, and a TV has no hover/cursor to drive micro-interactions with anyway.
 - **Easing:** enter(ease-out) exit(ease-in) move(ease-in-out)
 - **Duration:** micro(50-100ms) short(150-250ms) medium(250-400ms) long(400-700ms); the vinyl spin is a continuous 9s linear loop, not a duration-scale entrance/exit
-- **The one authored moment:** the vinyl-spin + sparkle pairing on a correct-answer/reveal moment — this is the one place decoration is allowed to be expressive; everywhere else motion stays functional (fades, no bounces or overshoot).
+- **The authored moments:** the vinyl-spin + sparkle pairing on a correct-answer/reveal moment, and (new) confetti + a bouncing trophy on the winner screen when the game ends — the two places decoration is allowed to be expressive; everywhere else motion stays functional (fades, no bounces or overshoot).
 
 ## Decisions Log
 | Date | Decision | Rationale |
 |------|----------|-----------|
 | 2026-09-22 | Documented the existing color/type/motion system (previously undocumented in code only) | Retroactive DESIGN.md for a system already proven across /host and /play; no research run, no new identity |
 | 2026-09-22 | /screen (new): fixed 960x540 Stage canvas, coarser layout, calmer motion, giant DM Mono countdown, marquee scoreboard | New TV/projector surface for the host/screen split (see /plan-eng-review, same session); ported the Stage-scaling pattern from sibling project critical-answer, kept hitster's own palette/fonts rather than critical-answer's pixel-dungeon theme (considered and declined — full re-skin, ~3-5 days, and a content-fit mismatch: dungeon look on a music-trivia game) |
+| 2026-09-22 | Guess-position marker ("?" block, orange token, no new color) + winner-screen confetti/trophy (second authored motion moment, existing palette only) | Both reuse existing tokens and the established `card`/`panel` visual language — no new colors, faces, or radii introduced; the winner screen is treated as a second deliberate celebration moment alongside the existing vinyl-spin + sparkle |

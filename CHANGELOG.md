@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.7.0.0] — 2026-09-22
+
+### Added
+- **A guess-position marker.** After placing a card, everyone — including you — sees a "?" block right where you put it, on your own timeline and on the big screen, before the reveal confirms whether you were right
+- **A winner celebration.** The big screen now shows confetti, a trophy, and victory music once the game ends
+
+### Fixed
+- A player joining mid-game and placing their very first card wouldn't get the new guess marker
+
 ## [0.6.3.0] — 2026-09-22
 
 ### Fixed
