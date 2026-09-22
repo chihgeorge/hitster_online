@@ -36,7 +36,7 @@ export default function Timeline({
       {currentSong && phase === "guessing" && isMyTurn && (
         <div style={{ marginBottom: 20 }}>
           <div style={{
-            background: "#FF6B35", borderRadius: 20, padding: "18px 20px",
+            background: "var(--orange)", borderRadius: 20, padding: "18px 20px",
             boxShadow: "0 8px 32px rgba(255,107,53,.35)",
           }}>
             <p style={{ fontSize: 11, color: "rgba(255,255,255,.7)", fontWeight: 700, textTransform: "uppercase", letterSpacing: ".1em", marginBottom: 8 }}>
@@ -62,11 +62,11 @@ export default function Timeline({
       {/* Spectator notice */}
       {currentSong && phase === "guessing" && !isMyTurn && (
         <div style={{
-          background: "#FFF0E8", borderRadius: 16, padding: "14px 16px",
+          background: "var(--surface2)", borderRadius: 16, padding: "14px 16px",
           border: "2px solid rgba(255,107,53,.2)", marginBottom: 16, textAlign: "center",
         }}>
-          <p style={{ color: "#7B7B9A", fontSize: 14 }}>
-            <span style={{ color: "#FF6B35", fontWeight: 900 }}>{activePlayerName ?? "玩家"}</span> 正在猜測中…
+          <p style={{ color: "var(--text2)", fontSize: 14 }}>
+            <span style={{ color: "var(--orange)", fontWeight: 900 }}>{activePlayerName ?? "玩家"}</span> 正在猜測中…
           </p>
         </div>
       )}
@@ -74,18 +74,18 @@ export default function Timeline({
       {/* Reveal result card */}
       {currentSong && phase === "reveal" && (
         <div style={{
-          background: "#1A1A2E", borderRadius: 20, padding: "20px 20px",
+          background: "var(--ink)", borderRadius: 20, padding: "20px 20px",
           boxShadow: "0 8px 32px rgba(26,26,46,.3)", marginBottom: 20, textAlign: "center",
         }}>
-          <p style={{ color: "#7B7B9A", fontSize: 12, textTransform: "uppercase", letterSpacing: ".1em", marginBottom: 6 }}>答案 · The Answer</p>
-          <p style={{ fontFamily: "var(--font-mono)", fontSize: 44, color: "#FFD600", fontWeight: 700, lineHeight: 1 }}>{currentSong.year}</p>
+          <p style={{ color: "var(--text2)", fontSize: 12, textTransform: "uppercase", letterSpacing: ".1em", marginBottom: 6 }}>答案 · The Answer</p>
+          <p style={{ fontFamily: "var(--font-mono)", fontSize: 44, color: "var(--gold)", fontWeight: 700, lineHeight: 1 }}>{currentSong.year}</p>
           <p style={{ color: "white", fontWeight: 700, fontSize: 15, marginTop: 6 }}>{currentSong.title}</p>
-          <p style={{ color: "#7B7B9A", fontSize: 13 }}>{currentSong.artist}</p>
+          <p style={{ color: "var(--text2)", fontSize: 13 }}>{currentSong.artist}</p>
         </div>
       )}
 
       {/* Timeline label */}
-      <p style={{ fontSize: 11, fontWeight: 700, color: "#B0AFBC", textTransform: "uppercase", letterSpacing: ".1em", marginBottom: 10 }}>
+      <p style={{ fontSize: 11, fontWeight: 700, color: "var(--text3)", textTransform: "uppercase", letterSpacing: ".1em", marginBottom: 10 }}>
         你的時間線 · Your Timeline ({timeline.length} cards)
       </p>
 
@@ -119,7 +119,7 @@ export default function Timeline({
 
           {timeline.length === 0 && !canPlace && (
             <div style={{
-              width: 160, background: "#FFF0E8", borderRadius: 16,
+              width: 160, background: "var(--surface2)", borderRadius: 16,
               border: "2px dashed rgba(255,107,53,.2)",
               display: "flex", alignItems: "center", justifyContent: "center",
               padding: "16px 12px", minHeight: 100,
@@ -131,7 +131,7 @@ export default function Timeline({
           )}
 
           {timeline.length === 0 && canPlace && (
-            <p style={{ color: "#B0AFBC", fontSize: 12, alignSelf: "center", padding: "0 8px" }}>
+            <p style={{ color: "var(--text3)", fontSize: 12, alignSelf: "center", padding: "0 8px" }}>
               放在任何位置
             </p>
           )}
@@ -142,23 +142,23 @@ export default function Timeline({
       {canPlace && (
         <div style={{
           position: "fixed", bottom: 0, left: 0, right: 0, padding: "16px 16px 24px",
-          background: "linear-gradient(to top, #FFF9F5 70%, transparent)",
+          background: "linear-gradient(to top, var(--bg) 70%, transparent)",
         }}>
           {hasPlaced ? (
             <div style={{
-              background: "#00C896", borderRadius: 16, padding: "15px", textAlign: "center",
+              background: "var(--mint)", borderRadius: 16, padding: "15px", textAlign: "center",
             }}>
               <p style={{ color: "white", fontWeight: 900, fontSize: 16 }}>已放置 ✓ 等待主持人揭曉</p>
             </div>
           ) : tooLate ? (
             <div style={{
-              background: "#FF3B5C", borderRadius: 16, padding: "15px", textAlign: "center",
+              background: "var(--red)", borderRadius: 16, padding: "15px", textAlign: "center",
             }}>
               <p style={{ color: "white", fontWeight: 900, fontSize: 16 }}>太晚了！</p>
             </div>
           ) : selectedPosition !== null ? (
             <button data-testid="place-btn" onClick={onPlace} style={{
-              width: "100%", background: "#FF6B35", color: "white",
+              width: "100%", background: "var(--orange)", color: "white",
               border: "none", borderRadius: 16, padding: "16px",
               fontSize: 17, fontWeight: 900, cursor: "pointer",
               fontFamily: "var(--font-zh)",
@@ -171,7 +171,7 @@ export default function Timeline({
               background: "white", borderRadius: 16, padding: "15px", textAlign: "center",
               border: "2px solid rgba(255,107,53,.2)",
             }}>
-              <p style={{ color: "#B0AFBC", fontSize: 14 }}>← 滑動時間線，點選位置 →</p>
+              <p style={{ color: "var(--text3)", fontSize: 14 }}>← 滑動時間線，點選位置 →</p>
             </div>
           )}
         </div>
@@ -190,20 +190,20 @@ function TimelineCard({ card }: { card: Card }) {
       boxShadow: "0 2px 10px rgba(255,107,53,.07)",
     }}>
       <p style={{
-        fontFamily: "var(--font-mono)", color: "#FF6B35", fontWeight: 700,
+        fontFamily: "var(--font-mono)", color: "var(--orange)", fontWeight: 700,
         fontSize: 22, lineHeight: 1,
       }}>
         {card.year}
       </p>
       <p style={{
-        fontWeight: 700, color: "#1A1A2E", fontSize: 11,
+        fontWeight: 700, color: "var(--ink)", fontSize: 11,
         lineHeight: 1.3, overflow: "hidden", display: "-webkit-box",
         WebkitLineClamp: 2, WebkitBoxOrient: "vertical",
       }}>
         {card.artist}
       </p>
       <p style={{
-        color: "#B0AFBC", fontSize: 10,
+        color: "var(--text3)", fontSize: 10,
         overflow: "hidden", display: "-webkit-box",
         WebkitLineClamp: 2, WebkitBoxOrient: "vertical", lineHeight: 1.3,
       }}>
@@ -228,13 +228,13 @@ function DropZone({
       className={selected ? "" : "animate-dz-pulse"}
       style={{
         width: 52, flexShrink: 0, minHeight: 100,
-        border: `2px dashed ${selected ? "#FF6B35" : "rgba(255,107,53,.35)"}`,
+        border: `2px dashed ${selected ? "var(--orange)" : "rgba(255,107,53,.35)"}`,
         borderRadius: 16, background: selected ? "rgba(255,107,53,.1)" : "transparent",
         cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center",
         transition: "border-color .15s, background .15s",
       }}
     >
-      <span style={{ fontSize: selected ? 18 : 16, color: selected ? "#FF6B35" : "rgba(255,107,53,.5)" }}>
+      <span style={{ fontSize: selected ? 18 : 16, color: selected ? "var(--orange)" : "rgba(255,107,53,.5)" }}>
         {selected ? "▶" : "+"}
       </span>
     </button>

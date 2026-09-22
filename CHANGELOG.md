@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.6.2.0] — 2026-09-22
+
+### Changed
+- Internal cleanup: every hardcoded color across the app now references the shared design tokens instead of repeating the hex value — no visible change, but a future palette tweak is now a one-line edit instead of a grep-and-replace across 13 files
+
 ## [0.6.1.0] — 2026-09-22
 
 ### Fixed
