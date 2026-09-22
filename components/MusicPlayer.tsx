@@ -24,19 +24,26 @@ export default function MusicPlayer({ currentSong, phase, placementCount, onReve
 
     function initPlayer() {
       if (!playerRef.current || !currentSong) return;
-      player = new window.YT.Player(playerRef.current, {
-        videoId: currentSong.videoId,
-        playerVars: {
-          autoplay: 1,
-          controls: 0,
-          modestbranding: 1,
-          playsinline: 1, // required for iOS Safari to stay in-page
-          rel: 0,
-        },
-        events: {
-          onReady: () => setPlayerReady(true),
-        },
-      });
+      // The YouTube API throws "Invalid video id" for a malformed id (e.g. a hand-made saved playlist).
+      // Thrown inside this effect it would take down the whole host page, so keep the round playable without audio.
+      try {
+        player = new window.YT.Player(playerRef.current, {
+          videoId: currentSong.videoId,
+          playerVars: {
+            autoplay: 1,
+            controls: 0,
+            modestbranding: 1,
+            playsinline: 1, // required for iOS Safari to stay in-page
+            rel: 0,
+          },
+          events: {
+            onReady: () => setPlayerReady(true),
+          },
+        });
+      } catch (err) {
+        console.warn("MusicPlayer: could not start the video", err);
+        player = null;
+      }
     }
 
     whenYouTubeApiReady(() => { if (!cancelled) initPlayer(); });

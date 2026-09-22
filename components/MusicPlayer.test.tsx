@@ -54,4 +54,21 @@ describe("MusicPlayer", () => {
     unmount();
     expect(FakePlayer.instances[0].destroy).toHaveBeenCalled();
   });
+
+  // Regression: the YouTube API throws "Invalid video id" for a malformed id. Inside the effect that took
+  // down the whole host page in round 2 of a saved-playlist game (found by the e2e suite).
+  it("keeps the page alive when the YouTube API throws for a malformed video id", () => {
+    w.YT = { Player: class { constructor() { throw new Error("Invalid video id"); } } };
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    expect(() => render(<MusicPlayer currentSong={song("sv_0")} {...props} />)).not.toThrow();
+  });
+
+  it("recovers on the next song after a malformed one", () => {
+    let calls = 0;
+    w.YT = { Player: class { constructor() { if (calls++ === 0) throw new Error("Invalid video id"); FakePlayer.instances.push(this as never); } destroy = vi.fn(); } };
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    const { rerender } = render(<MusicPlayer currentSong={song("bad")} {...props} />);
+    expect(() => rerender(<MusicPlayer currentSong={song("good-id-001")} {...props} />)).not.toThrow();
+    expect(FakePlayer.instances).toHaveLength(1);
+  });
 });

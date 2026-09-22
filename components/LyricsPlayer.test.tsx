@@ -304,3 +304,24 @@ describe("LyricsPlayer: notice and banner precedence", () => {
     expect(player().loadVideoById).toHaveBeenLastCalledWith("vid-2");
   });
 });
+
+describe("LyricsPlayer: malformed video id", () => {
+  // Regression: loadVideoById can throw for a malformed id; that must not crash the host page
+  it("shows the can't-play notice instead of throwing", () => {
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    const { rerender } = render(<LyricsPlayer videoId="vid-1" playing />);
+    player().ready();
+    player().loadVideoById.mockImplementation(() => { throw new Error("Invalid video id"); });
+    expect(() => rerender(<LyricsPlayer videoId="bad" playing />)).not.toThrow();
+  });
+
+  it("marks the round as failed when loading throws", () => {
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    const { rerender } = render(<LyricsPlayer videoId={null} playing={false} />);
+    player().ready();
+    player().loadVideoById.mockImplementation(() => { throw new Error("Invalid video id"); });
+    act(() => { rerender(<LyricsPlayer videoId="vid-x" playing />); });
+    expect(screen.getByTestId("lyrics-audio-error")).toBeTruthy();
+  });
+});
+
