@@ -168,4 +168,10 @@
   `LOAD_SAVED_PLAYLIST` and the playlist party only check that `videoId` is a non-empty string. A server-side `/^[\w-]{11}$/` check would stop a bad id reaching the player at all. Found by /ship adversarial review on 2026-09-21.
 - [ ] **P2** Timeline mode exposes the real video id to all players at all times  
   `sanitizedState()` (party/index.ts:150-163) strips `year` from `currentSong` but never `videoId`. A player can open the real YouTube link and see the true title/upload date, defeating the year-guess — same bug class as the Lyrics Mode leak fixed in v0.5.0.0/v0.5.1.0. Depends on the host/screen split landing first: `screenId` gives a clean place to route Timeline's video the way Lyrics audio already routes to the host. Found by `/plan-eng-review` on 2026-09-21.
+- [x] **High** Player names and reveal-phase song info were invisible on `/screen`  
+  `PlayerList` and `MusicPlayer`'s reveal panel used white text and near-transparent-white row backgrounds meant for a dark container; `/screen`'s light Stage background made it unreadable. Found and fixed by `/qa` on 2026-09-22 (ISSUE-001).
+- [ ] **P3** e2e coverage for the host/screen split (3-role flows)  
+  The existing e2e suite still passes (the Timeline-mode host contract — reveal-btn/next-round-btn — was kept intact) but nothing automated exercises `/screen` itself: video-only-on-screen, the preview-leak fix, screen reconnect. Manually verified in a real browser by `/qa` on 2026-09-22 instead. Found by `/plan-eng-review` on 2026-09-21 (T8), still open.
+- [ ] **P3** Check the host header's new QR panel at phone width  
+  Added in the host/screen split; not checked at narrow mobile viewports (the rest of `/host` is unchanged and already phone-first). Found by `/qa` on 2026-09-22.
 
