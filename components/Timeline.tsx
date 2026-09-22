@@ -28,6 +28,11 @@ export default function Timeline({
   tooLate,
 }: Props) {
   const canPlace = phase === "guessing" && isMyTurn && !hasPlaced && !tooLate;
+  // Once placed, show a static "?" where the guess landed instead of the interactive picker —
+  // lets the player (and anyone else looking at this timeline) see where the card went before
+  // the reveal confirms whether it was right. Cleared automatically once reveal/next round starts,
+  // since selectedPosition resets to null then (see app/room/[code]/play/page.tsx).
+  const guessPosition = hasPlaced && phase === "guessing" ? selectedPosition : null;
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 0, paddingBottom: 200 }}>
@@ -103,6 +108,7 @@ export default function Timeline({
               onSelect={() => onSelectPosition(0)}
             />
           )}
+          {guessPosition === 0 && <GuessMarker />}
 
           {timeline.map((card, idx) => (
             <div key={card.id} style={{ display: "flex", alignItems: "stretch", gap: 8 }}>
@@ -114,6 +120,7 @@ export default function Timeline({
                   onSelect={() => onSelectPosition(idx + 1)}
                 />
               )}
+              {guessPosition === idx + 1 && <GuessMarker />}
             </div>
           ))}
 
@@ -209,6 +216,23 @@ function TimelineCard({ card }: { card: Card }) {
       }}>
         {card.title}
       </p>
+    </div>
+  );
+}
+
+/** Static marker showing where a placed-but-not-yet-revealed guess landed. */
+function GuessMarker() {
+  return (
+    <div
+      data-testid="guess-marker"
+      style={{
+        width: 52, flexShrink: 0, minHeight: 100,
+        border: "2px solid var(--orange)", borderRadius: 16,
+        background: "rgba(255,107,53,.12)",
+        display: "flex", alignItems: "center", justifyContent: "center",
+      }}
+    >
+      <span style={{ fontSize: 22, fontWeight: 900, color: "var(--orange)" }}>?</span>
     </div>
   );
 }

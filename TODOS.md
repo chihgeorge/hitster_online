@@ -129,9 +129,10 @@
   All `<input type="text">` elements use `outline: "none"` as inline style with no `:focus-visible` CSS fallback. JS `onFocus/onBlur` border-color change provides visual feedback but bypasses CSS. Fix: move `outline: none` to CSS class and add `:focus-visible { outline: 2px solid var(--orange); }`. Touches `app/page.tsx` and `app/room/[code]/host/page.tsx`.  
   _Surfaced by /design-review on 2026-09-16_
 
-- [ ] **P3** Extract Vinyl component — duplicated between homepage and play page  
+- [x] **P3** Extract Vinyl component — duplicated between homepage and play page  
   `app/page.tsx:7–25` (Vinyl) and `app/room/[code]/play/page.tsx:19–33` (SmallVinyl) copy-paste the same `radial-gradient` string verbatim. Extract to `components/Vinyl.tsx` with a `size` prop.  
-  _Surfaced by /design-review on 2026-09-16_
+  _Surfaced by /design-review on 2026-09-16_  
+  **Completed:** extracted to `components/Vinyl.tsx`, used by both call sites plus the new winner screen.
 
 - [x] **P3** Replace hardcoded hex values with CSS variables  
   CSS tokens (`--orange`, `--ink`, `--bg`, `--text2`, etc.) are defined in `globals.css` `:root` but all component files use raw hex strings inline (`#FF6B35`, `#1A1A2E`, etc.). A palette change requires grep-and-replace across 4 files. Migrate to `var(--orange)` etc. at call sites.  

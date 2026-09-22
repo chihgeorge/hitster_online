@@ -12,6 +12,8 @@ Live: [hitsteronline.vercel.app](https://hitsteronline.vercel.app)
 - **Saved playlists** — hosts can save and reload playlists without re-fetching; inline song editor lets them correct titles, artists, and years
 - **Big screen** — `/room/<code>/screen` is a read-only, room-distance-legible view for a TV or projector: the song, timeline, lyric round with countdown, scores, and results. The host's own page (`/room/<code>/host`) is controls-only, with a QR code that opens the big screen
 - **Lyrics Mode** — the big screen plays each song (hidden YouTube video, so lyric videos can't spoil answers); players fill in the missing line. Autoplay starts each round, ✂️ Cut pauses it, and the song resumes on the results screen. Players never receive the current round's video id
+- **Guess-position marker** — after placing a card, a "?" block shows exactly where it landed on your own timeline and on the big screen's player list, for everyone to see before the reveal confirms it
+- **Winner celebration** — the big screen breaks into confetti, a trophy, and victory music once the game ends
 - **Real-time** via PartyKit WebSocket: all players see live state, scores, and turn order
 
 ## Tech stack
