@@ -6,9 +6,15 @@ import usePartySocket from "partysocket/react";
 import MusicPlayer from "@/components/MusicPlayer";
 import LyricsPlayer, { lyricsAudioProps, isAudioPhase, needsLyricsAudio } from "@/components/LyricsPlayer";
 import PlayerList from "@/components/PlayerList";
+import Confetti from "@/components/Confetti";
+import VictoryPlayer from "@/components/VictoryPlayer";
 import { Stage } from "@/components/Stage";
 import { getOrCreatePersistedId } from "@/lib/device-id";
 import type { GameState, ServerMessage, PublicLyricsGameState } from "@/lib/game";
+
+// TODO: set once a victory song is picked (a YouTube video id, e.g. "dQw4w9WgXcQ" from
+// https://www.youtube.com/watch?v=dQw4w9WgXcQ). null plays no music, confetti/trophy still show.
+const VICTORY_VIDEO_ID: string | null = null;
 
 // Read-only spectator view for a TV/projector — see DESIGN.md. No controls, no hostId: this page
 // never issues a game command, only the screenId credential GET_LYRICS_AUDIO needs.
@@ -116,10 +122,13 @@ export default function ScreenPage() {
             </div>
           )}
           {phase === "ended" && state && (
-            <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 20 }}>
+            <div style={{ position: "relative", flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 16, overflow: "hidden" }}>
+              <Confetti />
+              <VictoryPlayer videoId={VICTORY_VIDEO_ID} />
+              <p className="animate-trophy" style={{ fontSize: 64, lineHeight: 1 }}>🏆</p>
               <p style={label}>遊戲結束 · Winner!</p>
               <h2 className="title-outlined" style={{ fontSize: 48 }}>{state.players[state.winner ?? ""]?.name ?? "?"}</h2>
-              <div style={{ width: "100%", maxWidth: 520 }}>
+              <div style={{ width: "100%", maxWidth: 520, position: "relative", zIndex: 1 }}>
                 <PlayerList players={state.players} placements={{}} targetCardCount={state.targetCardCount} activePlayerId={null} />
               </div>
             </div>

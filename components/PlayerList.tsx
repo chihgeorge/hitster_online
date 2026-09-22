@@ -45,8 +45,14 @@ export default function PlayerList({ players, placements, targetCardCount, activ
             {/* Horizontal timeline tiles */}
             {player.timeline.length > 0 ? (
               <div className="flex flex-wrap gap-1.5">
+                {/* Where this player's guess landed, before reveal confirms it was right — everyone
+                    watching (not just the guessing player) sees the position, never the year. */}
+                {isActive && phase === "guessing" && placements[playerId] === 0 && <MiniGuessMarker />}
                 {player.timeline.map((card, i) => (
-                  <MiniTile key={card.id ?? i} card={card} />
+                  <div key={card.id ?? i} style={{ display: "flex", gap: 6 }}>
+                    <MiniTile card={card} />
+                    {isActive && phase === "guessing" && placements[playerId] === i + 1 && <MiniGuessMarker />}
+                  </div>
                 ))}
               </div>
             ) : (
@@ -59,6 +65,21 @@ export default function PlayerList({ players, placements, targetCardCount, activ
           </div>
         );
       })}
+    </div>
+  );
+}
+
+function MiniGuessMarker() {
+  return (
+    <div
+      data-testid="mini-guess-marker"
+      style={{
+        flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center",
+        borderRadius: 10, border: "1.5px solid var(--orange)", width: 32,
+        background: "rgba(255,107,53,.15)",
+      }}
+    >
+      <span style={{ fontWeight: 900, color: "var(--orange)", fontSize: 16 }}>?</span>
     </div>
   );
 }
