@@ -4,7 +4,7 @@ import MusicPlayer from "./MusicPlayer";
 import type { Card } from "@/lib/game";
 
 // Timeline-mode player: covers the shared-loader refactor (create when ready, not after unmount, safe early unmount)
-const song = (videoId: string): Card => ({ id: videoId, videoId, title: "t", artist: "a", year: 2000, yearSource: "manual" });
+const song = (videoId: string): Card => ({ id: videoId, videoId, title: "t", artist: "a", year: 2000 });
 const w = window as unknown as { YT?: unknown; onYouTubeIframeAPIReady?: () => void };
 
 class FakePlayer {
@@ -59,8 +59,11 @@ describe("MusicPlayer", () => {
   // down the whole host page in round 2 of a saved-playlist game (found by the e2e suite).
   it("keeps the page alive when the YouTube API throws for a malformed video id", () => {
     w.YT = { Player: class { constructor() { throw new Error("Invalid video id"); } } };
-    vi.spyOn(console, "warn").mockImplementation(() => {});
-    expect(() => render(<MusicPlayer currentSong={song("sv_0")} {...props} />)).not.toThrow();
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    let view: ReturnType<typeof render> | undefined;
+    expect(() => { view = render(<MusicPlayer currentSong={song("sv_0")} {...props} />); }).not.toThrow();
+    expect(warn).toHaveBeenCalled();
+    expect(() => view!.unmount()).not.toThrow(); // cleanup after a failed init must not throw either
   });
 
   it("recovers on the next song after a malformed one", () => {
@@ -70,5 +73,14 @@ describe("MusicPlayer", () => {
     const { rerender } = render(<MusicPlayer currentSong={song("bad")} {...props} />);
     expect(() => rerender(<MusicPlayer currentSong={song("good-id-001")} {...props} />)).not.toThrow();
     expect(FakePlayer.instances).toHaveLength(1);
+  });
+});
+
+describe("MusicPlayer: malformed video id cleanup", () => {
+  it("unmounting after a failed create does not throw", () => {
+    w.YT = { Player: class { constructor() { throw new Error("Invalid video id"); } } };
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    const { unmount } = render(<MusicPlayer currentSong={song("bad")} {...props} />);
+    expect(() => unmount()).not.toThrow();
   });
 });

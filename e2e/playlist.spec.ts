@@ -1,7 +1,7 @@
 /**
  * E2E tests for the custom-playlist feature.
  *
- * These tests use the hitster://test seed URL (no real YouTube/Spotify calls)
+ * These tests use the hitster://test seed URL (no real YouTube or Anthropic calls)
  * to verify the save → reload → load-saved → start-game round-trip.
  *
  * The playlist party HTTP API is tested directly against the local PartyKit dev server.

@@ -38,13 +38,15 @@ export interface LyricsGameConfig {
 
 export type GamePhase = "lobby" | "guessing" | "reveal" | "ended";
 
+/** Where a song's release year came from (shown in the host's song data table). */
+export type YearSource = "description" | "title" | "ai" | "manual";
+
 export interface Card {
   id: string;
   videoId: string;
   title: string;
   artist: string;
   year: number;
-  yearSource: "description" | "title" | "manual" | "ai";
 }
 
 export interface Player {
@@ -119,7 +121,7 @@ export type SongDiagnostic = {
   title: string;
   artist: string;
   year: number | null;
-  yearSource: "description" | "title" | "ai" | "manual" | null;
+  yearSource: YearSource | null;
 };
 
 // Public shape of LyricsRound broadcast to clients: blankSentence/acceptableVariants
@@ -146,7 +148,6 @@ export type ServerMessage =
   | { type: "PLAYLIST_LOAD_ERROR"; error: string }
   | { type: "PLAYLIST_SAVED"; playlistId: string }
   | { type: "TOO_LATE" }
-  | { type: "ROUND_SKIPPED" }
   | { type: "LYRICS_PREVIEW"; rounds: PublicLyricsRound[]; loading: boolean };
 
 // --- Placement evaluation (core game logic) ---

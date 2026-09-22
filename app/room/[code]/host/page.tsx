@@ -1044,6 +1044,7 @@ function DiagnosticTable({ songs, compact, hideYears }: { songs: SongDiagnostic[
                   {s.yearSource === "description" && <span style={{ color: "#00C896" }}>YouTube</span>}
                   {s.yearSource === "title" && <span style={{ color: "#5B8DEF" }}>title</span>}
                   {s.yearSource === "ai" && <span style={{ color: "#7C3AED" }}>AI</span>}
+                  {s.yearSource === "manual" && <span style={{ color: "#B0AFBC" }}>manual</span>}
                   {s.yearSource === null && <span style={{ color: "#B0AFBC" }}>not found</span>}
                 </td>
               </tr>
@@ -1087,7 +1088,7 @@ function errorInfo(code: string): { message: string; detail?: string; hint?: str
   };
   if (code === "api_key_missing") return {
     message: "API key not configured",
-    detail: "The server is missing YOUTUBE_API_KEY or ANTHROPIC_API_KEY.",
+    detail: "The server is missing YOUTUBE_API_KEY.",
     hint: "Check that the environment variables are set in the PartyKit deployment.",
   };
   if (code === "playlist_forbidden") return {
