@@ -8,6 +8,8 @@ export function Qr({ text, size = 88, alt = "掃描開啟" }: { text: string; si
   const [src, setSrc] = useState("");
   useEffect(() => {
     let live = true;
+    // Literal hex, not var(--ink)/var(--surface): the qrcode library draws to a canvas and needs
+    // a real color string, not a CSS custom property it can't resolve outside the DOM style system.
     QRCode.toDataURL(text, { width: size, margin: 1, color: { dark: "#1A1A2E", light: "#FFFFFF" } }).then((url) => {
       if (live) setSrc(url);
     });

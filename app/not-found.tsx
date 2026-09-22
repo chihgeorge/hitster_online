@@ -5,7 +5,7 @@ export default function NotFound() {
     <main
       style={{
         minHeight: "100vh",
-        background: "#FFF9F5",
+        background: "var(--bg)",
         display: "flex",
         flexDirection: "column",
         alignItems: "center",
@@ -21,20 +21,20 @@ export default function NotFound() {
           height: 80,
           borderRadius: "50%",
           background:
-            "radial-gradient(circle, #FF6B35 0%, #E85520 34%, #1A1A2E 36%, #1A1A2E 42%, #E85520 44%, #1A1A2E 46%, #1A1A2E 56%, #E85520 58%, #1A1A2E 60%, #1A1A2E 100%)",
+            "radial-gradient(circle, var(--orange) 0%, var(--orange-dk) 34%, var(--ink) 36%, var(--ink) 42%, var(--orange-dk) 44%, var(--ink) 46%, var(--ink) 56%, var(--orange-dk) 58%, var(--ink) 60%, var(--ink) 100%)",
           boxShadow: "0 8px 32px rgba(255,107,53,.3)",
           flexShrink: 0,
         }}
       />
 
       <div style={{ textAlign: "center", maxWidth: 320 }}>
-        <p style={{ fontSize: 13, letterSpacing: ".12em", color: "#B0AFBC", textTransform: "uppercase", marginBottom: 8 }}>
+        <p style={{ fontSize: 13, letterSpacing: ".12em", color: "var(--text3)", textTransform: "uppercase", marginBottom: 8 }}>
           404
         </p>
-        <h1 style={{ fontSize: 22, fontWeight: 900, color: "#1A1A2E", marginBottom: 6, lineHeight: 1.3 }}>
+        <h1 style={{ fontSize: 22, fontWeight: 900, color: "var(--ink)", marginBottom: 6, lineHeight: 1.3 }}>
           找不到這個頁面
         </h1>
-        <p style={{ fontSize: 14, color: "#7B7B9A", marginBottom: 0 }}>
+        <p style={{ fontSize: 14, color: "var(--text2)", marginBottom: 0 }}>
           Page not found
         </p>
       </div>
@@ -42,7 +42,7 @@ export default function NotFound() {
       <Link
         href="/"
         style={{
-          background: "#FF6B35",
+          background: "var(--orange)",
           color: "white",
           border: "none",
           borderRadius: 14,

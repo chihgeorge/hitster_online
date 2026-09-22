@@ -68,11 +68,11 @@ export default function ScreenPage() {
   }, [lyricsState?.phase, lyricsState?.roundStart, lyricsState?.timerSeconds]);
 
   const phase = state?.phase ?? "lobby";
-  const label: React.CSSProperties = { fontSize: 11, color: "#B0AFBC", textTransform: "uppercase", letterSpacing: ".1em" };
+  const label: React.CSSProperties = { fontSize: 11, color: "var(--text3)", textTransform: "uppercase", letterSpacing: ".1em" };
   const scoreRow = (players: Record<string, { name: string; score: number }>) => (
     <div style={{ display: "flex", gap: 14, alignItems: "center", flexWrap: "wrap" }}>
       {Object.entries(players).sort(([, a], [, b]) => b.score - a.score).map(([id, p]) => (
-        <span key={id} style={{ fontSize: 13, color: "#7B7B9A", fontWeight: 600 }}>{p.name}: <span style={{ color: "#FF6B35" }}>{p.score}</span></span>
+        <span key={id} style={{ fontSize: 13, color: "var(--text2)", fontWeight: 600 }}>{p.name}: <span style={{ color: "var(--orange)" }}>{p.score}</span></span>
       ))}
     </div>
   );
@@ -83,7 +83,7 @@ export default function ScreenPage() {
         {/* top bar */}
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "20px 32px 0 32px" }}>
           <h1 className="title-outlined-sm" style={{ fontSize: 22 }}>HITSTER!</h1>
-          <div style={{ background: "#FFF0E8", borderRadius: 10, padding: "6px 14px", fontFamily: "var(--font-mono)", fontSize: 15, color: "#7B7B9A" }}>
+          <div style={{ background: "var(--surface2)", borderRadius: 10, padding: "6px 14px", fontFamily: "var(--font-mono)", fontSize: 15, color: "var(--text2)" }}>
             房間 {params.code}
           </div>
         </div>
@@ -92,8 +92,8 @@ export default function ScreenPage() {
           {/* ── waiting for the host to start ───────────────────────────────── */}
           {phase === "lobby" && !lyricsState && (
             <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 16 }}>
-              <p style={{ fontSize: 22, fontWeight: 700, color: "#1A1A2E" }}>等待主持人開始遊戲…</p>
-              <p style={{ fontSize: 14, color: "#B0AFBC" }}>Waiting for the host to start</p>
+              <p style={{ fontSize: 22, fontWeight: 700, color: "var(--ink)" }}>等待主持人開始遊戲…</p>
+              <p style={{ fontSize: 14, color: "var(--text3)" }}>Waiting for the host to start</p>
             </div>
           )}
 
@@ -128,14 +128,14 @@ export default function ScreenPage() {
           {/* ── Lyrics mode ──────────────────────────────────────────────────── */}
           {lyricsState?.phase === "loading" && (
             <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 16 }}>
-              <div className="animate-vinyl" style={{ width: 64, height: 64, borderRadius: "50%", background: "radial-gradient(circle at 35% 35%, #3a3a4a, #1A1A2E 70%)" }} />
-              <p style={{ fontSize: 20, fontWeight: 700, color: "#1A1A2E" }}>AI 正在準備歌詞…</p>
+              <div className="animate-vinyl" style={{ width: 64, height: 64, borderRadius: "50%", background: "radial-gradient(circle at 35% 35%, #3a3a4a, var(--ink) 70%)" }} />
+              <p style={{ fontSize: 20, fontWeight: 700, color: "var(--ink)" }}>AI 正在準備歌詞…</p>
             </div>
           )}
           {lyricsState?.phase === "preview" && (
             <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 10 }}>
-              <p style={{ fontSize: 20, fontWeight: 700, color: "#1A1A2E" }}>歌曲已準備好 · Ready</p>
-              <p style={{ fontSize: 14, color: "#B0AFBC" }}>等待主持人確認開始</p>
+              <p style={{ fontSize: 20, fontWeight: 700, color: "var(--ink)" }}>歌曲已準備好 · Ready</p>
+              <p style={{ fontSize: 14, color: "var(--text3)" }}>等待主持人確認開始</p>
             </div>
           )}
           {(lyricsState?.phase === "playing" || lyricsState?.phase === "guessing") && lyricsState.currentRound && (
@@ -145,11 +145,11 @@ export default function ScreenPage() {
                 {scoreRow(lyricsState.players)}
               </div>
               <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 24 }}>
-                <p style={{ textAlign: "center", color: "#7B7B9A", fontSize: 20, lineHeight: 1.6, maxWidth: 780, whiteSpace: "pre-wrap" }}>
+                <p style={{ textAlign: "center", color: "var(--text2)", fontSize: 20, lineHeight: 1.6, maxWidth: 780, whiteSpace: "pre-wrap" }}>
                   {lyricsState.currentRound.lyricContext}
                 </p>
                 {lyricsState.phase === "guessing" && (
-                  <p style={{ fontFamily: "var(--font-mono)", fontWeight: 500, fontSize: 140, lineHeight: 1, color: (lyricsTimerLeft ?? 99) <= 5 ? "#FF3B5C" : "#FF6B35" }}>
+                  <p style={{ fontFamily: "var(--font-mono)", fontWeight: 500, fontSize: 140, lineHeight: 1, color: (lyricsTimerLeft ?? 99) <= 5 ? "var(--red)" : "var(--orange)" }}>
                     {String(lyricsTimerLeft ?? lyricsState.timerSeconds).padStart(2, "0")}
                   </p>
                 )}
@@ -159,18 +159,18 @@ export default function ScreenPage() {
           {lyricsState?.phase === "results" && lyricsState.currentRound && (
             <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 16, minHeight: 0 }}>
               <p style={label}>第 {lyricsState.currentRoundIndex + 1} / {lyricsState.totalRounds} 回合 · 結果</p>
-              <div style={{ background: "#FFF0E8", borderRadius: 16, padding: "20px 24px", textAlign: "center" }}>
-                <p style={{ fontSize: 13, color: "#B0AFBC" }}>{lyricsState.currentRound.title} · {lyricsState.currentRound.artist}</p>
-                <p style={{ fontSize: 26, fontWeight: 900, color: "#FF6B35", marginTop: 4 }}>{lyricsState.currentRound.blankSentence ?? "（已揭曉）"}</p>
+              <div style={{ background: "var(--surface2)", borderRadius: 16, padding: "20px 24px", textAlign: "center" }}>
+                <p style={{ fontSize: 13, color: "var(--text3)" }}>{lyricsState.currentRound.title} · {lyricsState.currentRound.artist}</p>
+                <p style={{ fontSize: 26, fontWeight: 900, color: "var(--orange)", marginTop: 4 }}>{lyricsState.currentRound.blankSentence ?? "（已揭曉）"}</p>
               </div>
               <div style={{ flex: 1, overflowY: "auto", display: "flex", flexDirection: "column", gap: 8 }}>
                 {Object.entries(lyricsState.players).sort(([, a], [, b]) => b.score - a.score).map(([id, p]) => {
                   const ans = lyricsState.answers[id];
                   return (
                     <div key={id} style={{ display: "flex", alignItems: "center", gap: 12, background: ans?.correct ? "rgba(0,200,150,.08)" : "rgba(255,107,53,.04)", borderRadius: 12, padding: "10px 16px" }}>
-                      <span style={{ fontWeight: 700, color: "#1A1A2E", flex: 1 }}>{p.name}</span>
-                      {ans ? <span style={{ fontWeight: 900, color: ans.correct ? "#00C896" : "#FF3B5C" }}>{ans.correct ? `+${ans.points}` : "✗"}</span> : <span style={{ color: "#B0AFBC" }}>未作答</span>}
-                      <span style={{ fontWeight: 900, color: "#FF6B35", minWidth: 40, textAlign: "right" }}>{p.score}</span>
+                      <span style={{ fontWeight: 700, color: "var(--ink)", flex: 1 }}>{p.name}</span>
+                      {ans ? <span style={{ fontWeight: 900, color: ans.correct ? "var(--mint)" : "var(--red)" }}>{ans.correct ? `+${ans.points}` : "✗"}</span> : <span style={{ color: "var(--text3)" }}>未作答</span>}
+                      <span style={{ fontWeight: 900, color: "var(--orange)", minWidth: 40, textAlign: "right" }}>{p.score}</span>
                     </div>
                   );
                 })}
@@ -185,10 +185,10 @@ export default function ScreenPage() {
               </h2>
               <div style={{ width: "100%", maxWidth: 520, display: "flex", flexDirection: "column", gap: 8 }}>
                 {Object.entries(lyricsState.players).sort(([, a], [, b]) => b.score - a.score).map(([id, p], i) => (
-                  <div key={id} style={{ display: "flex", alignItems: "center", gap: 12, background: i === 0 ? "#1A1A2E" : "white", border: "2px solid rgba(255,107,53,.15)", borderRadius: 14, padding: "10px 18px" }}>
-                    <span style={{ fontWeight: 900, color: i === 0 ? "#FFD600" : "#B0AFBC", minWidth: 28 }}>#{i + 1}</span>
-                    <span style={{ fontWeight: 700, color: i === 0 ? "#FFF9F5" : "#1A1A2E", flex: 1 }}>{p.name}</span>
-                    <span style={{ fontWeight: 900, color: i === 0 ? "#FFD600" : "#FF6B35", fontFamily: "var(--font-mono)" }}>{p.score}</span>
+                  <div key={id} style={{ display: "flex", alignItems: "center", gap: 12, background: i === 0 ? "var(--ink)" : "white", border: "2px solid rgba(255,107,53,.15)", borderRadius: 14, padding: "10px 18px" }}>
+                    <span style={{ fontWeight: 900, color: i === 0 ? "var(--gold)" : "var(--text3)", minWidth: 28 }}>#{i + 1}</span>
+                    <span style={{ fontWeight: 700, color: i === 0 ? "var(--bg)" : "var(--ink)", flex: 1 }}>{p.name}</span>
+                    <span style={{ fontWeight: 900, color: i === 0 ? "var(--gold)" : "var(--orange)", fontFamily: "var(--font-mono)" }}>{p.score}</span>
                   </div>
                 ))}
               </div>

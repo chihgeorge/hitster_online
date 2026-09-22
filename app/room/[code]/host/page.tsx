@@ -330,8 +330,8 @@ export default function HostPage() {
   const playerCount = Object.keys(state?.players ?? {}).length;
 
   const inp: React.CSSProperties = {
-    background: "#FFF0E8", border: "2px solid rgba(255,107,53,.2)", borderRadius: 14,
-    padding: "12px 16px", fontSize: 14, color: "#1A1A2E", outline: "none",
+    background: "var(--surface2)", border: "2px solid rgba(255,107,53,.2)", borderRadius: 14,
+    padding: "12px 16px", fontSize: 14, color: "var(--ink)", outline: "none",
     fontFamily: "var(--font-zh)",
   };
   const panel: React.CSSProperties = {
@@ -340,34 +340,34 @@ export default function HostPage() {
   };
 
   return (
-    <div style={{ minHeight: "100vh", background: "#FFF9F5", display: "flex", flexDirection: "column", gap: 20, padding: 24, maxWidth: 960, margin: "0 auto" }}>
+    <div style={{ minHeight: "100vh", background: "var(--bg)", display: "flex", flexDirection: "column", gap: 20, padding: 24, maxWidth: 960, margin: "0 auto" }}>
       {/* Header */}
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
           <h1 className="title-outlined-sm" style={{ fontSize: 28, lineHeight: 1 }}>HITSTER!</h1>
           <div style={{ background: "white", borderRadius: 16, padding: "10px 20px", boxShadow: "0 2px 12px rgba(255,107,53,.1)", border: "2px solid rgba(255,107,53,.15)" }}>
-            <p style={{ fontSize: 10, color: "#B0AFBC", fontWeight: 700, textTransform: "uppercase", letterSpacing: ".12em", marginBottom: 2 }}>
+            <p style={{ fontSize: 10, color: "var(--text3)", fontWeight: 700, textTransform: "uppercase", letterSpacing: ".12em", marginBottom: 2 }}>
               Room Code
             </p>
-            <p style={{ fontFamily: "var(--font-mono)", fontSize: 26, letterSpacing: ".2em", color: "#FF6B35", fontWeight: 900, lineHeight: 1 }}>
+            <p style={{ fontFamily: "var(--font-mono)", fontSize: 26, letterSpacing: ".2em", color: "var(--orange)", fontWeight: 900, lineHeight: 1 }}>
               {params.code}
             </p>
           </div>
           {/* Big screen: open on a TV/projector. Never shown to players — the code above is the
               only thing they need, this link is host-only setup. */}
-          <div style={{ display: "flex", alignItems: "center", gap: 10, background: "#FFF0E8", borderRadius: 16, padding: "10px 14px", border: "2px solid rgba(255,107,53,.15)" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10, background: "var(--surface2)", borderRadius: 16, padding: "10px 14px", border: "2px solid rgba(255,107,53,.15)" }}>
             <Qr text={typeof window !== "undefined" ? `${window.location.origin}/room/${params.code}/screen` : ""} size={64} alt="大螢幕 QR" />
-            <div style={{ fontSize: 11, color: "#7B7B9A", maxWidth: 120, lineHeight: 1.4 }}>
+            <div style={{ fontSize: 11, color: "var(--text2)", maxWidth: 120, lineHeight: 1.4 }}>
               📺 在電視或投影機掃描開啟大螢幕
             </div>
           </div>
         </div>
         <div style={{ textAlign: "right", fontSize: 13, display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 3, flexShrink: 1, minWidth: 0 }}>
           {Object.values(state?.players ?? {}).length === 0 ? (
-            <span style={{ color: "#B0AFBC" }}>No players yet</span>
+            <span style={{ color: "var(--text3)" }}>No players yet</span>
           ) : (
             Object.values(state?.players ?? {}).map((p) => (
-              <span key={p.name} style={{ color: "#7B7B9A", fontWeight: 600 }}>{p.name}</span>
+              <span key={p.name} style={{ color: "var(--text2)", fontWeight: 600 }}>{p.name}</span>
             ))
           )}
         </div>
@@ -378,9 +378,9 @@ export default function HostPage() {
         <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 16, padding: "64px 0" }}>
           <div style={{ position: "relative", width: 56, height: 56 }}>
             <div style={{ position: "absolute", inset: 0, borderRadius: "50%", border: "4px solid rgba(255,107,53,.15)" }} />
-            <div className="animate-spin" style={{ position: "absolute", inset: 0, borderRadius: "50%", border: "4px solid transparent", borderTopColor: "#FF6B35" }} />
+            <div className="animate-spin" style={{ position: "absolute", inset: 0, borderRadius: "50%", border: "4px solid transparent", borderTopColor: "var(--orange)" }} />
           </div>
-          <p style={{ fontSize: 16, fontWeight: 700, color: "#1A1A2E" }}>Starting game…</p>
+          <p style={{ fontSize: 16, fontWeight: 700, color: "var(--ink)" }}>Starting game…</p>
         </div>
       )}
 
@@ -388,17 +388,17 @@ export default function HostPage() {
       {phase === "lobby" && !starting && (!lyricsState || lyricsState.phase === "preview") && (
         <>
         <form onSubmit={handleStartGame} style={{ ...panel, display: "flex", flexDirection: "column", gap: 18 }}>
-          <h2 style={{ fontWeight: 900, fontSize: 17, color: "#1A1A2E" }}>設定遊戲 · Set Up Game</h2>
+          <h2 style={{ fontWeight: 900, fontSize: 17, color: "var(--ink)" }}>設定遊戲 · Set Up Game</h2>
 
           {/* Setup controls: hidden while reviewing the generated lyrics deck */}
           {lyricsState?.phase !== "preview" && (<>
           {/* Mode picker */}
-          <div style={{ display: "flex", gap: 0, background: "#FFF0E8", borderRadius: 12, padding: 4 }}>
+          <div style={{ display: "flex", gap: 0, background: "var(--surface2)", borderRadius: 12, padding: 4 }}>
             {(["timeline", "lyrics"] as const).map((m) => (
               <button key={m} type="button" onClick={() => setGameMode(m)}
                 style={{ flex: 1, padding: "10px 0", borderRadius: 10, border: "none", cursor: "pointer", fontWeight: 900, fontSize: 13, fontFamily: "var(--font-zh)", transition: "all .15s",
-                  background: gameMode === m ? "#FF6B35" : "transparent",
-                  color: gameMode === m ? "white" : "#B0AFBC",
+                  background: gameMode === m ? "var(--orange)" : "transparent",
+                  color: gameMode === m ? "white" : "var(--text3)",
                   boxShadow: gameMode === m ? "0 2px 8px rgba(255,107,53,.3)" : "none",
                 }}>
                 {m === "timeline" ? "📅 時間軸模式" : "🎵 歌詞模式"}
@@ -408,7 +408,7 @@ export default function HostPage() {
 
           {/* URL input + Load button */}
           <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-            <label style={{ fontSize: 12, fontWeight: 700, color: "#7B7B9A" }}>YouTube 播放清單 URL</label>
+            <label style={{ fontSize: 12, fontWeight: 700, color: "var(--text2)" }}>YouTube 播放清單 URL</label>
             <div style={{ display: "flex", gap: 10 }}>
               <input
                 type="url"
@@ -431,7 +431,7 @@ export default function HostPage() {
                 onClick={handleLoadPlaylist}
                 disabled={!playlistUrl.trim() || loadStatus === "loading"}
                 style={{
-                  flexShrink: 0, background: "#FF6B35", color: "white", border: "none", borderRadius: 14,
+                  flexShrink: 0, background: "var(--orange)", color: "white", border: "none", borderRadius: 14,
                   padding: "12px 20px", fontSize: 14, fontWeight: 900, cursor: "pointer",
                   fontFamily: "var(--font-zh)", opacity: (!playlistUrl.trim() || loadStatus === "loading") ? 0.45 : 1,
                   display: "flex", alignItems: "center", gap: 8, alignSelf: "stretch", boxSizing: "border-box",
@@ -451,12 +451,12 @@ export default function HostPage() {
           {/* Loading progress */}
           {loadStatus === "loading" && (
             <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-              <div style={{ background: "#FFF0E8", borderRadius: 14, border: "2px solid rgba(255,107,53,.15)", padding: "14px 16px", display: "flex", flexDirection: "column", gap: 8 }}>
+              <div style={{ background: "var(--surface2)", borderRadius: 14, border: "2px solid rgba(255,107,53,.15)", padding: "14px 16px", display: "flex", flexDirection: "column", gap: 8 }}>
                 <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", fontSize: 13 }}>
-                  <span style={{ fontWeight: 700, color: "#1A1A2E" }}>查找發行年份中…</span>
+                  <span style={{ fontWeight: 700, color: "var(--ink)" }}>查找發行年份中…</span>
                   {diagnostic && (
-                    <span style={{ color: "#B0AFBC" }}>
-                      <span style={{ color: "#FF6B35", fontWeight: 900 }}>{diagnostic.filter((s) => s.year !== null).length}</span>
+                    <span style={{ color: "var(--text3)" }}>
+                      <span style={{ color: "var(--orange)", fontWeight: 900 }}>{diagnostic.filter((s) => s.year !== null).length}</span>
                       {" / "}{diagnostic.length}
                     </span>
                   )}
@@ -464,7 +464,7 @@ export default function HostPage() {
                 {diagnostic && (
                   <div style={{ width: "100%", background: "rgba(255,107,53,.12)", borderRadius: 99, height: 6, overflow: "hidden" }}>
                     <div style={{
-                      height: "100%", background: "#FF6B35", borderRadius: 99, transition: "width .5s",
+                      height: "100%", background: "var(--orange)", borderRadius: 99, transition: "width .5s",
                       width: `${Math.round((diagnostic.filter((s) => s.year !== null).length / Math.max(diagnostic.length, 1)) * 100)}%`,
                     }} />
                   </div>
@@ -473,16 +473,16 @@ export default function HostPage() {
               {showContinuePrompt && (() => {
                 const resolvedCount = diagnostic?.filter((s) => s.year !== null).length ?? 0;
                 return (
-                  <div style={{ background: "#FFF0E8", border: "2px solid rgba(255,107,53,.35)", borderRadius: 14, padding: "16px", display: "flex", flexDirection: "column", gap: 10 }}>
-                    <p style={{ fontWeight: 900, fontSize: 13, color: "#E85520" }}>仍在搜索年份中… Still searching</p>
-                    <p style={{ fontSize: 12, color: "#7B7B9A" }}>
-                      已找到 <span style={{ color: "#FF6B35", fontWeight: 900 }}>{resolvedCount}</span> 首歌曲。繼續搜索或立即開始？
+                  <div style={{ background: "var(--surface2)", border: "2px solid rgba(255,107,53,.35)", borderRadius: 14, padding: "16px", display: "flex", flexDirection: "column", gap: 10 }}>
+                    <p style={{ fontWeight: 900, fontSize: 13, color: "var(--orange-dk)" }}>仍在搜索年份中… Still searching</p>
+                    <p style={{ fontSize: 12, color: "var(--text2)" }}>
+                      已找到 <span style={{ color: "var(--orange)", fontWeight: 900 }}>{resolvedCount}</span> 首歌曲。繼續搜索或立即開始？
                     </p>
                     <div style={{ display: "flex", gap: 8 }}>
                       <button
                         type="button"
                         onClick={() => { setShowContinuePrompt(false); nextPromptAtRef.current = Date.now() + 5 * 60 * 1000; }}
-                        style={{ flex: 1, background: "#FFF0E8", border: "2px solid rgba(255,107,53,.2)", borderRadius: 10, padding: "10px", fontSize: 13, fontWeight: 700, color: "#1A1A2E", cursor: "pointer", fontFamily: "var(--font-zh)" }}
+                        style={{ flex: 1, background: "var(--surface2)", border: "2px solid rgba(255,107,53,.2)", borderRadius: 10, padding: "10px", fontSize: 13, fontWeight: 700, color: "var(--ink)", cursor: "pointer", fontFamily: "var(--font-zh)" }}
                       >
                         繼續搜索
                       </button>
@@ -490,7 +490,7 @@ export default function HostPage() {
                         type="button"
                         disabled={resolvedCount < 2}
                         onClick={() => { setShowContinuePrompt(false); pendingStartAfterAbortRef.current = true; send({ type: "ABORT_LOAD", hostId: hostIdRef.current }); }}
-                        style={{ flex: 1, background: resolvedCount < 2 ? "rgba(255,107,53,.35)" : "#FF6B35", border: "none", borderRadius: 10, padding: "10px", fontSize: 13, fontWeight: 900, color: "white", cursor: resolvedCount < 2 ? "not-allowed" : "pointer", fontFamily: "var(--font-zh)" }}
+                        style={{ flex: 1, background: resolvedCount < 2 ? "rgba(255,107,53,.35)" : "var(--orange)", border: "none", borderRadius: 10, padding: "10px", fontSize: 13, fontWeight: 900, color: "white", cursor: resolvedCount < 2 ? "not-allowed" : "pointer", fontFamily: "var(--font-zh)" }}
                       >
                         立即開始 ({resolvedCount})
                       </button>
@@ -506,28 +506,28 @@ export default function HostPage() {
             <div style={{ background: "rgba(0,200,150,.06)", border: "2px solid rgba(0,200,150,.25)", borderRadius: 14, padding: "14px 16px", display: "flex", flexDirection: "column", gap: 10 }}>
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                  <span style={{ color: "#00C896", fontSize: 16 }}>✓</span>
-                  <p style={{ color: "#00C896", fontWeight: 700, fontSize: 13 }}>
+                  <span style={{ color: "var(--mint)", fontSize: 16 }}>✓</span>
+                  <p style={{ color: "var(--mint)", fontWeight: 700, fontSize: 13 }}>
                     已載入 — {readySongCount} 首歌曲有確認年份
                   </p>
                 </div>
                 {savedId ? (
                   <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
-                    <span style={{ fontSize: 11, color: "#00C896" }}>已儲存 ✓</span>
+                    <span style={{ fontSize: 11, color: "var(--mint)" }}>已儲存 ✓</span>
                     <button type="button" onClick={() => { void navigator.clipboard.writeText(savedId); setCopied(true); setTimeout(() => setCopied(false), 2000); }}
-                      style={{ fontSize: 11, color: "#7B7B9A", background: "none", border: "none", cursor: "pointer", fontFamily: "var(--font-mono)" }} title={savedId}>
+                      style={{ fontSize: 11, color: "var(--text2)", background: "none", border: "none", cursor: "pointer", fontFamily: "var(--font-mono)" }} title={savedId}>
                       {copied ? "已複製!" : "複製 ID"}
                     </button>
                   </div>
                 ) : (
                   <button type="button" onClick={() => setShowSavePanel((v) => !v)}
-                    style={{ fontSize: 11, color: "#7B7B9A", background: "none", border: "none", cursor: "pointer", flexShrink: 0 }}>
+                    style={{ fontSize: 11, color: "var(--text2)", background: "none", border: "none", cursor: "pointer", flexShrink: 0 }}>
                     儲存播放清單
                   </button>
                 )}
               </div>
               {skippedEmbeddingCount > 0 && (
-                <div style={{ display: "flex", alignItems: "flex-start", gap: 6, fontSize: 12, color: "#E85520" }}>
+                <div style={{ display: "flex", alignItems: "flex-start", gap: 6, fontSize: 12, color: "var(--orange-dk)" }}>
                   <span style={{ marginTop: 1 }}>⚠</span>
                   <span>{skippedEmbeddingCount} 個影片已跳過 — 版權持有人停用了嵌入播放，這些歌曲在本遊戲中無法播放。這是 YouTube 的限制，與 API 金鑰無關。</span>
                 </div>
@@ -540,16 +540,16 @@ export default function HostPage() {
                       onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); void handleSavePlaylist(); } }}
                       style={{ ...inp, flex: 1, padding: "10px 14px", fontSize: 13 }} />
                     <button type="button" disabled={!savePlaylistName.trim() || saving} onClick={() => void handleSavePlaylist()}
-                      style={{ flexShrink: 0, background: "#FF6B35", color: "white", border: "none", borderRadius: 10, padding: "10px 16px", fontSize: 13, fontWeight: 900, cursor: "pointer", fontFamily: "var(--font-zh)", opacity: (!savePlaylistName.trim() || saving) ? 0.45 : 1, alignSelf: "stretch", display: "flex", alignItems: "center" }}>
+                      style={{ flexShrink: 0, background: "var(--orange)", color: "white", border: "none", borderRadius: 10, padding: "10px 16px", fontSize: 13, fontWeight: 900, cursor: "pointer", fontFamily: "var(--font-zh)", opacity: (!savePlaylistName.trim() || saving) ? 0.45 : 1, alignSelf: "stretch", display: "flex", alignItems: "center" }}>
                       {saving ? "儲存中…" : `儲存 ${readySongs.length > 0 ? `(${readySongs.length})` : ""}`}
                     </button>
                   </div>
-                  {saveError && <p style={{ fontSize: 12, color: "#FF3B5C" }}>{saveError}</p>}
+                  {saveError && <p style={{ fontSize: 12, color: "var(--red)" }}>{saveError}</p>}
                 </div>
               )}
               {gameMode === "timeline" && readySongs.length > 0 && (
                 <button type="button" onClick={() => setShowEditor((v) => !v)}
-                  style={{ background: "#FFF0E8", border: "2px solid rgba(255,107,53,.2)", borderRadius: 10, padding: "10px 14px", fontSize: 13, fontWeight: 700, color: "#1A1A2E", cursor: "pointer", textAlign: "left", fontFamily: "var(--font-zh)" }}>
+                  style={{ background: "var(--surface2)", border: "2px solid rgba(255,107,53,.2)", borderRadius: 10, padding: "10px 14px", fontSize: 13, fontWeight: 700, color: "var(--ink)", cursor: "pointer", textAlign: "left", fontFamily: "var(--font-zh)" }}>
                   {showEditor ? "▲ 隱藏歌曲編輯器" : "✎ 編輯歌曲資訊"}
                 </button>
               )}
@@ -558,7 +558,7 @@ export default function HostPage() {
               )}
               {gameMode === "lyrics" && readySongs.length > 0 && (
                 <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                  <p style={{ fontSize: 12, color: "#B0AFBC", margin: 0 }}>
+                  <p style={{ fontSize: 12, color: "var(--text3)", margin: 0 }}>
                     {lyricsPreviewLoading
                       ? "⏳ 正在生成歌詞題目… Generating questions…"
                       : (lyricsState?.rounds?.length ?? 0) > 0
@@ -572,7 +572,7 @@ export default function HostPage() {
                     <thead>
                       <tr style={{ borderBottom: "1px solid rgba(255,107,53,.12)" }}>
                         {(["#", "Title", "Artist", "Question", "Answer"] as const).map((h) => (
-                          <th key={h} style={{ padding: "8px 14px", textAlign: "left", fontWeight: 700, color: "#B0AFBC", whiteSpace: "nowrap" }}>{h}</th>
+                          <th key={h} style={{ padding: "8px 14px", textAlign: "left", fontWeight: 700, color: "var(--text3)", whiteSpace: "nowrap" }}>{h}</th>
                         ))}
                       </tr>
                     </thead>
@@ -582,11 +582,11 @@ export default function HostPage() {
                         if ((lyricsState?.rounds?.length ?? 0) > 0) {
                           return lyricsState!.rounds.map((lr, i) => (
                             <tr key={lr.videoId} style={{ borderBottom: "1px solid rgba(255,107,53,.07)", background: i % 2 === 0 ? "transparent" : "rgba(255,107,53,.02)" }}>
-                              <td style={{ padding: "8px 14px", color: "#B0AFBC", fontFamily: "var(--font-mono)", width: 32 }}>{i + 1}</td>
-                              <td style={{ padding: "8px 14px", fontWeight: 700, color: "#1A1A2E", maxWidth: 160, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{lr.title}</td>
-                              <td style={{ padding: "8px 14px", color: "#7B7B9A", maxWidth: 120, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{lr.artist}</td>
-                              <td style={{ padding: "8px 14px", color: "#7B7B9A", fontFamily: "var(--font-zh)", maxWidth: 220, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{lr.lyricContext ?? "—"}</td>
-                              <td style={{ padding: "8px 14px", fontWeight: 900, color: lr.blankSentence ? "#FF6B35" : "#D0CEDC", fontFamily: "var(--font-zh)", whiteSpace: "nowrap" }}>{lr.blankSentence ?? "—"}</td>
+                              <td style={{ padding: "8px 14px", color: "var(--text3)", fontFamily: "var(--font-mono)", width: 32 }}>{i + 1}</td>
+                              <td style={{ padding: "8px 14px", fontWeight: 700, color: "var(--ink)", maxWidth: 160, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{lr.title}</td>
+                              <td style={{ padding: "8px 14px", color: "var(--text2)", maxWidth: 120, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{lr.artist}</td>
+                              <td style={{ padding: "8px 14px", color: "var(--text2)", fontFamily: "var(--font-zh)", maxWidth: 220, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{lr.lyricContext ?? "—"}</td>
+                              <td style={{ padding: "8px 14px", fontWeight: 900, color: lr.blankSentence ? "var(--orange)" : "#D0CEDC", fontFamily: "var(--font-zh)", whiteSpace: "nowrap" }}>{lr.blankSentence ?? "—"}</td>
                             </tr>
                           ));
                         }
@@ -601,9 +601,9 @@ export default function HostPage() {
                           const cellBase: React.CSSProperties = { padding: "4px 8px", fontFamily: "var(--font-zh)", fontSize: 12, width: "100%", border: "none", outline: "none", borderRadius: 4, background: "transparent" };
                           return (
                             <tr key={s.videoId} style={{ borderBottom: "1px solid rgba(255,107,53,.07)", background: i % 2 === 0 ? "transparent" : "rgba(255,107,53,.02)" }}>
-                              <td style={{ padding: "8px 14px", color: "#B0AFBC", fontFamily: "var(--font-mono)", width: 32 }}>{i + 1}</td>
-                              <td style={{ padding: "8px 14px", fontWeight: 700, color: "#1A1A2E", maxWidth: 160, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{s.title}</td>
-                              <td style={{ padding: "8px 14px", color: "#7B7B9A", maxWidth: 120, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{s.artist}</td>
+                              <td style={{ padding: "8px 14px", color: "var(--text3)", fontFamily: "var(--font-mono)", width: 32 }}>{i + 1}</td>
+                              <td style={{ padding: "8px 14px", fontWeight: 700, color: "var(--ink)", maxWidth: 160, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{s.title}</td>
+                              <td style={{ padding: "8px 14px", color: "var(--text2)", maxWidth: 120, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{s.artist}</td>
                               <td style={{ maxWidth: 240, padding: "4px 6px" }}>
                                 {hasData || lyricsPreviewLoading ? (
                                   <textarea
@@ -611,7 +611,7 @@ export default function HostPage() {
                                     value={qValue}
                                     placeholder={lyricsPreviewLoading ? "…" : "—"}
                                     onChange={(e) => setLyricOverrides(prev => ({ ...prev, [s.videoId]: { ...prev[s.videoId], lyricContext: e.target.value } }))}
-                                    style={{ ...cellBase, color: ov.lyricContext ? "#1A1A2E" : "#7B7B9A", resize: "vertical", minHeight: 40 }}
+                                    style={{ ...cellBase, color: ov.lyricContext ? "var(--ink)" : "var(--text2)", resize: "vertical", minHeight: 40 }}
                                   />
                                 ) : <span style={{ padding: "4px 8px", color: "#D0CEDC" }}>—</span>}
                               </td>
@@ -622,7 +622,7 @@ export default function HostPage() {
                                     value={aValue}
                                     placeholder={lyricsPreviewLoading ? "…" : "—"}
                                     onChange={(e) => setLyricOverrides(prev => ({ ...prev, [s.videoId]: { ...prev[s.videoId], blankSentence: e.target.value } }))}
-                                    style={{ ...cellBase, fontWeight: 900, color: ov.blankSentence ? "#1A1A2E" : aValue ? "#FF6B35" : "#D0CEDC" }}
+                                    style={{ ...cellBase, fontWeight: 900, color: ov.blankSentence ? "var(--ink)" : aValue ? "var(--orange)" : "#D0CEDC" }}
                                   />
                                 ) : <span style={{ padding: "4px 8px", color: "#D0CEDC" }}>—</span>}
                               </td>
@@ -642,7 +642,7 @@ export default function HostPage() {
           {loadStatus === "error" && error && (
             <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
               <ErrorBanner code={error} />
-              <p style={{ fontSize: 12, color: "#B0AFBC" }}>修正上方 URL 後再次點擊<strong style={{ color: "#1A1A2E" }}>「載入」</strong>。</p>
+              <p style={{ fontSize: 12, color: "var(--text3)" }}>修正上方 URL 後再次點擊<strong style={{ color: "var(--ink)" }}>「載入」</strong>。</p>
             </div>
           )}
 
@@ -652,8 +652,8 @@ export default function HostPage() {
           {/* Card count slider (timeline mode only) */}
           {loadStatus !== "loading" && gameMode === "timeline" && (
             <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-              <label style={{ fontSize: 12, fontWeight: 700, color: "#7B7B9A" }}>
-                勝利所需卡牌數：<span style={{ color: "#FF6B35", fontWeight: 900 }}>{targetCount}</span>
+              <label style={{ fontSize: 12, fontWeight: 700, color: "var(--text2)" }}>
+                勝利所需卡牌數：<span style={{ color: "var(--orange)", fontWeight: 900 }}>{targetCount}</span>
               </label>
               <input type="range" min={5} max={20} value={targetCount}
                 onChange={(e) => setTargetCount(Number(e.target.value))} className="w-full" />
@@ -662,18 +662,18 @@ export default function HostPage() {
 
           {/* Lyrics config (lyrics mode only, hidden once preview is ready) */}
           {loadStatus !== "loading" && gameMode === "lyrics" && !lyricsState && (
-            <div style={{ display: "flex", flexDirection: "column", gap: 10, background: "#FFF0E8", borderRadius: 14, padding: 14, border: "2px solid rgba(255,107,53,.15)" }}>
-              <p style={{ fontSize: 12, fontWeight: 700, color: "#7B7B9A", marginBottom: 2 }}>歌詞模式設定</p>
+            <div style={{ display: "flex", flexDirection: "column", gap: 10, background: "var(--surface2)", borderRadius: 14, padding: 14, border: "2px solid rgba(255,107,53,.15)" }}>
+              <p style={{ fontSize: 12, fontWeight: 700, color: "var(--text2)", marginBottom: 2 }}>歌詞模式設定</p>
               <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                <label style={{ fontSize: 12, fontWeight: 700, color: "#7B7B9A" }}>
-                  回答時間：<span style={{ color: "#FF6B35", fontWeight: 900 }}>{lyricsConfig.timerSeconds}秒</span>
+                <label style={{ fontSize: 12, fontWeight: 700, color: "var(--text2)" }}>
+                  回答時間：<span style={{ color: "var(--orange)", fontWeight: 900 }}>{lyricsConfig.timerSeconds}秒</span>
                 </label>
                 <input type="range" min={20} max={120} step={10} value={lyricsConfig.timerSeconds}
                   onChange={(e) => setLyricsConfig((c) => ({ ...c, timerSeconds: Number(e.target.value) }))} className="w-full" />
               </div>
               <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                <label style={{ fontSize: 12, fontWeight: 700, color: "#7B7B9A" }}>
-                  回合數：<span style={{ color: "#FF6B35", fontWeight: 900 }}>{lyricsConfig.totalRounds}</span>
+                <label style={{ fontSize: 12, fontWeight: 700, color: "var(--text2)" }}>
+                  回合數：<span style={{ color: "var(--orange)", fontWeight: 900 }}>{lyricsConfig.totalRounds}</span>
                 </label>
                 <input type="range" min={3} max={20} value={lyricsConfig.totalRounds}
                   onChange={(e) => setLyricsConfig((c) => ({ ...c, totalRounds: Number(e.target.value) }))} className="w-full" />
@@ -681,7 +681,7 @@ export default function HostPage() {
               <label style={{ display: "flex", alignItems: "center", gap: 10, cursor: "pointer" }}>
                 <input type="checkbox" checked={lyricsConfig.fuzzyEnabled}
                   onChange={(e) => setLyricsConfig((c) => ({ ...c, fuzzyEnabled: e.target.checked }))} />
-                <span style={{ fontSize: 13, fontWeight: 700, color: "#1A1A2E" }}>寬鬆模式（允許拼字錯誤）</span>
+                <span style={{ fontSize: 13, fontWeight: 700, color: "var(--ink)" }}>寬鬆模式（允許拼字錯誤）</span>
               </label>
             </div>
           )}
@@ -689,20 +689,20 @@ export default function HostPage() {
           {/* Start Game — two states for lyrics: generate lyrics, then confirm to begin */}
           {loadStatus === "ready" && lyricsState?.phase === "preview" && (
             <button type="button" data-testid="start-game-btn" onClick={handleConfirmLyricsPreview} disabled={playerCount === 0}
-              style={{ background: playerCount === 0 ? "rgba(255,107,53,.35)" : "#FF6B35", color: "white", border: "none", borderRadius: 14, padding: "15px", fontSize: 16, fontWeight: 900, cursor: playerCount === 0 ? "not-allowed" : "pointer", fontFamily: "var(--font-zh)", boxShadow: playerCount > 0 ? "0 4px 16px rgba(255,107,53,.3)" : "none" }}>
+              style={{ background: playerCount === 0 ? "rgba(255,107,53,.35)" : "var(--orange)", color: "white", border: "none", borderRadius: 14, padding: "15px", fontSize: 16, fontWeight: 900, cursor: playerCount === 0 ? "not-allowed" : "pointer", fontFamily: "var(--font-zh)", boxShadow: playerCount > 0 ? "0 4px 16px rgba(255,107,53,.3)" : "none" }}>
               ▶ 開始遊戲 · Start Game
             </button>
           )}
           {loadStatus === "ready" && !lyricsState && (
             <button type="submit" data-testid="start-game-btn" disabled={playerCount === 0}
-              style={{ background: playerCount === 0 ? "rgba(255,107,53,.35)" : "#FF6B35", color: "white", border: "none", borderRadius: 14, padding: "15px", fontSize: 16, fontWeight: 900, cursor: playerCount === 0 ? "not-allowed" : "pointer", fontFamily: "var(--font-zh)", boxShadow: playerCount > 0 ? "0 4px 16px rgba(255,107,53,.3)" : "none" }}>
+              style={{ background: playerCount === 0 ? "rgba(255,107,53,.35)" : "var(--orange)", color: "white", border: "none", borderRadius: 14, padding: "15px", fontSize: 16, fontWeight: 900, cursor: playerCount === 0 ? "not-allowed" : "pointer", fontFamily: "var(--font-zh)", boxShadow: playerCount > 0 ? "0 4px 16px rgba(255,107,53,.3)" : "none" }}>
               {gameMode === "lyrics" ? "🎵 開始歌詞模式 · Start Lyrics" : "🎮 開始遊戲 · Start Game"}
             </button>
           )}
 
           {playerCount === 0 && (
-            <p style={{ fontSize: 12, color: "#B0AFBC", textAlign: "center" }}>
-              分享代碼 <span style={{ fontFamily: "var(--font-mono)", color: "#FF6B35", fontWeight: 900 }}>{params.code}</span> — 等待玩家加入
+            <p style={{ fontSize: 12, color: "var(--text3)", textAlign: "center" }}>
+              分享代碼 <span style={{ fontFamily: "var(--font-mono)", color: "var(--orange)", fontWeight: 900 }}>{params.code}</span> — 等待玩家加入
             </p>
           )}
         </form>
@@ -710,7 +710,7 @@ export default function HostPage() {
         {/* Saved playlists panel */}
         {lyricsState?.phase !== "preview" && (
         <div style={{ ...panel, display: "flex", flexDirection: "column", gap: 14 }}>
-          <h3 style={{ fontWeight: 900, fontSize: 14, color: "#1A1A2E" }}>已儲存的播放清單 · Saved Playlists</h3>
+          <h3 style={{ fontWeight: 900, fontSize: 14, color: "var(--ink)" }}>已儲存的播放清單 · Saved Playlists</h3>
           <div style={{ display: "flex", gap: 10 }}>
             <input type="text" placeholder="貼上播放清單 ID 以從任何裝置載入…"
               value={loadById}
@@ -719,25 +719,25 @@ export default function HostPage() {
               style={{ ...inp, flex: 1, fontFamily: "var(--font-mono)", fontSize: 13, padding: "10px 14px" }} />
             <button type="button" disabled={!loadById.trim() || loadStatus === "loading"}
               onClick={() => { void handleLoadSavedPlaylist(loadById.trim()); setLoadById(""); }}
-              style={{ flexShrink: 0, background: "#FF6B35", color: "white", border: "none", borderRadius: 14, padding: "10px 18px", fontSize: 13, fontWeight: 900, cursor: "pointer", fontFamily: "var(--font-zh)", opacity: (!loadById.trim() || loadStatus === "loading") ? 0.45 : 1, alignSelf: "stretch", display: "flex", alignItems: "center" }}>
+              style={{ flexShrink: 0, background: "var(--orange)", color: "white", border: "none", borderRadius: 14, padding: "10px 18px", fontSize: 13, fontWeight: 900, cursor: "pointer", fontFamily: "var(--font-zh)", opacity: (!loadById.trim() || loadStatus === "loading") ? 0.45 : 1, alignSelf: "stretch", display: "flex", alignItems: "center" }}>
               載入
             </button>
           </div>
           {savedPlaylists.length > 0 && (
             <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
               {savedPlaylists.map((p) => (
-                <div key={p.id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, background: "#FFF9F5", border: "2px solid rgba(255,107,53,.12)", borderRadius: 14, padding: "12px 14px" }}>
+                <div key={p.id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, background: "var(--bg)", border: "2px solid rgba(255,107,53,.12)", borderRadius: 14, padding: "12px 14px" }}>
                   <div style={{ minWidth: 0 }}>
-                    <p style={{ fontWeight: 700, fontSize: 14, color: "#1A1A2E" }}>{p.name}</p>
-                    <p style={{ fontSize: 10, color: "#B0AFBC", fontFamily: "var(--font-mono)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{p.id}</p>
+                    <p style={{ fontWeight: 700, fontSize: 14, color: "var(--ink)" }}>{p.name}</p>
+                    <p style={{ fontSize: 10, color: "var(--text3)", fontFamily: "var(--font-mono)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{p.id}</p>
                   </div>
                   <div style={{ display: "flex", gap: 8, flexShrink: 0 }}>
                     <button type="button" disabled={loadStatus === "loading"} onClick={() => void handleLoadSavedPlaylist(p.id)}
-                      style={{ background: "rgba(255,107,53,.12)", border: "none", borderRadius: 10, padding: "7px 14px", fontSize: 12, fontWeight: 900, color: "#FF6B35", cursor: "pointer", opacity: loadStatus === "loading" ? 0.45 : 1 }}>
+                      style={{ background: "rgba(255,107,53,.12)", border: "none", borderRadius: 10, padding: "7px 14px", fontSize: 12, fontWeight: 900, color: "var(--orange)", cursor: "pointer", opacity: loadStatus === "loading" ? 0.45 : 1 }}>
                       載入
                     </button>
                     <button type="button" onClick={() => void handleDeleteSavedPlaylist(p.id)}
-                      style={{ background: "#FFF0E8", border: "none", borderRadius: 10, padding: "7px 12px", fontSize: 12, color: "#B0AFBC", cursor: "pointer" }}>
+                      style={{ background: "var(--surface2)", border: "none", borderRadius: 10, padding: "7px 12px", fontSize: 12, color: "var(--text3)", cursor: "pointer" }}>
                       ✕
                     </button>
                   </div>
@@ -746,7 +746,7 @@ export default function HostPage() {
             </div>
           )}
           {savedPlaylists.length === 0 && (
-            <p style={{ fontSize: 12, color: "#B0AFBC" }}>此裝置尚無儲存的播放清單。載入後點擊「儲存播放清單」即可儲存。</p>
+            <p style={{ fontSize: 12, color: "var(--text3)" }}>此裝置尚無儲存的播放清單。載入後點擊「儲存播放清單」即可儲存。</p>
           )}
         </div>
         )}
@@ -758,21 +758,21 @@ export default function HostPage() {
         <div style={{ ...panel, display: "flex", flexDirection: "column", alignItems: "center", gap: 16, padding: "48px 24px" }}>
           <div style={{ position: "relative", width: 56, height: 56 }}>
             <div style={{ position: "absolute", inset: 0, borderRadius: "50%", border: "4px solid rgba(255,107,53,.15)" }} />
-            <div className="animate-spin" style={{ position: "absolute", inset: 0, borderRadius: "50%", border: "4px solid transparent", borderTopColor: "#FF6B35" }} />
+            <div className="animate-spin" style={{ position: "absolute", inset: 0, borderRadius: "50%", border: "4px solid transparent", borderTopColor: "var(--orange)" }} />
           </div>
-          <p style={{ fontSize: 16, fontWeight: 700, color: "#1A1A2E" }}>AI 正在準備歌詞…</p>
-          <p style={{ fontSize: 12, color: "#B0AFBC" }}>Preparing lyrics with AI — this takes about 15–30 seconds</p>
+          <p style={{ fontSize: 16, fontWeight: 700, color: "var(--ink)" }}>AI 正在準備歌詞…</p>
+          <p style={{ fontSize: 12, color: "var(--text3)" }}>Preparing lyrics with AI — this takes about 15–30 seconds</p>
         </div>
       )}
 
       {/* Lyrics Mode: playing — controls only, the lyric text and audio are on the big screen */}
       {lyricsState?.phase === "playing" && lyricsState.currentRound && (
         <div style={{ ...panel, display: "flex", flexDirection: "column", gap: 14 }}>
-          <p style={{ fontSize: 11, color: "#B0AFBC", textTransform: "uppercase", letterSpacing: ".1em" }}>
+          <p style={{ fontSize: 11, color: "var(--text3)", textTransform: "uppercase", letterSpacing: ".1em" }}>
             第 {lyricsState.currentRoundIndex + 1} / {lyricsState.totalRounds} 回合 · {lyricsState.currentRound.title}
           </p>
           <button onClick={handleStartLyricsRound}
-            style={{ background: "#FF6B35", color: "white", border: "none", borderRadius: 14, padding: "15px", fontSize: 16, fontWeight: 900, cursor: "pointer", fontFamily: "var(--font-zh)", boxShadow: "0 4px 16px rgba(255,107,53,.3)" }}>
+            style={{ background: "var(--orange)", color: "white", border: "none", borderRadius: 14, padding: "15px", fontSize: 16, fontWeight: 900, cursor: "pointer", fontFamily: "var(--font-zh)", boxShadow: "0 4px 16px rgba(255,107,53,.3)" }}>
             ✂️ 切歌！Cut!
           </button>
         </div>
@@ -781,11 +781,11 @@ export default function HostPage() {
       {/* Lyrics Mode: guessing — controls only; timer and lyric text are on the big screen */}
       {lyricsState?.phase === "guessing" && lyricsState.currentRound && (
         <div style={{ ...panel, display: "flex", flexDirection: "column", gap: 14 }}>
-          <p style={{ fontSize: 11, color: "#B0AFBC", textTransform: "uppercase", letterSpacing: ".1em" }}>
+          <p style={{ fontSize: 11, color: "var(--text3)", textTransform: "uppercase", letterSpacing: ".1em" }}>
             第 {lyricsState.currentRoundIndex + 1} / {lyricsState.totalRounds} 回合 · 搶答中 — 已作答 {Object.keys(lyricsState.answers).length} / {Object.keys(lyricsState.players).length}
           </p>
           <button onClick={handleShowLyricsResults}
-            style={{ background: "#1A1A2E", color: "white", border: "none", borderRadius: 14, padding: "14px", fontSize: 15, fontWeight: 900, cursor: "pointer", fontFamily: "var(--font-zh)" }}>
+            style={{ background: "var(--ink)", color: "white", border: "none", borderRadius: 14, padding: "14px", fontSize: 15, fontWeight: 900, cursor: "pointer", fontFamily: "var(--font-zh)" }}>
             🔍 揭曉答案 · Show Results
           </button>
         </div>
@@ -794,11 +794,11 @@ export default function HostPage() {
       {/* Lyrics Mode: results — controls only; the results table is on the big screen */}
       {lyricsState?.phase === "results" && lyricsState.currentRound && (
         <div style={{ ...panel, display: "flex", flexDirection: "column", gap: 14 }}>
-          <p style={{ fontSize: 11, color: "#B0AFBC", textTransform: "uppercase", letterSpacing: ".1em" }}>
+          <p style={{ fontSize: 11, color: "var(--text3)", textTransform: "uppercase", letterSpacing: ".1em" }}>
             第 {lyricsState.currentRoundIndex + 1} / {lyricsState.totalRounds} 回合 · 結果 — 答案：{lyricsState.currentRound.blankSentence ?? "（已揭曉）"}
           </p>
           <button onClick={handleNextLyricsRound}
-            style={{ background: "#FF6B35", color: "white", border: "none", borderRadius: 14, padding: "14px", fontSize: 15, fontWeight: 900, cursor: "pointer", fontFamily: "var(--font-zh)", boxShadow: "0 4px 16px rgba(255,107,53,.3)" }}>
+            style={{ background: "var(--orange)", color: "white", border: "none", borderRadius: 14, padding: "14px", fontSize: 15, fontWeight: 900, cursor: "pointer", fontFamily: "var(--font-zh)", boxShadow: "0 4px 16px rgba(255,107,53,.3)" }}>
             {lyricsState.currentRoundIndex + 1 >= lyricsState.totalRounds ? "🏆 查看排名 · See Rankings" : "▶ 下一回合 · Next Round"}
           </button>
         </div>
@@ -807,12 +807,12 @@ export default function HostPage() {
       {/* Lyrics Mode: ended — full rankings are on the big screen */}
       {lyricsState?.phase === "ended" && (
         <div style={{ ...panel, display: "flex", flexDirection: "column", alignItems: "center", gap: 16, padding: "36px 24px" }}>
-          <p style={{ fontSize: 11, color: "#B0AFBC", textTransform: "uppercase", letterSpacing: ".12em" }}>歌詞模式結束 · Lyrics Mode Over!</p>
+          <p style={{ fontSize: 11, color: "var(--text3)", textTransform: "uppercase", letterSpacing: ".12em" }}>歌詞模式結束 · Lyrics Mode Over!</p>
           <h2 className="title-outlined" style={{ fontSize: 32, lineHeight: 1.05 }}>
             {Object.entries(lyricsState.players).sort(([,a],[,b]) => b.score - a.score)[0]?.[1]?.name ?? "?"}
           </h2>
           <button onClick={handleResetLyricsGame}
-            style={{ background: "#FF6B35", color: "white", border: "none", borderRadius: 14, padding: "14px 32px", fontSize: 15, fontWeight: 900, cursor: "pointer", fontFamily: "var(--font-zh)" }}>
+            style={{ background: "var(--orange)", color: "white", border: "none", borderRadius: 14, padding: "14px 32px", fontSize: 15, fontWeight: 900, cursor: "pointer", fontFamily: "var(--font-zh)" }}>
             再玩一次 · Play Again
           </button>
         </div>
@@ -821,7 +821,7 @@ export default function HostPage() {
       {/* Timeline mode: in progress — controls only; the video and timelines are on the big screen */}
       {(phase === "guessing" || phase === "reveal") && (
         <div style={{ ...panel, display: "flex", flexDirection: "column", gap: 14 }}>
-          <p style={{ fontSize: 11, color: "#B0AFBC", textTransform: "uppercase", letterSpacing: ".1em" }}>
+          <p style={{ fontSize: 11, color: "var(--text3)", textTransform: "uppercase", letterSpacing: ".1em" }}>
             第 {state?.currentRound} 回合 · {state?.players[state?.activePlayerId ?? ""]?.name ?? "?"} 的回合
           </p>
           {phase === "guessing" && (
@@ -830,7 +830,7 @@ export default function HostPage() {
               onClick={handleReveal}
               disabled={Object.keys(state?.placements ?? {}).length === 0}
               style={{
-                background: Object.keys(state?.placements ?? {}).length === 0 ? "rgba(255,107,53,.35)" : "#FF6B35",
+                background: Object.keys(state?.placements ?? {}).length === 0 ? "rgba(255,107,53,.35)" : "var(--orange)",
                 color: "white", border: "none", borderRadius: 14, padding: "15px",
                 fontSize: 16, fontWeight: 900, cursor: Object.keys(state?.placements ?? {}).length === 0 ? "not-allowed" : "pointer",
                 fontFamily: "var(--font-zh)", boxShadow: Object.keys(state?.placements ?? {}).length > 0 ? "0 4px 16px rgba(255,107,53,.3)" : "none",
@@ -842,7 +842,7 @@ export default function HostPage() {
           )}
           {phase === "reveal" && (
             <button data-testid="next-round-btn" onClick={handleNextRound}
-              style={{ background: "#1A1A2E", color: "white", border: "none", borderRadius: 14, padding: "14px", fontSize: 15, fontWeight: 900, cursor: "pointer", fontFamily: "var(--font-zh)" }}>
+              style={{ background: "var(--ink)", color: "white", border: "none", borderRadius: 14, padding: "14px", fontSize: 15, fontWeight: 900, cursor: "pointer", fontFamily: "var(--font-zh)" }}>
               下一回合 · Next Round
             </button>
           )}
@@ -852,12 +852,12 @@ export default function HostPage() {
       {/* Timeline mode: ended — full standings are on the big screen */}
       {phase === "ended" && state && (
         <div style={{ ...panel, display: "flex", flexDirection: "column", alignItems: "center", gap: 16, padding: "36px 24px" }}>
-          <p style={{ fontSize: 11, color: "#B0AFBC", textTransform: "uppercase", letterSpacing: ".12em" }}>遊戲結束 · Winner!</p>
+          <p style={{ fontSize: 11, color: "var(--text3)", textTransform: "uppercase", letterSpacing: ".12em" }}>遊戲結束 · Winner!</p>
           <h2 className="title-outlined" style={{ fontSize: 32, lineHeight: 1.05 }}>
             {state.players[state.winner ?? ""]?.name ?? "Unknown"}
           </h2>
           <button onClick={handleResetGame}
-            style={{ background: "#FF6B35", color: "white", border: "none", borderRadius: 14, padding: "14px 32px", fontSize: 15, fontWeight: 900, cursor: "pointer", fontFamily: "var(--font-zh)" }}>
+            style={{ background: "var(--orange)", color: "white", border: "none", borderRadius: 14, padding: "14px 32px", fontSize: 15, fontWeight: 900, cursor: "pointer", fontFamily: "var(--font-zh)" }}>
             再玩一次 · Play Again
           </button>
         </div>
@@ -867,13 +867,13 @@ export default function HostPage() {
       {diagnostic && phase !== "lobby" && (
         <div style={{ background: "white", border: "2px solid rgba(255,107,53,.12)", borderRadius: 20, overflow: "hidden" }}>
           <button onClick={() => setShowDiagnostic((v) => !v)}
-            style={{ width: "100%", display: "flex", alignItems: "center", justifyContent: "space-between", padding: "14px 20px", fontSize: 13, color: "#7B7B9A", background: "none", border: "none", cursor: "pointer" }}>
+            style={{ width: "100%", display: "flex", alignItems: "center", justifyContent: "space-between", padding: "14px 20px", fontSize: 13, color: "var(--text2)", background: "none", border: "none", cursor: "pointer" }}>
             <span>
               歌曲資料 ·{" "}
-              <span style={{ color: "#FF6B35", fontWeight: 900 }}>{diagnostic.filter((s) => s.year !== null).length}</span>
-              <span style={{ color: "#B0AFBC" }}>/{diagnostic.length} 年份已解析</span>
+              <span style={{ color: "var(--orange)", fontWeight: 900 }}>{diagnostic.filter((s) => s.year !== null).length}</span>
+              <span style={{ color: "var(--text3)" }}>/{diagnostic.length} 年份已解析</span>
             </span>
-            <span style={{ fontSize: 11, color: "#B0AFBC" }}>{showDiagnostic ? "▲ 收起" : "▼ 展開"}</span>
+            <span style={{ fontSize: 11, color: "var(--text3)" }}>{showDiagnostic ? "▲ 收起" : "▼ 展開"}</span>
           </button>
           {showDiagnostic && (
             <div style={{ padding: "0 20px 20px" }}>
@@ -892,34 +892,34 @@ function DiagnosticTable({ songs, compact, hideYears }: { songs: SongDiagnostic[
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
       {!compact && (
-        <p style={{ fontSize: 12, color: "#7B7B9A" }}>
-          已解析 <span style={{ color: "#FF6B35", fontWeight: 900 }}>{resolved}</span> / <span style={{ fontWeight: 700, color: "#1A1A2E" }}>{total}</span> 首
+        <p style={{ fontSize: 12, color: "var(--text2)" }}>
+          已解析 <span style={{ color: "var(--orange)", fontWeight: 900 }}>{resolved}</span> / <span style={{ fontWeight: 700, color: "var(--ink)" }}>{total}</span> 首
         </p>
       )}
       <div style={{ overflowX: "auto", borderRadius: 14, border: "2px solid rgba(255,107,53,.1)" }}>
         <table style={{ width: "100%", fontSize: 12, borderCollapse: "collapse" }}>
           <thead>
             <tr style={{ textAlign: "left", borderBottom: "2px solid rgba(255,107,53,.1)" }}>
-              <th style={{ padding: "8px 12px", fontWeight: 700, color: "#B0AFBC" }}>Title</th>
-              <th style={{ padding: "8px 12px", fontWeight: 700, color: "#B0AFBC" }}>Artist</th>
-              {!hideYears && <th style={{ padding: "8px 12px", fontWeight: 700, color: "#B0AFBC" }}>Year</th>}
-              <th style={{ padding: "8px 12px", fontWeight: 700, color: "#B0AFBC" }}>Source</th>
+              <th style={{ padding: "8px 12px", fontWeight: 700, color: "var(--text3)" }}>Title</th>
+              <th style={{ padding: "8px 12px", fontWeight: 700, color: "var(--text3)" }}>Artist</th>
+              {!hideYears && <th style={{ padding: "8px 12px", fontWeight: 700, color: "var(--text3)" }}>Year</th>}
+              <th style={{ padding: "8px 12px", fontWeight: 700, color: "var(--text3)" }}>Source</th>
             </tr>
           </thead>
           <tbody>
             {songs.map((s, i) => (
               <tr key={i} style={{ borderBottom: "1px solid rgba(255,107,53,.06)", opacity: s.year ? 1 : 0.4 }}>
-                <td style={{ padding: "7px 12px", maxWidth: 200, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: "#1A1A2E" }} title={s.title}>{s.title}</td>
-                <td style={{ padding: "7px 12px", maxWidth: 120, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: "#7B7B9A" }} title={s.artist}>{s.artist}</td>
+                <td style={{ padding: "7px 12px", maxWidth: 200, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: "var(--ink)" }} title={s.title}>{s.title}</td>
+                <td style={{ padding: "7px 12px", maxWidth: 120, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: "var(--text2)" }} title={s.artist}>{s.artist}</td>
                 {!hideYears && (
-                  <td style={{ padding: "7px 12px", fontFamily: "var(--font-mono)", color: "#FF6B35", fontWeight: 700 }}>{s.year ?? "—"}</td>
+                  <td style={{ padding: "7px 12px", fontFamily: "var(--font-mono)", color: "var(--orange)", fontWeight: 700 }}>{s.year ?? "—"}</td>
                 )}
                 <td style={{ padding: "7px 12px" }}>
-                  {s.yearSource === "description" && <span style={{ color: "#00C896" }}>YouTube</span>}
+                  {s.yearSource === "description" && <span style={{ color: "var(--mint)" }}>YouTube</span>}
                   {s.yearSource === "title" && <span style={{ color: "#5B8DEF" }}>title</span>}
                   {s.yearSource === "ai" && <span style={{ color: "#7C3AED" }}>AI</span>}
-                  {s.yearSource === "manual" && <span style={{ color: "#B0AFBC" }}>manual</span>}
-                  {s.yearSource === null && <span style={{ color: "#B0AFBC" }}>not found</span>}
+                  {s.yearSource === "manual" && <span style={{ color: "var(--text3)" }}>manual</span>}
+                  {s.yearSource === null && <span style={{ color: "var(--text3)" }}>not found</span>}
                 </td>
               </tr>
             ))}
@@ -934,11 +934,11 @@ function ErrorBanner({ code }: { code: string }) {
   const info = errorInfo(code);
   return (
     <div style={{ background: "rgba(255,59,92,.06)", border: "2px solid rgba(255,59,92,.25)", borderRadius: 14, padding: "14px 16px", display: "flex", flexDirection: "column", gap: 4 }}>
-      <p style={{ color: "#FF3B5C", fontSize: 14, fontWeight: 700 }}>{info.message}</p>
-      {info.detail && <p style={{ color: "#E85520", fontSize: 12 }}>{info.detail}</p>}
+      <p style={{ color: "var(--red)", fontSize: 14, fontWeight: 700 }}>{info.message}</p>
+      {info.detail && <p style={{ color: "var(--orange-dk)", fontSize: 12 }}>{info.detail}</p>}
       {info.hint && (
-        <p style={{ fontSize: 12, color: "#7B7B9A", marginTop: 2 }}>
-          <span style={{ color: "#FF6B35", fontWeight: 700 }}>提示：</span> {info.hint}
+        <p style={{ fontSize: 12, color: "var(--text2)", marginTop: 2 }}>
+          <span style={{ color: "var(--orange)", fontWeight: 700 }}>提示：</span> {info.hint}
         </p>
       )}
     </div>

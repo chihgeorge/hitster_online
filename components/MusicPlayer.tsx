@@ -71,7 +71,7 @@ export default function MusicPlayer({ currentSong, phase }: Props) {
         {/* Overlay — covers video during guessing phase */}
         {phase === "guessing" && (
           <div
-            className="absolute inset-0 flex flex-col items-center justify-center bg-[#1a1a2e]/90 backdrop-blur-sm"
+            className="absolute inset-0 flex flex-col items-center justify-center bg-[var(--ink)]/90 backdrop-blur-sm"
             style={{ willChange: "opacity" }}
           >
             {/* CSS waveform */}
@@ -83,13 +83,13 @@ export default function MusicPlayer({ currentSong, phase }: Props) {
                   style={{
                     ["--h" as string]: `${h * 64}px`,
                     height: `${h * 64}px`,
-                    background: "#FF6B35",
+                    background: "var(--orange)",
                     animationDelay: `${i * 0.1}s`,
                   }}
                 />
               ))}
             </div>
-            <p style={{ color: "#B0AFBC", fontSize: 13 }}>聆聽中… Listening</p>
+            <p style={{ color: "var(--text3)", fontSize: 13 }}>聆聽中… Listening</p>
           </div>
         )}
       </div>
@@ -97,9 +97,9 @@ export default function MusicPlayer({ currentSong, phase }: Props) {
       {/* Reveal phase: show song info */}
       {phase === "reveal" && (
         <div style={{ background: "rgba(255,214,0,.08)", borderRadius: 14, padding: "14px 16px", border: "1.5px solid rgba(255,214,0,.2)" }}>
-          <p style={{ fontWeight: 900, fontSize: 16, color: "#1A1A2E" }}>{currentSong.title}</p>
-          <p style={{ fontFamily: "var(--font-mono)", color: "#FF6B35", fontSize: 22, fontWeight: 700, marginTop: 2 }}>{currentSong.year}</p>
-          <p style={{ color: "#7B7B9A", fontSize: 12, marginTop: 2 }}>{currentSong.artist}</p>
+          <p style={{ fontWeight: 900, fontSize: 16, color: "var(--ink)" }}>{currentSong.title}</p>
+          <p style={{ fontFamily: "var(--font-mono)", color: "var(--orange)", fontSize: 22, fontWeight: 700, marginTop: 2 }}>{currentSong.year}</p>
+          <p style={{ color: "var(--text2)", fontSize: 12, marginTop: 2 }}>{currentSong.artist}</p>
         </div>
       )}
     </div>

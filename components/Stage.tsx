@@ -30,7 +30,7 @@ export function Stage({ children }: { children: ReactNode }) {
           top: "50%",
           width: STAGE_W,
           height: STAGE_H,
-          background: "#FFF9F5",
+          background: "var(--bg)",
           transform: `translate(-50%, -50%) scale(${scale})`,
         }}
       >
