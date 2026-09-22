@@ -1,13 +1,14 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { useParams } from "next/navigation";
+import { useParams, useSearchParams } from "next/navigation";
 import usePartySocket from "partysocket/react";
 import MusicPlayer from "@/components/MusicPlayer";
 import LyricsPlayer, { lyricsAudioProps, isAudioPhase, needsLyricsAudio } from "@/components/LyricsPlayer";
 import PlayerList from "@/components/PlayerList";
 import Confetti from "@/components/Confetti";
 import VictoryPlayer from "@/components/VictoryPlayer";
+import { Qr } from "@/components/Qr";
 import { Stage } from "@/components/Stage";
 import { getOrCreatePersistedId } from "@/lib/device-id";
 import type { GameState, ServerMessage, PublicLyricsGameState } from "@/lib/game";
@@ -18,6 +19,11 @@ const VICTORY_VIDEO_ID: string | null = "bqon4TM2MgM";
 // never issues a game command, only the screenId credential GET_LYRICS_AUDIO needs.
 export default function ScreenPage() {
   const params = useParams<{ code: string }>();
+  const searchParams = useSearchParams();
+  // Set only on the browser that created this room (see app/screen/page.tsx's redirect) — never
+  // broadcast, never carried by the player-join QR. This is what makes the private host link
+  // private: it's a local flag on one specific device, not a secret transmitted anywhere.
+  const isCreator = searchParams.get("created") === "1";
   const [state, setState] = useState<GameState | null>(null);
   const [lyricsState, setLyricsState] = useState<PublicLyricsGameState | null>(null);
   const [lyricsAudio, setLyricsAudio] = useState<{ videoId: string | null; roundIndex: number } | null>(null);
@@ -95,9 +101,31 @@ export default function ScreenPage() {
         <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden", padding: "16px 32px 32px" }}>
           {/* ── waiting for the host to start ───────────────────────────────── */}
           {phase === "lobby" && !lyricsState && (
-            <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 16 }}>
-              <p style={{ fontSize: 22, fontWeight: 700, color: "var(--ink)" }}>等待主持人開始遊戲…</p>
-              <p style={{ fontSize: 14, color: "var(--text3)" }}>Waiting for the host to start</p>
+            <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 20 }}>
+              <p style={{ fontSize: 22, fontWeight: 700, color: "var(--ink)" }}>掃描加入 · Scan to join</p>
+              <Qr
+                text={typeof window !== "undefined" ? `${window.location.origin}/?code=${params.code}` : ""}
+                size={200}
+                alt="加入房間 QR"
+              />
+              <p style={{ fontSize: 14, color: "var(--text3)" }}>
+                或在 <a href="/" style={{ color: "var(--orange)" }}>hitster</a> 輸入房間代碼 <strong style={{ color: "var(--ink)", fontFamily: "var(--font-mono)" }}>{params.code}</strong>
+              </p>
+
+              {/* Private to this browser only — never shown to anyone scanning the QR above
+                  (see the isCreator comment). Gated to lobby so it can never resurface mid-game
+                  on a reload, per the outside-voice finding from /plan-eng-review. */}
+              {isCreator && (
+                <a
+                  href={`/room/${params.code}/host`}
+                  data-testid="manage-as-host-link"
+                  style={{
+                    marginTop: 12, fontSize: 13, color: "var(--text3)", textDecoration: "underline",
+                  }}
+                >
+                  你是主持人？管理房間 → Manage as host
+                </a>
+              )}
             </div>
           )}
 
