@@ -27,8 +27,8 @@
 
 ## Pre-launch security (continued)
 
-- [ ] **P2** Rewrite git history to remove leaked credentials  
-  YouTube API key (`AIzaSy…`) and Spotify client secret (`9d84c3…`) are still visible in the public GitHub commit history even though they have been rotated. A bad actor can find them via `git log -p`. Fix: `git filter-repo --replace-text` to redact the strings from all commits, then force-push. Coordinate timing so no one has the old repo cloned mid-operation.  
+- [x] **P2** Rewrite git history to remove leaked credentials  
+  **Completed 2026-09-22:** `git filter-repo --replace-text` run against a fresh mirror clone, redacting the YouTube API key and Spotify client secret from all 99 commits across all 7 live branches (main + 6 in-progress branches; PRs already merged had their head branches auto-deleted, so nothing to rewrite there). Force-pushed all 7, verified `git log --all -p | grep` returns zero matches for either secret post-rewrite, then reset this local working copy to the new history. All commit hashes changed — any other existing clone of this repo is now stale and should be re-cloned, not pulled.  
   _Surfaced by /cso on 2026-09-16_
 
 ## P2 — Ship before public launch
