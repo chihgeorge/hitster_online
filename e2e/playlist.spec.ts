@@ -161,7 +161,8 @@ test.describe("Host lobby: save and load playlist", () => {
     await page.getByRole("button", { name: "儲存播放清單" }).click();
     const nameInput = page.getByPlaceholder("播放清單名稱");
     await nameInput.fill("E2E Test Playlist");
-    await page.getByRole("button", { name: /儲存/ }).click();
+    // The submit button reads "儲存 (N)"; /儲存/ alone also matches the "儲存播放清單" toggle
+    await page.getByRole("button", { name: /^儲存 \(\d+\)/ }).click();
     // After save, the "已儲存 ✓" badge appears and the copy ID button is shown
     await expect(page.getByText("已儲存 ✓")).toBeVisible({ timeout: 5_000 });
 
