@@ -35,7 +35,7 @@ PORT=3456 npm run dev:next
 npm run dev:party
 ```
 
-`.env.local` is required for the Next.js server. Copy `.env.example` and fill in real values (never commit `.env.local`).
+`.env.local` is required for the Next.js server. Copy `env.example` and fill in real values (never commit `.env.local`).
 
 `.dev.vars` is required for the PartyKit server. Never commit it.
 
