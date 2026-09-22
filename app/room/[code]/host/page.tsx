@@ -3,10 +3,9 @@
 import { useEffect, useRef, useState } from "react";
 import { useParams } from "next/navigation";
 import usePartySocket from "partysocket/react";
-import MusicPlayer from "@/components/MusicPlayer";
-import LyricsPlayer, { lyricsAudioProps, isAudioPhase, needsLyricsAudio } from "@/components/LyricsPlayer";
-import PlayerList from "@/components/PlayerList";
 import PlaylistEditor from "@/components/PlaylistEditor";
+import { Qr } from "@/components/Qr";
+import { getOrCreatePersistedId } from "@/lib/device-id";
 import type { GameState, ServerMessage, ClientMessage, SongDiagnostic, EditableSong, PublicLyricsGameState, PublicLyricsRound, LyricsGameConfig } from "@/lib/game";
 
 const PARTYKIT_HOST = process.env.NEXT_PUBLIC_PARTYKIT_HOST || "localhost:1999";
@@ -25,16 +24,6 @@ function saveSavedPlaylistIndex(index: SavedPlaylistMeta[]) {
   try {
     localStorage.setItem("hitster_playlists", JSON.stringify(index));
   } catch {}
-}
-
-function getOrCreateHostId(): string {
-  const key = "hitster_host_id";
-  let id = localStorage.getItem(key);
-  if (!id) {
-    id = crypto.randomUUID();
-    localStorage.setItem(key, id);
-  }
-  return id;
 }
 
 type LoadStatus = "idle" | "loading" | "ready" | "error";
@@ -66,12 +55,10 @@ export default function HostPage() {
   // Lyrics Mode
   const [gameMode, setGameMode] = useState<"timeline" | "lyrics">("timeline");
   const [lyricsState, setLyricsState] = useState<PublicLyricsGameState | null>(null);
-  const [lyricsAudio, setLyricsAudio] = useState<{ videoId: string | null; roundIndex: number } | null>(null);
   const [lyricsPreview, setLyricsPreview] = useState<PublicLyricsRound[]>([]);
   const [lyricsPreviewLoading, setLyricsPreviewLoading] = useState(false);
   const [lyricOverrides, setLyricOverrides] = useState<Record<string, { lyricContext?: string; blankSentence?: string }>>({});
   const [lyricsConfig, setLyricsConfig] = useState<LyricsGameConfig>({ timerSeconds: 60, totalRounds: 10, fuzzyEnabled: false });
-  const [lyricsTimerLeft, setLyricsTimerLeft] = useState<number | null>(null);
   const hostIdRef = useRef<string>("");
   const loadedUrlRef = useRef<string>("");
   const readySongsRef = useRef<EditableSong[]>([]);
@@ -80,7 +67,7 @@ export default function HostPage() {
   const pendingSavedIdRef = useRef<string | null>(null);
 
   useEffect(() => {
-    hostIdRef.current = getOrCreateHostId();
+    hostIdRef.current = getOrCreatePersistedId("hitster_host_id");
     setSavedPlaylists(loadSavedPlaylistIndex());
   }, []);
 
@@ -159,45 +146,14 @@ export default function HostPage() {
         setError(msg.error);
         setLoadStatus("error");
       }
-      if (msg.type === "LYRICS_STATE") {
-        setLyricsState(msg.state);
-        // A new game must not match audio left over from the previous one
-        if (["loading", "preview", "ended"].includes(msg.state.phase)) setLyricsAudio(null);
-        if (msg.state.phase === "lobby" || msg.state.phase === "ended") {
-          setLyricsTimerLeft(null);
-        }
-      }
-      if (msg.type === "LYRICS_ABORTED") { setLyricsState(null); setLyricsAudio(null); }
-      if (msg.type === "LYRICS_AUDIO") setLyricsAudio({ videoId: msg.videoId, roundIndex: msg.roundIndex });
+      if (msg.type === "LYRICS_STATE") setLyricsState(msg.state);
+      if (msg.type === "LYRICS_ABORTED") setLyricsState(null);
       if (msg.type === "LYRICS_PREVIEW") {
         setLyricsPreviewLoading(msg.loading);
         if (!msg.loading) setLyricsPreview(msg.rounds);
       }
     },
   });
-
-  // Lyrics countdown timer (client-side display only)
-  useEffect(() => {
-    if (lyricsState?.phase !== "guessing" || lyricsState.roundStart === null) {
-      setLyricsTimerLeft(null);
-      return;
-    }
-    const deadline = lyricsState.roundStart + lyricsState.timerSeconds * 1000;
-    const tick = () => {
-      const left = Math.max(0, Math.ceil((deadline - Date.now()) / 1000));
-      setLyricsTimerLeft(left);
-    };
-    tick();
-    const id = setInterval(tick, 200);
-    return () => clearInterval(id);
-  }, [lyricsState?.phase, lyricsState?.roundStart, lyricsState?.timerSeconds]);
-
-  // Players never receive the video id, so ask the server for it. Runs on every state update until this
-  // round has a reply, which also retries after a reconnect; a reply with a null id counts as answered.
-  useEffect(() => {
-    if (needsLyricsAudio(lyricsState, lyricsAudio)) send({ type: "GET_LYRICS_AUDIO", hostId: hostIdRef.current });
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- send is stable enough; re-run on new state or reply
-  }, [lyricsState, lyricsAudio]);
 
   function send(msg: ClientMessage) {
     socket.send(JSON.stringify(msg));
@@ -396,6 +352,14 @@ export default function HostPage() {
             <p style={{ fontFamily: "var(--font-mono)", fontSize: 26, letterSpacing: ".2em", color: "#FF6B35", fontWeight: 900, lineHeight: 1 }}>
               {params.code}
             </p>
+          </div>
+          {/* Big screen: open on a TV/projector. Never shown to players — the code above is the
+              only thing they need, this link is host-only setup. */}
+          <div style={{ display: "flex", alignItems: "center", gap: 10, background: "#FFF0E8", borderRadius: 16, padding: "10px 14px", border: "2px solid rgba(255,107,53,.15)" }}>
+            <Qr text={typeof window !== "undefined" ? `${window.location.origin}/room/${params.code}/screen` : ""} size={64} alt="大螢幕 QR" />
+            <div style={{ fontSize: 11, color: "#7B7B9A", maxWidth: 120, lineHeight: 1.4 }}>
+              📺 在電視或投影機掃描開啟大螢幕
+            </div>
           </div>
         </div>
         <div style={{ textAlign: "right", fontSize: 13, display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 3, flexShrink: 1, minWidth: 0 }}>
@@ -801,27 +765,12 @@ export default function HostPage() {
         </div>
       )}
 
-      {/* Lyrics Mode: playing (show lyric context, ready to cut) */}
+      {/* Lyrics Mode: playing — controls only, the lyric text and audio are on the big screen */}
       {lyricsState?.phase === "playing" && lyricsState.currentRound && (
-        <div style={{ ...panel, display: "flex", flexDirection: "column", gap: 20 }}>
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
-            <p style={{ fontSize: 11, color: "#B0AFBC", textTransform: "uppercase", letterSpacing: ".1em" }}>
-              第 {lyricsState.currentRoundIndex + 1} / {lyricsState.totalRounds} 回合
-            </p>
-            <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-              {Object.entries(lyricsState.players).sort(([,a],[,b]) => b.score - a.score).map(([id, p]) => (
-                <span key={id} style={{ fontSize: 12, color: "#7B7B9A", fontWeight: 600 }}>{p.name}: <span style={{ color: "#FF6B35" }}>{p.score}</span></span>
-              ))}
-            </div>
-          </div>
-          <div style={{ background: "#FFF0E8", borderRadius: 16, textAlign: "center", padding: "40px 24px", border: "2px solid rgba(255,107,53,.15)" }}>
-            <p style={{ fontSize: 11, color: "#B0AFBC", marginBottom: 8, fontWeight: 700, textTransform: "uppercase", letterSpacing: ".1em" }}>
-              {lyricsState.currentRound.title} · {lyricsState.currentRound.artist}
-            </p>
-            <p style={{ fontSize: 28, fontWeight: 700, color: "#1A1A2E", lineHeight: 1.7, fontFamily: "var(--font-zh)", whiteSpace: "pre-wrap" }}>
-              {lyricsState.currentRound.lyricContext}
-            </p>
-          </div>
+        <div style={{ ...panel, display: "flex", flexDirection: "column", gap: 14 }}>
+          <p style={{ fontSize: 11, color: "#B0AFBC", textTransform: "uppercase", letterSpacing: ".1em" }}>
+            第 {lyricsState.currentRoundIndex + 1} / {lyricsState.totalRounds} 回合 · {lyricsState.currentRound.title}
+          </p>
           <button onClick={handleStartLyricsRound}
             style={{ background: "#FF6B35", color: "white", border: "none", borderRadius: 14, padding: "15px", fontSize: 16, fontWeight: 900, cursor: "pointer", fontFamily: "var(--font-zh)", boxShadow: "0 4px 16px rgba(255,107,53,.3)" }}>
             ✂️ 切歌！Cut!
@@ -829,38 +778,12 @@ export default function HostPage() {
         </div>
       )}
 
-      {/* Lyrics Mode: guessing (timer + answer count + reveal button) */}
+      {/* Lyrics Mode: guessing — controls only; timer and lyric text are on the big screen */}
       {lyricsState?.phase === "guessing" && lyricsState.currentRound && (
-        <div style={{ ...panel, display: "flex", flexDirection: "column", gap: 20 }}>
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
-            <p style={{ fontSize: 11, color: "#B0AFBC", textTransform: "uppercase", letterSpacing: ".1em" }}>
-              第 {lyricsState.currentRoundIndex + 1} / {lyricsState.totalRounds} 回合 · 搶答中
-            </p>
-            <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-              {Object.entries(lyricsState.players).sort(([,a],[,b]) => b.score - a.score).map(([id, p]) => (
-                <span key={id} style={{ fontSize: 12, color: "#7B7B9A", fontWeight: 600 }}>{p.name}: <span style={{ color: "#FF6B35" }}>{p.score}</span></span>
-              ))}
-            </div>
-          </div>
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16 }}>
-            <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-              <p style={{ fontSize: 12, color: "#7B7B9A" }}>倒數計時</p>
-              <p style={{ fontSize: 48, fontWeight: 900, color: (lyricsTimerLeft ?? 99) <= 5 ? "#FF3B5C" : "#FF6B35", fontFamily: "var(--font-mono)", lineHeight: 1 }}>
-                {lyricsTimerLeft ?? lyricsState.timerSeconds}
-              </p>
-            </div>
-            <div style={{ display: "flex", flexDirection: "column", gap: 4, textAlign: "right" }}>
-              <p style={{ fontSize: 12, color: "#7B7B9A" }}>已作答</p>
-              <p style={{ fontSize: 32, fontWeight: 900, color: "#1A1A2E", lineHeight: 1 }}>
-                {Object.keys(lyricsState.answers).length} / {Object.keys(lyricsState.players).length}
-              </p>
-            </div>
-          </div>
-          <div style={{ background: "#FFF0E8", borderRadius: 16, padding: "40px 24px", textAlign: "center", border: "2px solid rgba(255,107,53,.15)" }}>
-            <p style={{ fontSize: 28, fontWeight: 700, color: "#1A1A2E", lineHeight: 1.7, fontFamily: "var(--font-zh)", whiteSpace: "pre-wrap" }}>
-              {lyricsState.currentRound.lyricContext}
-            </p>
-          </div>
+        <div style={{ ...panel, display: "flex", flexDirection: "column", gap: 14 }}>
+          <p style={{ fontSize: 11, color: "#B0AFBC", textTransform: "uppercase", letterSpacing: ".1em" }}>
+            第 {lyricsState.currentRoundIndex + 1} / {lyricsState.totalRounds} 回合 · 搶答中 — 已作答 {Object.keys(lyricsState.answers).length} / {Object.keys(lyricsState.players).length}
+          </p>
           <button onClick={handleShowLyricsResults}
             style={{ background: "#1A1A2E", color: "white", border: "none", borderRadius: 14, padding: "14px", fontSize: 15, fontWeight: 900, cursor: "pointer", fontFamily: "var(--font-zh)" }}>
             🔍 揭曉答案 · Show Results
@@ -868,52 +791,12 @@ export default function HostPage() {
         </div>
       )}
 
-      {/* Lyrics Mode: results */}
+      {/* Lyrics Mode: results — controls only; the results table is on the big screen */}
       {lyricsState?.phase === "results" && lyricsState.currentRound && (
-        <div style={{ ...panel, display: "flex", flexDirection: "column", gap: 20 }}>
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
-            <p style={{ fontSize: 11, color: "#B0AFBC", textTransform: "uppercase", letterSpacing: ".1em" }}>
-              第 {lyricsState.currentRoundIndex + 1} / {lyricsState.totalRounds} 回合 · 結果
-            </p>
-          </div>
-          <div style={{ background: "#FFF0E8", borderRadius: 14, border: "2px solid rgba(255,107,53,.15)", overflow: "hidden" }}>
-            <table style={{ width: "100%", fontSize: 12, borderCollapse: "collapse" }}>
-              <thead>
-                <tr style={{ borderBottom: "1px solid rgba(255,107,53,.15)" }}>
-                  {(["Title", "Artist", "Lyric Question", "Answer"] as const).map((h) => (
-                    <th key={h} style={{ padding: "8px 14px", textAlign: "left", fontWeight: 700, color: "#B0AFBC", whiteSpace: "nowrap" }}>{h}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                <tr>
-                  <td style={{ padding: "10px 14px", fontWeight: 700, color: "#1A1A2E", maxWidth: 160, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{lyricsState.currentRound.title}</td>
-                  <td style={{ padding: "10px 14px", color: "#7B7B9A", maxWidth: 120, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{lyricsState.currentRound.artist}</td>
-                  <td style={{ padding: "10px 14px", color: "#7B7B9A", fontFamily: "var(--font-zh)", maxWidth: 200, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{lyricsState.currentRound.lyricContext ?? "—"}</td>
-                  <td style={{ padding: "10px 14px", fontWeight: 900, color: "#FF6B35", fontFamily: "var(--font-zh)", whiteSpace: "nowrap" }}>{lyricsState.currentRound.blankSentence ?? "（已揭曉）"}</td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
-          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-            {Object.entries(lyricsState.players).sort(([,a],[,b]) => b.score - a.score).map(([id, p]) => {
-              const ans = lyricsState.answers[id];
-              return (
-                <div key={id} style={{ display: "flex", alignItems: "center", gap: 12, background: ans?.correct ? "rgba(0,200,150,.06)" : "rgba(255,107,53,.04)", border: `2px solid ${ans?.correct ? "rgba(0,200,150,.25)" : "rgba(255,107,53,.15)"}`, borderRadius: 12, padding: "12px 14px" }}>
-                  <span style={{ fontSize: 14, fontWeight: 700, color: "#1A1A2E", flex: 1 }}>{p.name}</span>
-                  {ans ? (
-                    <>
-                      <span style={{ fontSize: 14, color: "#7B7B9A", fontFamily: "var(--font-zh)" }}>{ans.text}</span>
-                      <span style={{ fontSize: 13, fontWeight: 900, color: ans.correct ? "#00C896" : "#FF3B5C" }}>
-                        {ans.correct ? `+${ans.points}` : "✗"}
-                      </span>
-                    </>
-                  ) : <span style={{ fontSize: 12, color: "#B0AFBC" }}>未作答</span>}
-                  <span style={{ fontSize: 13, fontWeight: 900, color: "#FF6B35", minWidth: 40, textAlign: "right" }}>{p.score}</span>
-                </div>
-              );
-            })}
-          </div>
+        <div style={{ ...panel, display: "flex", flexDirection: "column", gap: 14 }}>
+          <p style={{ fontSize: 11, color: "#B0AFBC", textTransform: "uppercase", letterSpacing: ".1em" }}>
+            第 {lyricsState.currentRoundIndex + 1} / {lyricsState.totalRounds} 回合 · 結果 — 答案：{lyricsState.currentRound.blankSentence ?? "（已揭曉）"}
+          </p>
           <button onClick={handleNextLyricsRound}
             style={{ background: "#FF6B35", color: "white", border: "none", borderRadius: 14, padding: "14px", fontSize: 15, fontWeight: 900, cursor: "pointer", fontFamily: "var(--font-zh)", boxShadow: "0 4px 16px rgba(255,107,53,.3)" }}>
             {lyricsState.currentRoundIndex + 1 >= lyricsState.totalRounds ? "🏆 查看排名 · See Rankings" : "▶ 下一回合 · Next Round"}
@@ -921,22 +804,13 @@ export default function HostPage() {
         </div>
       )}
 
-      {/* Lyrics Mode: ended */}
+      {/* Lyrics Mode: ended — full rankings are on the big screen */}
       {lyricsState?.phase === "ended" && (
-        <div style={{ ...panel, display: "flex", flexDirection: "column", alignItems: "center", gap: 20, padding: "48px 24px" }}>
+        <div style={{ ...panel, display: "flex", flexDirection: "column", alignItems: "center", gap: 16, padding: "36px 24px" }}>
           <p style={{ fontSize: 11, color: "#B0AFBC", textTransform: "uppercase", letterSpacing: ".12em" }}>歌詞模式結束 · Lyrics Mode Over!</p>
-          <h2 className="title-outlined" style={{ fontSize: 40, lineHeight: 1.05 }}>
+          <h2 className="title-outlined" style={{ fontSize: 32, lineHeight: 1.05 }}>
             {Object.entries(lyricsState.players).sort(([,a],[,b]) => b.score - a.score)[0]?.[1]?.name ?? "?"}
           </h2>
-          <div style={{ width: "100%", display: "flex", flexDirection: "column", gap: 8 }}>
-            {Object.entries(lyricsState.players).sort(([,a],[,b]) => b.score - a.score).map(([id, p], i) => (
-              <div key={id} style={{ display: "flex", alignItems: "center", gap: 12, background: i === 0 ? "rgba(255,107,53,.06)" : "white", border: `2px solid ${i === 0 ? "rgba(255,107,53,.3)" : "rgba(255,107,53,.1)"}`, borderRadius: 14, padding: "14px 18px" }}>
-                <span style={{ fontSize: 20, fontWeight: 900, color: i === 0 ? "#FF6B35" : "#B0AFBC", minWidth: 28 }}>#{i + 1}</span>
-                <span style={{ fontSize: 16, fontWeight: 700, color: "#1A1A2E", flex: 1 }}>{p.name}</span>
-                <span style={{ fontSize: 24, fontWeight: 900, color: "#FF6B35", fontFamily: "var(--font-mono)" }}>{p.score}</span>
-              </div>
-            ))}
-          </div>
           <button onClick={handleResetLyricsGame}
             style={{ background: "#FF6B35", color: "white", border: "none", borderRadius: 14, padding: "14px 32px", fontSize: 15, fontWeight: 900, cursor: "pointer", fontFamily: "var(--font-zh)" }}>
             再玩一次 · Play Again
@@ -944,50 +818,50 @@ export default function HostPage() {
         </div>
       )}
 
-      {/* Game in progress */}
+      {/* Timeline mode: in progress — controls only; the video and timelines are on the big screen */}
       {(phase === "guessing" || phase === "reveal") && (
-        <div style={{ ...panel, display: "grid", gridTemplateColumns: "1fr", gap: 24 }} className="lg:grid-cols-[1fr_480px]">
-          <MusicPlayer
-            currentSong={state?.currentSong ?? null}
-            phase={phase}
-            placementCount={Object.keys(state?.placements ?? {}).length}
-            onReveal={handleReveal}
-            onNextRound={handleNextRound}
-          />
-          <div>
-            <p style={{ fontSize: 11, color: "#B0AFBC", textTransform: "uppercase", letterSpacing: ".1em", marginBottom: 12 }}>
-              第 {state?.currentRound} 回合 · Round
-            </p>
-            <PlayerList
-              players={state?.players ?? {}}
-              placements={state?.placements ?? {}}
-              targetCardCount={state?.targetCardCount ?? 10}
-              activePlayerId={state?.activePlayerId}
-              phase={phase}
-            />
-          </div>
+        <div style={{ ...panel, display: "flex", flexDirection: "column", gap: 14 }}>
+          <p style={{ fontSize: 11, color: "#B0AFBC", textTransform: "uppercase", letterSpacing: ".1em" }}>
+            第 {state?.currentRound} 回合 · {state?.players[state?.activePlayerId ?? ""]?.name ?? "?"} 的回合
+          </p>
+          {phase === "guessing" && (
+            <button
+              data-testid="reveal-btn"
+              onClick={handleReveal}
+              disabled={Object.keys(state?.placements ?? {}).length === 0}
+              style={{
+                background: Object.keys(state?.placements ?? {}).length === 0 ? "rgba(255,107,53,.35)" : "#FF6B35",
+                color: "white", border: "none", borderRadius: 14, padding: "15px",
+                fontSize: 16, fontWeight: 900, cursor: Object.keys(state?.placements ?? {}).length === 0 ? "not-allowed" : "pointer",
+                fontFamily: "var(--font-zh)", boxShadow: Object.keys(state?.placements ?? {}).length > 0 ? "0 4px 16px rgba(255,107,53,.3)" : "none",
+              }}>
+              {Object.keys(state?.placements ?? {}).length === 0
+                ? "等待玩家放置… Waiting"
+                : `揭曉答案 → Reveal (${Object.keys(state?.placements ?? {}).length} placed)`}
+            </button>
+          )}
+          {phase === "reveal" && (
+            <button data-testid="next-round-btn" onClick={handleNextRound}
+              style={{ background: "#1A1A2E", color: "white", border: "none", borderRadius: 14, padding: "14px", fontSize: 15, fontWeight: 900, cursor: "pointer", fontFamily: "var(--font-zh)" }}>
+              下一回合 · Next Round
+            </button>
+          )}
         </div>
       )}
 
-      {/* Game ended */}
+      {/* Timeline mode: ended — full standings are on the big screen */}
       {phase === "ended" && state && (
-        <div style={{ ...panel, display: "flex", flexDirection: "column", alignItems: "center", gap: 20, padding: "48px 24px" }}>
+        <div style={{ ...panel, display: "flex", flexDirection: "column", alignItems: "center", gap: 16, padding: "36px 24px" }}>
           <p style={{ fontSize: 11, color: "#B0AFBC", textTransform: "uppercase", letterSpacing: ".12em" }}>遊戲結束 · Winner!</p>
-          <h2 className="title-outlined" style={{ fontSize: 40, lineHeight: 1.05 }}>
+          <h2 className="title-outlined" style={{ fontSize: 32, lineHeight: 1.05 }}>
             {state.players[state.winner ?? ""]?.name ?? "Unknown"}
           </h2>
-          <div style={{ width: "100%" }}>
-            <PlayerList players={state.players} placements={{}} targetCardCount={state.targetCardCount} activePlayerId={null} />
-          </div>
           <button onClick={handleResetGame}
             style={{ background: "#FF6B35", color: "white", border: "none", borderRadius: 14, padding: "14px 32px", fontSize: 15, fontWeight: 900, cursor: "pointer", fontFamily: "var(--font-zh)" }}>
             再玩一次 · Play Again
           </button>
         </div>
       )}
-
-      {/* Lyrics Mode audio: plays at round start, pauses on Cut (guessing), resumes on results */}
-      {isAudioPhase(lyricsState) && <LyricsPlayer {...lyricsAudioProps(lyricsState, lyricsAudio)} />}
 
       {/* Song metadata panel */}
       {diagnostic && phase !== "lobby" && (

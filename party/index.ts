@@ -122,6 +122,15 @@ export default class HitsterRoom implements Party.Server {
   private abortLoad = false;
   private loadSeq = 0;
   private hostConnId = "";
+  // The room's screen credential (a /screen page's persisted token). Claimed the same way
+  // hostId is: the first GET_LYRICS_AUDIO with a non-empty screenId claims it, later callers
+  // must match exactly. Unlike hostId, no "first connection" race guard applies — the screen
+  // is expected to be a second device, connecting after the host.
+  private screenId = "";
+  // Connections that have proven themselves host or screen (see markPrivileged) — the only
+  // ones that get the full preview-phase deck (see broadcastLyricsState). Not cleaned up on
+  // disconnect: a stale entry just means one extra harmless send to a closed socket.
+  private privilegedConns = new Set<Party.Connection>();
 
   constructor(readonly room: Party.Room) {
     this.state = this.emptyState();
@@ -202,7 +211,7 @@ export default class HitsterRoom implements Party.Server {
         await this.handleLoadPlaylist(sender, msg.hostId, msg.playlistUrl);
         break;
       case "ABORT_LOAD":
-        if (this.isValidHostId(msg.hostId)) this.abortLoad = true;
+        if (this.authorizeHost(sender, msg.hostId)) this.abortLoad = true;
         break;
       case "LOAD_SAVED_PLAYLIST":
         this.handleLoadSavedPlaylist(sender, msg.hostId, msg.playlistId, msg.songs);
@@ -227,7 +236,7 @@ export default class HitsterRoom implements Party.Server {
         this.handleConfirmLyricsPreview(sender, msg.hostId);
         break;
       case "GET_LYRICS_AUDIO":
-        this.handleGetLyricsAudio(sender, msg.hostId);
+        this.handleGetLyricsAudio(sender, msg.screenId);
         break;
       case "START_LYRICS_ROUND":
         this.handleStartLyricsRound(sender, msg.hostId);
@@ -353,6 +362,56 @@ export default class HitsterRoom implements Party.Server {
     return this.state.hostId !== "" && hostId === this.state.hostId;
   }
 
+  /**
+   * Validates an already-claimed hostId and marks the connection privileged, so preview-phase
+   * broadcasts (see broadcastLyricsState) know to send it the full deck. Use for every
+   * host-gated handler except the four that can be the FIRST host message — those call
+   * claimOrValidateHost instead.
+   */
+  private authorizeHost(conn: Party.Connection, hostId: string): boolean {
+    if (!this.isValidHostId(hostId)) return false;
+    this.markPrivileged(conn);
+    return true;
+  }
+
+  /**
+   * The four entry points where a room's host is established: LOAD_PLAYLIST, LOAD_SAVED_PLAYLIST,
+   * START_GAME, START_LYRICS_GAME. First caller (from the room's first-ever connection, hostConnId)
+   * claims hostId; everyone else must match the claimed value exactly. Also marks the connection
+   * privileged, same as authorizeHost.
+   */
+  private claimOrValidateHost(conn: Party.Connection, hostId: string): boolean {
+    if (this.state.hostId === "") {
+      if (this.hostConnId !== "" && conn.id !== this.hostConnId) return false;
+      this.state.hostId = hostId;
+      this.hostConnId = conn.id;
+    } else if (!this.isValidHostId(hostId)) {
+      return false;
+    }
+    this.markPrivileged(conn);
+    return true;
+  }
+
+  /**
+   * The room's screen credential works like hostId but claims lazily on first use (there is no
+   * separate JOIN_SCREEN message — GET_LYRICS_AUDIO is the only place a screen ever has to prove
+   * itself, so claiming there avoids a whole extra message type).
+   */
+  private claimOrValidateScreen(conn: Party.Connection, screenId: string): boolean {
+    if (typeof screenId !== "string" || screenId === "") return false;
+    if (this.screenId === "") {
+      this.screenId = screenId;
+    } else if (screenId !== this.screenId) {
+      return false;
+    }
+    this.markPrivileged(conn);
+    return true;
+  }
+
+  private markPrivileged(conn: Party.Connection) {
+    this.privilegedConns.add(conn);
+  }
+
   private resolveEnv() {
     return {
       youtubeKey:
@@ -381,14 +440,7 @@ export default class HitsterRoom implements Party.Server {
       this.sendTo(conn, { type: "PLAYLIST_LOAD_ERROR", error: "wrong_phase" });
       return;
     }
-    if (this.state.hostId === "") {
-      if (this.hostConnId !== "" && conn.id !== this.hostConnId) {
-        this.sendTo(conn, { type: "PLAYLIST_LOAD_ERROR", error: "unauthorized" });
-        return;
-      }
-      this.state.hostId = hostId;
-      this.hostConnId = conn.id;
-    } else if (!this.isValidHostId(hostId)) {
+    if (!this.claimOrValidateHost(conn, hostId)) {
       this.sendTo(conn, { type: "PLAYLIST_LOAD_ERROR", error: "unauthorized" });
       return;
     }
@@ -573,14 +625,7 @@ export default class HitsterRoom implements Party.Server {
       this.sendTo(conn, { type: "PLAYLIST_LOAD_ERROR", error: "wrong_phase" });
       return;
     }
-    if (this.state.hostId === "") {
-      if (this.hostConnId !== "" && conn.id !== this.hostConnId) {
-        this.sendTo(conn, { type: "PLAYLIST_LOAD_ERROR", error: "unauthorized" });
-        return;
-      }
-      this.state.hostId = hostId;
-      this.hostConnId = conn.id;
-    } else if (!this.isValidHostId(hostId)) {
+    if (!this.claimOrValidateHost(conn, hostId)) {
       this.sendTo(conn, { type: "PLAYLIST_LOAD_ERROR", error: "unauthorized" });
       return;
     }
@@ -648,14 +693,7 @@ export default class HitsterRoom implements Party.Server {
       this.sendTo(conn, { type: "ERROR", error: "wrong_phase" });
       return;
     }
-    if (this.state.hostId === "") {
-      if (this.hostConnId !== "" && conn.id !== this.hostConnId) {
-        this.sendTo(conn, { type: "ERROR", error: "unauthorized" });
-        return;
-      }
-      this.state.hostId = hostId;
-      this.hostConnId = conn.id;
-    } else if (!this.isValidHostId(hostId)) {
+    if (!this.claimOrValidateHost(conn, hostId)) {
       this.sendTo(conn, { type: "ERROR", error: "unauthorized" });
       return;
     }
@@ -745,7 +783,7 @@ export default class HitsterRoom implements Party.Server {
   }
 
   private handleReveal(conn: Party.Connection, hostId: string) {
-    if (!this.isValidHostId(hostId)) {
+    if (!this.authorizeHost(conn, hostId)) {
       this.sendTo(conn, { type: "ERROR", error: "unauthorized" });
       return;
     }
@@ -776,7 +814,7 @@ export default class HitsterRoom implements Party.Server {
   }
 
   private handleNextRound(conn: Party.Connection, hostId: string) {
-    if (!this.isValidHostId(hostId)) {
+    if (!this.authorizeHost(conn, hostId)) {
       this.sendTo(conn, { type: "ERROR", error: "unauthorized" });
       return;
     }
@@ -839,7 +877,7 @@ export default class HitsterRoom implements Party.Server {
     const publicRound = round
       ? {
           // Players must not get the video id: opening a lyric video would reveal the answer.
-          // The host fetches it through GET_LYRICS_AUDIO instead.
+          // The screen fetches it through GET_LYRICS_AUDIO instead.
           videoId: "",
           title: round.title,
           artist: round.artist,
@@ -858,7 +896,19 @@ export default class HitsterRoom implements Party.Server {
 
   private broadcastLyricsState() {
     const state = this.sanitizedLyricsState();
-    if (state) this.broadcast({ type: "LYRICS_STATE", state });
+    if (!state) return;
+    if (state.rounds.length === 0) {
+      // Nothing secret in this payload (not preview, or nothing to reveal yet) — plain broadcast.
+      this.broadcast({ type: "LYRICS_STATE", state });
+      return;
+    }
+    // Preview phase: state.rounds carries the full deck with answers revealed, for the host/screen
+    // to review before the game starts. Players get nothing this phase — the play page has no
+    // preview-phase UI (it only reacts to loading/playing/guessing/results/ended), so there is
+    // nothing for them to lose by not receiving it, and it's the one phase with a secret to protect.
+    for (const conn of this.privilegedConns) {
+      this.sendTo(conn, { type: "LYRICS_STATE", state });
+    }
   }
 
   private async handleStartLyricsGame(
@@ -872,14 +922,7 @@ export default class HitsterRoom implements Party.Server {
       this.sendTo(conn, { type: "ERROR", error: "wrong_phase" });
       return;
     }
-    if (this.state.hostId === "") {
-      if (this.hostConnId !== "" && conn.id !== this.hostConnId) {
-        this.sendTo(conn, { type: "ERROR", error: "unauthorized" });
-        return;
-      }
-      this.state.hostId = hostId;
-      this.hostConnId = conn.id;
-    } else if (!this.isValidHostId(hostId)) {
+    if (!this.claimOrValidateHost(conn, hostId)) {
       this.sendTo(conn, { type: "ERROR", error: "unauthorized" });
       return;
     }
@@ -1044,9 +1087,10 @@ export default class HitsterRoom implements Party.Server {
     this.broadcast({ type: "LYRICS_ABORTED" });
   }
 
-  // Host-only: players never receive the video id (see sanitizedLyricsState).
-  private handleGetLyricsAudio(conn: Party.Connection, hostId: string) {
-    if (!this.isValidHostId(hostId)) {
+  // Screen-only: players never receive the video id (see sanitizedLyricsState). screenId
+  // claims lazily here — see claimOrValidateScreen.
+  private handleGetLyricsAudio(conn: Party.Connection, screenId: string) {
+    if (!this.claimOrValidateScreen(conn, screenId)) {
       this.sendTo(conn, { type: "ERROR", error: "unauthorized" });
       return;
     }
@@ -1058,7 +1102,7 @@ export default class HitsterRoom implements Party.Server {
   }
 
   private handleConfirmLyricsPreview(conn: Party.Connection, hostId: string) {
-    if (!this.isValidHostId(hostId) || !this.lyricsState) {
+    if (!this.authorizeHost(conn, hostId) || !this.lyricsState) {
       this.sendTo(conn, { type: "ERROR", error: "unauthorized" });
       return;
     }
@@ -1073,7 +1117,7 @@ export default class HitsterRoom implements Party.Server {
   }
 
   private handleStartLyricsRound(conn: Party.Connection, hostId: string) {
-    if (!this.isValidHostId(hostId) || !this.lyricsState) {
+    if (!this.authorizeHost(conn, hostId) || !this.lyricsState) {
       this.sendTo(conn, { type: "ERROR", error: "unauthorized" });
       return;
     }
@@ -1108,7 +1152,7 @@ export default class HitsterRoom implements Party.Server {
   }
 
   private handleShowLyricsResults(conn: Party.Connection, hostId: string) {
-    if (!this.isValidHostId(hostId) || !this.lyricsState) {
+    if (!this.authorizeHost(conn, hostId) || !this.lyricsState) {
       this.sendTo(conn, { type: "ERROR", error: "unauthorized" });
       return;
     }
@@ -1135,7 +1179,7 @@ export default class HitsterRoom implements Party.Server {
   }
 
   private handleNextLyricsRound(conn: Party.Connection, hostId: string) {
-    if (!this.isValidHostId(hostId) || !this.lyricsState) {
+    if (!this.authorizeHost(conn, hostId) || !this.lyricsState) {
       this.sendTo(conn, { type: "ERROR", error: "unauthorized" });
       return;
     }
@@ -1159,7 +1203,7 @@ export default class HitsterRoom implements Party.Server {
   }
 
   private handleResetLyricsGame(conn: Party.Connection, hostId: string) {
-    if (!this.isValidHostId(hostId)) {
+    if (!this.authorizeHost(conn, hostId)) {
       this.sendTo(conn, { type: "ERROR", error: "unauthorized" });
       return;
     }
@@ -1174,7 +1218,7 @@ export default class HitsterRoom implements Party.Server {
   }
 
   private handleResetGame(conn: Party.Connection, hostId: string) {
-    if (!this.isValidHostId(hostId)) {
+    if (!this.authorizeHost(conn, hostId)) {
       this.sendTo(conn, { type: "ERROR", error: "unauthorized" });
       return;
     }

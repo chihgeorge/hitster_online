@@ -166,4 +166,6 @@
   MusicPlayer now survives a malformed video id (v0.5.1.0) but the round runs silently with no music and no notice; Lyrics Mode shows one. Reuse the LyricsPlayer "can't play" banner. Found by /ship adversarial review on 2026-09-21.
 - [ ] **P3** Reject malformed video ids when a playlist is saved or loaded  
   `LOAD_SAVED_PLAYLIST` and the playlist party only check that `videoId` is a non-empty string. A server-side `/^[\w-]{11}$/` check would stop a bad id reaching the player at all. Found by /ship adversarial review on 2026-09-21.
+- [ ] **P2** Timeline mode exposes the real video id to all players at all times  
+  `sanitizedState()` (party/index.ts:150-163) strips `year` from `currentSong` but never `videoId`. A player can open the real YouTube link and see the true title/upload date, defeating the year-guess — same bug class as the Lyrics Mode leak fixed in v0.5.0.0/v0.5.1.0. Depends on the host/screen split landing first: `screenId` gives a clean place to route Timeline's video the way Lyrics audio already routes to the host. Found by `/plan-eng-review` on 2026-09-21.
 

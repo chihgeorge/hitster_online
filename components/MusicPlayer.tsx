@@ -7,12 +7,11 @@ import { whenYouTubeApiReady } from "@/lib/youtube-iframe-api";
 interface Props {
   currentSong: Card | null;
   phase: GamePhase;
-  placementCount: number;
-  onReveal: () => void;
-  onNextRound: () => void;
 }
 
-export default function MusicPlayer({ currentSong, phase, placementCount, onReveal, onNextRound }: Props) {
+// Display-only: the video, its guessing-phase overlay, and the reveal-phase song info.
+// Reveal/Next Round are host controls, not display — they live on /host, not here.
+export default function MusicPlayer({ currentSong, phase }: Props) {
   const playerRef = useRef<HTMLDivElement>(null);
   const [playerReady, setPlayerReady] = useState(false);
 
@@ -103,39 +102,6 @@ export default function MusicPlayer({ currentSong, phase, placementCount, onReve
           <p style={{ color: "#7B7B9A", fontSize: 12, marginTop: 2 }}>{currentSong.artist}</p>
         </div>
       )}
-
-      {/* Host controls */}
-      <div className="flex gap-3">
-        {phase === "guessing" && (
-          <button
-            data-testid="reveal-btn"
-            onClick={onReveal}
-            disabled={placementCount === 0}
-            style={{
-              flex: 1, background: placementCount === 0 ? "rgba(255,107,53,.3)" : "#FF6B35",
-              color: "white", border: "none", borderRadius: 14, padding: "14px",
-              fontSize: 15, fontWeight: 900, cursor: placementCount === 0 ? "not-allowed" : "pointer",
-              fontFamily: "var(--font-zh)", boxShadow: placementCount > 0 ? "0 4px 14px rgba(255,107,53,.3)" : "none",
-            }}
-          >
-            {placementCount === 0 ? "等待玩家放置… Waiting" : `揭曉答案 → Reveal (${placementCount} placed)`}
-          </button>
-        )}
-        {phase === "reveal" && (
-          <button
-            data-testid="next-round-btn"
-            onClick={onNextRound}
-            style={{
-              flex: 1, background: "rgba(255,255,255,.1)", color: "white",
-              border: "none", borderRadius: 14, padding: "14px",
-              fontSize: 15, fontWeight: 700, cursor: "pointer",
-              fontFamily: "var(--font-zh)",
-            }}
-          >
-            下一回合 · Next Round
-          </button>
-        )}
-      </div>
     </div>
   );
 }

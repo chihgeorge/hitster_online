@@ -11,11 +11,17 @@ const STRANGER = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee";
 // ─── Mock PartyKit dependencies ──────────────────────────────────────────────
 
 function makeConn(id = "conn-1") {
-  return {
+  const conn = {
     id,
+    state: null as unknown,
     send: vi.fn(),
     close: vi.fn(),
-  } as unknown as import("partykit/server").Connection;
+    setState: vi.fn((s: unknown) => {
+      conn.state = s;
+      return conn.state;
+    }),
+  };
+  return conn as unknown as import("partykit/server").Connection;
 }
 
 function makeRoom() {
@@ -66,6 +72,24 @@ function lastSentTo(conn: ReturnType<typeof makeConn>) {
   const calls = (conn.send as ReturnType<typeof vi.fn>).mock.calls;
   const last = calls.at(-1)?.[0];
   return last ? JSON.parse(last) : null;
+}
+
+// Preview-phase LYRICS_STATE (the deck with answers revealed) goes only to privileged
+// connections via conn.send, not room.broadcast — merge both sources in call order to see the
+// full phase sequence a host actually observed.
+function allSentMessages(room: HitsterRoom, ...conns: ReturnType<typeof makeConn>[]) {
+  const bcast = room.room.broadcast as ReturnType<typeof vi.fn>;
+  const entries = bcast.mock.calls.map((c: unknown[], i: number) => ({
+    order: bcast.mock.invocationCallOrder[i],
+    msg: JSON.parse(c[0] as string),
+  }));
+  for (const conn of conns) {
+    const s = conn.send as ReturnType<typeof vi.fn>;
+    s.mock.calls.forEach((c: unknown[], i: number) => {
+      entries.push({ order: s.mock.invocationCallOrder[i], msg: JSON.parse(c[0] as string) });
+    });
+  }
+  return entries.sort((a, b) => a.order - b.order).map((e) => e.msg);
 }
 
 /** Track with a "Released on:" description so the real parser extracts the year */
@@ -1164,10 +1188,8 @@ describe("Lyrics Mode: START_LYRICS_GAME", () => {
   beforeEach(() => vi.clearAllMocks());
 
   it("transitions to loading then preview then playing", async () => {
-    const { room } = await setupLyricsGame();
-    const broadcasts = (room.room.broadcast as ReturnType<typeof vi.fn>).mock.calls
-      .map((c: any[]) => JSON.parse(c[0] as string));
-    const phases = broadcasts.filter((m: any) => m.type === "LYRICS_STATE").map((m: any) => m.state.phase);
+    const { room, hostConn } = await setupLyricsGame();
+    const phases = allSentMessages(room, hostConn).filter((m) => m.type === "LYRICS_STATE").map((m) => m.state.phase);
     expect(phases).toContain("loading");
     expect(phases).toContain("preview");
     expect(phases.at(-1)).toBe("playing");
@@ -1197,15 +1219,13 @@ describe("Lyrics Mode: START_LYRICS_GAME", () => {
   });
 
   it("applies lyricOverrides to deck", async () => {
-    const { room } = await setupLyricsGame({
+    const { room, hostConn } = await setupLyricsGame({
       lyricOverrides: [{ videoId: "vid1", blankSentence: "OVERRIDDEN" }],
     });
-    const broadcasts = (room.room.broadcast as ReturnType<typeof vi.fn>).mock.calls
-      .map((c: any[]) => JSON.parse(c[0] as string));
-    // In preview phase, blankSentence is revealed so we can verify the override took effect
-    const previewBcast = broadcasts.findLast((m: any) => m.type === "LYRICS_STATE" && m.state.phase === "preview");
-    expect(previewBcast).toBeDefined();
-    expect(previewBcast.state.rounds[0].blankSentence).toBe("OVERRIDDEN");
+    // In preview phase, blankSentence is revealed (host-only) so we can verify the override took effect
+    const previewMsg = allSentMessages(room, hostConn).findLast((m) => m.type === "LYRICS_STATE" && m.state.phase === "preview");
+    expect(previewMsg).toBeDefined();
+    expect(previewMsg.state.rounds[0].blankSentence).toBe("OVERRIDDEN");
   });
 
   it("uses DO lyrics cache when available", async () => {
@@ -1225,12 +1245,61 @@ describe("Lyrics Mode: START_LYRICS_GAME", () => {
     await send(room, hostConn, { type: "START_LYRICS_GAME", hostId: "host-uuid", playlistUrl: "PLtest", config: { timerSeconds: 60, totalRounds: 1, fuzzyEnabled: false } });
     // resolveLyricsForTracks should NOT be called (everything in DO cache, no anthropicKey anyway)
     expect(vi.mocked(resolveLyricsForTracks)).not.toHaveBeenCalled();
-    const phases = (room.room.broadcast as ReturnType<typeof vi.fn>).mock.calls
-      .map((c: any[]) => JSON.parse(c[0] as string))
-      .filter((m: any) => m.type === "LYRICS_STATE")
-      .map((m: any) => m.state.phase);
+    const phases = allSentMessages(room, hostConn).filter((m) => m.type === "LYRICS_STATE").map((m) => m.state.phase);
     // After START_LYRICS_GAME, phase is "preview"; needs CONFIRM_LYRICS_PREVIEW to reach "playing"
     expect(phases.at(-1)).toBe("preview");
+  });
+});
+
+describe("Lyrics Mode: preview deck is host/screen-only (regression for the review-step leak)", () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it("does not broadcast the preview deck — a player connection never receives the answers", async () => {
+    vi.mocked(fetchPlaylistItems).mockResolvedValue([fakeLyricsTrack()]);
+    vi.mocked(fetchEmbeddableVideoIds).mockResolvedValue(new Set(["vid1"]));
+    const mockRoom = makeRoom();
+    (mockRoom.storage.get as ReturnType<typeof vi.fn>).mockImplementation((keys: unknown) =>
+      Promise.resolve(new Map(Array.isArray(keys)
+        ? keys.filter((k: string) => k.startsWith("lyrics:") || k.startsWith("lyrics-sonnet:")).map((k: string) => [k, CACHED_LYRICS])
+        : []))
+    );
+    const room = new HitsterRoom(mockRoom as any);
+    const hostConn = makeConn("host-conn");
+    const p1Conn = makeConn("p1-conn");
+    await send(room, p1Conn, { type: "JOIN", playerId: P1, name: "Alice" });
+    await send(room, hostConn, {
+      type: "START_LYRICS_GAME", hostId: "host-uuid", playlistUrl: "PLtest",
+      config: { timerSeconds: 60, totalRounds: 1, fuzzyEnabled: false },
+    });
+    // room.broadcast() is the only channel a player connection could receive — never call it with the deck
+    const broadcastCalls = (room.room.broadcast as ReturnType<typeof vi.fn>).mock.calls
+      .map((c: any[]) => JSON.parse(c[0] as string))
+      .filter((m: any) => m.type === "LYRICS_STATE");
+    expect(broadcastCalls.every((m: any) => m.state.rounds.length === 0)).toBe(true);
+    // The player's own connection never got the deck either
+    const toPlayer = (p1Conn.send as ReturnType<typeof vi.fn>).mock.calls.map((c: any[]) => JSON.parse(c[0] as string));
+    expect(toPlayer.every((m: any) => m.type !== "LYRICS_STATE" || m.state.rounds.length === 0)).toBe(true);
+    // The host, who claimed via START_LYRICS_GAME, does get the full deck
+    const toHost = (hostConn.send as ReturnType<typeof vi.fn>).mock.calls.map((c: any[]) => JSON.parse(c[0] as string));
+    const hostPreview = toHost.find((m: any) => m.type === "LYRICS_STATE" && m.state.phase === "preview");
+    expect(hostPreview?.state.rounds.length).toBeGreaterThan(0);
+  });
+
+  it("a screen that has claimed via GET_LYRICS_AUDIO also gets the preview deck", async () => {
+    const { room, hostConn } = await setupLyricsGame();
+    // setupLyricsGame already advances past preview; re-derive a fresh preview round the same way
+    // by claiming a screen mid-game, then confirming it would have received a later preview too
+    const screenConn = makeConn("screen-conn");
+    await send(room, screenConn, { type: "GET_LYRICS_AUDIO", screenId: "screen-token" });
+    (room.room.broadcast as ReturnType<typeof vi.fn>).mockClear();
+    (screenConn.send as ReturnType<typeof vi.fn>).mockClear();
+    (hostConn.send as ReturnType<typeof vi.fn>).mockClear();
+    // Directly exercise the broadcast helper's preview path against the now-privileged screen
+    room.lyricsState!.phase = "preview";
+    room.lyricsState!.rounds = [room.lyricsState!.currentRound!];
+    (room as any).broadcastLyricsState();
+    const toScreen = (screenConn.send as ReturnType<typeof vi.fn>).mock.calls.map((c: any[]) => JSON.parse(c[0] as string));
+    expect(toScreen.some((m: any) => m.type === "LYRICS_STATE" && m.state.rounds.length > 0)).toBe(true);
   });
 });
 
@@ -1639,7 +1708,7 @@ describe("Lyrics Mode: adversarial-review hardening", () => {
   });
 });
 
-describe("Lyrics Mode: video id is host-only", () => {
+describe("Lyrics Mode: video id is screen-only", () => {
   // Regression guard: players could open the lyric video from the broadcast and read the answer
   it("never broadcasts the current round's video id", async () => {
     const { room, hostConn } = await setupLyricsGame();
@@ -1662,51 +1731,68 @@ describe("Lyrics Mode: video id is host-only", () => {
     expect(raw).not.toContain(room.lyricsState!.currentRound!.videoId);
   });
 
-  it("GET_LYRICS_AUDIO gives the host the id and round index, to the host only", async () => {
+  it("GET_LYRICS_AUDIO gives the screen the id and round index, to the screen only", async () => {
     const { room, hostConn } = await setupLyricsGame();
     await send(room, hostConn, { type: "START_LYRICS_ROUND", hostId: "host-uuid" });
+    const screenConn = makeConn("screen-conn");
     const broadcast = room.room.broadcast as ReturnType<typeof vi.fn>;
     broadcast.mockClear();
-    await send(room, hostConn, { type: "GET_LYRICS_AUDIO", hostId: "host-uuid" });
-    expect(lastSentTo(hostConn)).toEqual({
+    await send(room, screenConn, { type: "GET_LYRICS_AUDIO", screenId: "screen-token" });
+    expect(lastSentTo(screenConn)).toEqual({
       type: "LYRICS_AUDIO",
       videoId: room.lyricsState!.currentRound!.videoId,
       roundIndex: room.lyricsState!.currentRoundIndex,
     });
     expect(broadcast).not.toHaveBeenCalled();
+    // The host connection never receives it — only the claimed screen does
+    expect(lastSentTo(hostConn)?.type).not.toBe("LYRICS_AUDIO");
   });
 
-  it("refuses GET_LYRICS_AUDIO from a non-host", async () => {
-    const { room, hostConn, p1Conn } = await setupLyricsGame();
-    await send(room, hostConn, { type: "START_LYRICS_ROUND", hostId: "host-uuid" });
-    const broadcast = room.room.broadcast as ReturnType<typeof vi.fn>;
-    broadcast.mockClear();
-    await send(room, p1Conn, { type: "GET_LYRICS_AUDIO", hostId: "not-the-host" });
-    expect(broadcast).not.toHaveBeenCalled();
+  it("refuses GET_LYRICS_AUDIO with an empty screenId", async () => {
+    const { room, p1Conn } = await setupLyricsGame();
+    await send(room, p1Conn, { type: "GET_LYRICS_AUDIO", screenId: "" });
     const reply = lastSentTo(p1Conn);
     expect(reply?.type).toBe("ERROR");
     expect(JSON.stringify(reply)).not.toContain(room.lyricsState!.currentRound!.videoId);
   });
 
+  it("first screenId claims the room; a different one is refused", async () => {
+    const { room, hostConn } = await setupLyricsGame();
+    await send(room, hostConn, { type: "START_LYRICS_ROUND", hostId: "host-uuid" });
+    const screenConn = makeConn("screen-conn");
+    await send(room, screenConn, { type: "GET_LYRICS_AUDIO", screenId: "real-screen-token" });
+    expect(lastSentTo(screenConn)?.type).toBe("LYRICS_AUDIO");
+    // A second connection guessing a different token is refused, not treated as a second screen
+    const impostor = makeConn("impostor-conn");
+    await send(room, impostor, { type: "GET_LYRICS_AUDIO", screenId: "guessed-token" });
+    expect(lastSentTo(impostor)?.type).toBe("ERROR");
+    // The real screen can still reconnect on a new connection with its persisted token
+    const screenReconnect = makeConn("screen-conn-2");
+    await send(room, screenReconnect, { type: "GET_LYRICS_AUDIO", screenId: "real-screen-token" });
+    expect(lastSentTo(screenReconnect)?.type).toBe("LYRICS_AUDIO");
+  });
+
   it("replies with a null id when no lyrics game is running", async () => {
     const room = new HitsterRoom(makeRoom() as any);
     const host = makeConn("h");
+    const screenConn = makeConn("screen-conn");
     await send(room, host, { type: "LOAD_PLAYLIST", hostId: "host-uuid", playlistUrl: "hitster://cpop-test" });
-    await send(room, host, { type: "GET_LYRICS_AUDIO", hostId: "host-uuid" });
-    expect(lastSentTo(host)).toMatchObject({ type: "LYRICS_AUDIO", videoId: null });
+    await send(room, screenConn, { type: "GET_LYRICS_AUDIO", screenId: "screen-token" });
+    expect(lastSentTo(screenConn)).toMatchObject({ type: "LYRICS_AUDIO", videoId: null });
   });
 });
 
 describe("Lyrics Mode: GET_LYRICS_AUDIO across rounds", () => {
   // The fixture deck has a single song, so simulate being on a later round by setting the index directly
-  it("reports the current round index, so the host can discard a reply for an earlier round", async () => {
+  it("reports the current round index, so the screen can discard a reply for an earlier round", async () => {
     const { room, hostConn } = await setupLyricsGame();
     await send(room, hostConn, { type: "START_LYRICS_ROUND", hostId: "host-uuid" });
-    await send(room, hostConn, { type: "GET_LYRICS_AUDIO", hostId: "host-uuid" });
-    expect(lastSentTo(hostConn)).toMatchObject({ type: "LYRICS_AUDIO", roundIndex: 0 });
+    const screenConn = makeConn("screen-conn");
+    await send(room, screenConn, { type: "GET_LYRICS_AUDIO", screenId: "screen-token" });
+    expect(lastSentTo(screenConn)).toMatchObject({ type: "LYRICS_AUDIO", roundIndex: 0 });
     room.lyricsState!.currentRoundIndex = 3;
-    await send(room, hostConn, { type: "GET_LYRICS_AUDIO", hostId: "host-uuid" });
-    expect(lastSentTo(hostConn)).toMatchObject({ type: "LYRICS_AUDIO", roundIndex: 3 });
+    await send(room, screenConn, { type: "GET_LYRICS_AUDIO", screenId: "screen-token" });
+    expect(lastSentTo(screenConn)).toMatchObject({ type: "LYRICS_AUDIO", roundIndex: 3 });
   });
 });
 
