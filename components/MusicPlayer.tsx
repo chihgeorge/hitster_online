@@ -42,7 +42,6 @@ export default function MusicPlayer({ currentSong, phase, placementCount, onReve
         });
       } catch (err) {
         console.warn("MusicPlayer: could not start the video", err);
-        player = null;
       }
     }
 

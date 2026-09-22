@@ -166,7 +166,7 @@ describe("PLACE handler", () => {
     r.state.phase = "guessing";
     r.state.activePlayerId = P1;
     r.state.currentSong = {
-      id: "v1", videoId: "v1", title: "Song", artist: "Artist", year: 1985, yearSource: "description",
+      id: "v1", videoId: "v1", title: "Song", artist: "Artist", year: 1985,
     };
     return r;
   }
@@ -199,7 +199,7 @@ describe("PLACE handler", () => {
     r.state.phase = "guessing";
     r.state.activePlayerId = P1;
     r.state.currentSong = {
-      id: "v1", videoId: "v1", title: "Song", artist: "Artist", year: 1985, yearSource: "description",
+      id: "v1", videoId: "v1", title: "Song", artist: "Artist", year: 1985,
     };
 
     const conn = makeConn("conn-1");
@@ -225,7 +225,7 @@ describe("PLACE handler", () => {
     r.state.phase = "guessing";
     r.state.activePlayerId = P1;
     r.state.currentSong = {
-      id: "v1", videoId: "v1", title: "Song", artist: "Artist", year: 1985, yearSource: "description",
+      id: "v1", videoId: "v1", title: "Song", artist: "Artist", year: 1985,
     };
 
     const conn = makeConn("conn-2");
@@ -709,7 +709,7 @@ describe("PLACE edge cases", () => {
     r.state.phase = "guessing";
     r.state.activePlayerId = P1;
     r.state.currentSong = {
-      id: "v1", videoId: "v1", title: "Song", artist: "Artist", year: 1985, yearSource: "description",
+      id: "v1", videoId: "v1", title: "Song", artist: "Artist", year: 1985,
     };
     return r;
   }
@@ -789,8 +789,8 @@ describe("sanitizedState — year stripping", () => {
   it("strips year from deck songs in STATE broadcast", async () => {
     const room = new HitsterRoom(makeRoom() as any);
     room.state.songs = [
-      { id: "s1", videoId: "s1", title: "Song A", artist: "Artist", year: 1985, yearSource: "description" },
-      { id: "s2", videoId: "s2", title: "Song B", artist: "Artist", year: 1990, yearSource: "description" },
+      { id: "s1", videoId: "s1", title: "Song A", artist: "Artist", year: 1985 },
+      { id: "s2", videoId: "s2", title: "Song B", artist: "Artist", year: 1990 },
     ];
     const conn = makeConn();
     room.onConnect(conn);
@@ -801,7 +801,7 @@ describe("sanitizedState — year stripping", () => {
   it("strips year from currentSong during guessing phase", async () => {
     const room = new HitsterRoom(makeRoom() as any);
     room.state.phase = "guessing";
-    room.state.currentSong = { id: "s1", videoId: "s1", title: "Song A", artist: "Artist", year: 1985, yearSource: "description" };
+    room.state.currentSong = { id: "s1", videoId: "s1", title: "Song A", artist: "Artist", year: 1985 };
     const conn = makeConn();
     room.onConnect(conn);
     const msg = lastSentTo(conn);
@@ -811,7 +811,7 @@ describe("sanitizedState — year stripping", () => {
   it("preserves year on currentSong during reveal phase", async () => {
     const room = new HitsterRoom(makeRoom() as any);
     room.state.phase = "reveal";
-    room.state.currentSong = { id: "s1", videoId: "s1", title: "Song A", artist: "Artist", year: 1985, yearSource: "description" };
+    room.state.currentSong = { id: "s1", videoId: "s1", title: "Song A", artist: "Artist", year: 1985 };
     const conn = makeConn();
     room.onConnect(conn);
     const msg = lastSentTo(conn);
@@ -851,7 +851,7 @@ describe("UUID validation on JOIN/REJOIN/PLACE", () => {
     room.state.phase = "guessing";
     room.state.players[P1] = { name: "Alice", cardCount: 0, timeline: [], connected: true };
     room.state.activePlayerId = P1;
-    room.state.currentSong = { id: "s1", videoId: "s1", title: "Song", artist: "Artist", year: 1985, yearSource: "description" };
+    room.state.currentSong = { id: "s1", videoId: "s1", title: "Song", artist: "Artist", year: 1985 };
     const conn = makeConn();
     await send(room, conn, { type: "PLACE", playerId: "not-a-uuid", position: 0 });
     expect(room.state.placements["not-a-uuid"]).toBeUndefined();
@@ -1707,5 +1707,50 @@ describe("Lyrics Mode: GET_LYRICS_AUDIO across rounds", () => {
     room.lyricsState!.currentRoundIndex = 3;
     await send(room, hostConn, { type: "GET_LYRICS_AUDIO", hostId: "host-uuid" });
     expect(lastSentTo(hostConn)).toMatchObject({ type: "LYRICS_AUDIO", roundIndex: 3 });
+  });
+});
+
+// ─── Dead-code cleanup: DIAGNOSTIC shape and error mapping ───────────────────
+
+describe("DIAGNOSTIC without the retired status field", () => {
+  it("cpop-test seed broadcasts DIAGNOSTIC with manual year source and no status", async () => {
+    const room = new HitsterRoom(makeRoom() as any);
+    const host = makeConn("h");
+    await send(room, host, { type: "START_GAME", hostId: "host-uuid", playlistUrl: "hitster://cpop-test" });
+    const diag = (room.room.broadcast as ReturnType<typeof vi.fn>).mock.calls
+      .map((c: unknown[]) => JSON.parse(c[0] as string))
+      .find((m: { type: string }) => m.type === "DIAGNOSTIC");
+    expect(diag).toBeDefined();
+    expect(diag).not.toHaveProperty("status");
+    expect(diag.songs.length).toBeGreaterThan(0);
+    expect(diag.songs.every((s: { yearSource: string }) => s.yearSource === "manual")).toBe(true);
+  });
+
+  it("initial DIAGNOSTIC sent while loading a playlist carries no status", async () => {
+    vi.mocked(fetchPlaylistItems).mockResolvedValue([fakeTrack("v1", 1985), fakeTrack("v2", 1990)]);
+    vi.mocked(fetchEmbeddableVideoIds).mockResolvedValue(new Set(["v1", "v2"]));
+    vi.mocked(resolveTracksWithAI).mockResolvedValue(new Map());
+    const room = new HitsterRoom(makeRoom() as any);
+    const conn = makeConn();
+    await send(room, conn, { type: "LOAD_PLAYLIST", hostId: "host-uuid", playlistUrl: "PLtest" });
+    const diags = (conn.send as ReturnType<typeof vi.fn>).mock.calls
+      .map((c: unknown[]) => JSON.parse(c[0] as string))
+      .filter((m: { type: string }) => m.type === "DIAGNOSTIC");
+    expect(diags.length).toBeGreaterThan(0);
+    for (const d of diags) expect(d).not.toHaveProperty("status");
+  });
+});
+
+describe("LOAD_PLAYLIST error mapping after removing spotify_error", () => {
+  it.each([
+    ["Spotify token request failed", "playlist_load_failed"],
+    ["YouTube API error 500", "youtube_error:500"],
+    ["HTTP 404", "playlist_not_found"],
+  ])("maps %j to %s", async (message, code) => {
+    vi.mocked(fetchPlaylistItems).mockRejectedValue(new Error(message));
+    const room = new HitsterRoom(makeRoom() as any);
+    const conn = makeConn();
+    await send(room, conn, { type: "LOAD_PLAYLIST", hostId: "host-uuid", playlistUrl: "PLtest" });
+    expect(lastSentTo(conn)).toMatchObject({ type: "PLAYLIST_LOAD_ERROR", error: code });
   });
 });

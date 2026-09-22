@@ -1,5 +1,5 @@
 // AI-powered music metadata resolver using the Anthropic Messages API.
-// Replaces the YTM + Spotify + iTunes + KG multi-pass pipeline.
+// Resolves title, artist and release year for a batch of tracks in one Claude call.
 // Uses claude-haiku-4-5 (fast, cheap) with no web-search for v1 — training data
 // covers essentially all catalog music through mid-2025.
 // Falls back gracefully: returns an empty Map on any API or parse failure.

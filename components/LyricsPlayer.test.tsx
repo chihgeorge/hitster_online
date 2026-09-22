@@ -307,7 +307,7 @@ describe("LyricsPlayer: notice and banner precedence", () => {
 
 describe("LyricsPlayer: malformed video id", () => {
   // Regression: loadVideoById can throw for a malformed id; that must not crash the host page
-  it("shows the can't-play notice instead of throwing", () => {
+  it("does not throw when loadVideoById throws for a swapped-in malformed id", () => {
     vi.spyOn(console, "warn").mockImplementation(() => {});
     const { rerender } = render(<LyricsPlayer videoId="vid-1" playing />);
     player().ready();
@@ -325,3 +325,26 @@ describe("LyricsPlayer: malformed video id", () => {
   });
 });
 
+
+describe("LyricsPlayer: malformed video id, more branches", () => {
+  it("shows the notice when cueVideoById throws (round not playing yet)", () => {
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    const { rerender } = render(<LyricsPlayer videoId={null} playing={false} />);
+    player().ready();
+    player().cueVideoById.mockImplementation(() => { throw new Error("Invalid video id"); });
+    act(() => { rerender(<LyricsPlayer videoId="bad" playing={false} />); });
+    expect(screen.getByTestId("lyrics-audio-error")).toBeTruthy();
+  });
+
+  it("clears the notice and loads normally on the next good video", () => {
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    const { rerender } = render(<LyricsPlayer videoId={null} playing={false} />);
+    player().ready();
+    player().loadVideoById.mockImplementationOnce(() => { throw new Error("Invalid video id"); });
+    act(() => { rerender(<LyricsPlayer videoId="bad" playing />); });
+    expect(screen.getByTestId("lyrics-audio-error")).toBeTruthy();
+    act(() => { rerender(<LyricsPlayer videoId="good-id-001" playing />); });
+    expect(screen.queryByTestId("lyrics-audio-error")).toBeNull();
+    expect(player().loadVideoById).toHaveBeenLastCalledWith("good-id-001");
+  });
+});

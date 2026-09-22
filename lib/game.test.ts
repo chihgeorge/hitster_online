@@ -12,7 +12,7 @@ import { isValidYear } from "./utils";
 
 // Helper to make a Card with just the fields needed for placement tests
 function card(id: string, year: number): Card {
-  return { id, videoId: id, title: id, artist: "Test", year, yearSource: "manual" };
+  return { id, videoId: id, title: id, artist: "Test", year };
 }
 
 function player(overrides: Partial<Player> = {}): Player {
