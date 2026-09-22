@@ -59,8 +59,14 @@ export default function LyricsPlayer({ videoId, playing }: Props) {
     }
     if (loadedRef.current !== want.videoId) {
       loadedRef.current = want.videoId;
-      if (want.playing) p.loadVideoById(want.videoId);
-      else p.cueVideoById(want.videoId);
+      try {
+        if (want.playing) p.loadVideoById(want.videoId);
+        else p.cueVideoById(want.videoId);
+      } catch (err) {
+        // A malformed id makes the API throw; show the can't-play notice instead of crashing the host page
+        console.warn("LyricsPlayer: could not load the video", err);
+        setFailedId(want.videoId);
+      }
       return;
     }
     if (want.playing) p.playVideo();
