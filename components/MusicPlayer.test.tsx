@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { render, cleanup, act } from "@testing-library/react";
+import { render, screen, cleanup, act, fireEvent } from "@testing-library/react";
 import MusicPlayer from "./MusicPlayer";
 import type { Card } from "@/lib/game";
 
@@ -128,13 +128,76 @@ describe("MusicPlayer", () => {
     expect(() => view!.unmount()).not.toThrow(); // cleanup after a failed init must not throw either
   });
 
-  it("shows the can't-play message when the embed reports an error, and clears it on a new song", () => {
+  it("shows the can't-play message in the DOM when the embed reports an error, and clears it on a new song", () => {
     w.YT = { Player: FakePlayer };
     const { rerender } = render(<MusicPlayer currentSong={song("bad")} {...props} />);
     player().ready();
+    expect(screen.queryByTestId("music-audio-error")).toBeNull();
     act(() => { player().events.onError?.({ data: 100 }); });
+    expect(screen.getByTestId("music-audio-error")).toBeTruthy();
+    // Failing hides the guessing overlay too — nothing should claim to be "playing" behind a dead player.
+    expect(screen.queryByText(/聆聽中/)).toBeNull();
     // The error is scoped to the id that failed — a new song clears it even before the load resolves.
     rerender(<MusicPlayer currentSong={song("good-id-001")} {...props} />);
+    expect(screen.queryByTestId("music-audio-error")).toBeNull();
     expect(FakePlayer.instances).toHaveLength(1); // still no recreation
+  });
+
+  // sync()'s own try/catch (loadVideoById throwing) is a distinct code path from create()'s
+  // constructor-throw test above — a malformed id can pass construction fine and only fail on load.
+  it("shows the can't-play message when loadVideoById itself throws", () => {
+    w.YT = {
+      Player: class {
+        loadVideoById = vi.fn(() => { throw new Error("Invalid video id"); });
+        constructor(_el: unknown, opts: { events: Events }) {
+          // Simulates the real API calling onReady once the player is ready to load a video.
+          opts.events.onReady?.();
+        }
+      },
+    };
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    render(<MusicPlayer currentSong={song("bad")} {...props} />);
+    expect(warn).toHaveBeenCalled();
+    expect(screen.getByTestId("music-audio-error")).toBeTruthy();
+  });
+
+  // The autoplay-blocked fallback added in this diff (mirrors LyricsPlayer's) had zero coverage.
+  describe("autoplay blocked", () => {
+    it("shows a tap-to-play button, hides the guessing overlay while blocked, and unblocks on click", () => {
+      w.YT = { Player: FakePlayer };
+      render(<MusicPlayer currentSong={song("s1")} {...props} />);
+      player().ready();
+      expect(screen.queryByTestId("music-play-btn")).toBeNull();
+
+      act(() => { player().events.onAutoplayBlocked?.(); });
+      expect(screen.getByTestId("music-play-btn")).toBeTruthy();
+      expect(screen.queryByText(/聆聽中/)).toBeNull(); // overlay hidden — the button covers the video instead
+
+      fireEvent.click(screen.getByTestId("music-play-btn"));
+      expect(player().playVideo).toHaveBeenCalled();
+      expect(screen.queryByTestId("music-play-btn")).toBeNull();
+      expect(screen.getByText(/聆聽中/)).toBeTruthy(); // overlay is back once unblocked
+    });
+
+    it("clears the blocked flag once the video actually starts playing (onStateChange)", () => {
+      w.YT = { Player: FakePlayer };
+      render(<MusicPlayer currentSong={song("s1")} {...props} />);
+      player().ready();
+      act(() => { player().events.onAutoplayBlocked?.(); });
+      expect(screen.getByTestId("music-play-btn")).toBeTruthy();
+
+      act(() => { player().events.onStateChange?.({ data: 1 }); }); // 1 = playing
+      expect(screen.queryByTestId("music-play-btn")).toBeNull();
+    });
+
+    it("does not show the blocked button once the song has already failed", () => {
+      w.YT = { Player: FakePlayer };
+      render(<MusicPlayer currentSong={song("bad")} {...props} />);
+      player().ready();
+      act(() => { player().events.onError?.({ data: 100 }); });
+      act(() => { player().events.onAutoplayBlocked?.(); });
+      expect(screen.getByTestId("music-audio-error")).toBeTruthy();
+      expect(screen.queryByTestId("music-play-btn")).toBeNull();
+    });
   });
 });
