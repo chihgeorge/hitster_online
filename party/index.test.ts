@@ -1772,6 +1772,27 @@ describe("Lyrics Mode: video id is screen-only", () => {
     expect(lastSentTo(screenReconnect)?.type).toBe("LYRICS_AUDIO");
   });
 
+  // Regression/documentation: unlike hostId, claimOrValidateScreen has no "first connection"
+  // race guard (see the comment on it in party/index.ts) — whoever sends GET_LYRICS_AUDIO with
+  // a non-empty screenId FIRST claims the room's screen slot, even a connection that was never
+  // meant to be the screen. This is a known, accepted limitation (same shape as hostId's own
+  // claim race), not a bug — this test pins the current behavior so a future change to the
+  // claim logic is a deliberate, reviewed decision rather than an accidental regression.
+  // Found by /ship's coverage audit on 2026-09-22.
+  it("an early GET_LYRICS_AUDIO from any connection claims the screen slot first — known limitation, not a guard", async () => {
+    const { room, hostConn } = await setupLyricsGame();
+    await send(room, hostConn, { type: "START_LYRICS_ROUND", hostId: "host-uuid" });
+    // Some other connection (not the real /screen page) races in with a made-up token first.
+    const squatter = makeConn("squatter-conn");
+    await send(room, squatter, { type: "GET_LYRICS_AUDIO", screenId: "squatter-token" });
+    expect(lastSentTo(squatter)?.type).toBe("LYRICS_AUDIO");
+    // The real screen, arriving after, is refused for the rest of the room's lifetime —
+    // there is no re-claim path short of restarting the room (same as a squatted hostId).
+    const realScreen = makeConn("real-screen-conn");
+    await send(room, realScreen, { type: "GET_LYRICS_AUDIO", screenId: "the-real-screens-token" });
+    expect(lastSentTo(realScreen)?.type).toBe("ERROR");
+  });
+
   it("replies with a null id when no lyrics game is running", async () => {
     const room = new HitsterRoom(makeRoom() as any);
     const host = makeConn("h");
