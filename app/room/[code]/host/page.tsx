@@ -340,7 +340,16 @@ export default function HostPage() {
   };
 
   return (
-    <div style={{ minHeight: "100vh", background: "var(--bg)", display: "flex", flexDirection: "column", gap: 20, padding: 24, maxWidth: 960, margin: "0 auto" }}>
+    <div
+      className={phase === "lobby" ? "bg-vinyl-pattern" : undefined}
+      style={{
+        minHeight: "100vh",
+        // Inline `background` beats the class's background-image (inline style always wins), so
+        // only set it here outside the lobby phase — .bg-vinyl-pattern supplies its own background-color.
+        ...(phase === "lobby" ? {} : { background: "var(--bg)" }),
+        display: "flex", flexDirection: "column", gap: 20, padding: 24, maxWidth: 960, margin: "0 auto",
+      }}
+    >
       {/* Header */}
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 16 }}>

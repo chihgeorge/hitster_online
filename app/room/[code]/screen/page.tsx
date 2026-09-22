@@ -102,7 +102,7 @@ export default function ScreenPage() {
         <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden", padding: "16px 32px 32px" }}>
           {/* ── waiting for the host to start ───────────────────────────────── */}
           {phase === "lobby" && !lyricsState && (
-            <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 20 }}>
+            <div className="bg-vinyl-pattern" style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 20, borderRadius: 20 }}>
               <p style={{ fontSize: 22, fontWeight: 700, color: "var(--ink)" }}>掃描加入 · Scan to join</p>
               <Qr
                 text={typeof window !== "undefined" ? `${window.location.origin}/?code=${params.code}` : ""}
