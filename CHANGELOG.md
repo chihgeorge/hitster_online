@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.8.1.0] — 2026-09-22
+
+### Fixed
+- **Room creation could happen just by loading a page.** v0.8.0.0 made `/screen` generate a room the instant it loaded — fine for an offline/local-only game, wrong for a public site anyone can reach. The homepage now has an explicit "建立房間 · Create a Room" button (alongside the existing join form) and `/screen` is only ever reached by pressing it; the bare `/screen` landing route is gone
+
+### Added
+- **A joined-player list on `/screen`'s lobby.** Whoever's watching the TV now sees a chip (name + avatar-initial glyph) appear for each player as they join, instead of just a QR code and no other feedback
+
 ## [0.8.0.0] — 2026-09-22
 
 ### Changed
