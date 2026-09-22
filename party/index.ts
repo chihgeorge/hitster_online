@@ -128,8 +128,8 @@ export default class HitsterRoom implements Party.Server {
   // is expected to be a second device, connecting after the host.
   private screenId = "";
   // Connections that have proven themselves host or screen (see markPrivileged) — the only
-  // ones that get the full preview-phase deck (see broadcastLyricsState). Not cleaned up on
-  // disconnect: a stale entry just means one extra harmless send to a closed socket.
+  // ones that get the full preview-phase deck (see broadcastLyricsState and onConnect).
+  // Cleaned up on disconnect (see onClose).
   private privilegedConns = new Set<Party.Connection>();
 
   constructor(readonly room: Party.Room) {
@@ -176,7 +176,13 @@ export default class HitsterRoom implements Party.Server {
   }
 
   private sendTo(conn: Party.Connection, msg: ServerMessage) {
-    conn.send(JSON.stringify(msg));
+    // A stale/closed connection can throw here; one dead socket must not abort delivery to
+    // everyone else (privilegedConns in particular is iterated in a loop — see broadcastLyricsState).
+    try {
+      conn.send(JSON.stringify(msg));
+    } catch (err) {
+      console.warn("sendTo: failed to deliver a message to a connection", err);
+    }
   }
 
   onConnect(conn: Party.Connection) {
@@ -186,7 +192,14 @@ export default class HitsterRoom implements Party.Server {
     // (sent before STATE so STATE stays the first-class snapshot).
     if (!ls) this.sendTo(conn, { type: "LYRICS_ABORTED" });
     this.sendTo(conn, { type: "STATE", state: this.sanitizedState() });
-    if (ls) this.sendTo(conn, { type: "LYRICS_STATE", state: ls });
+    if (ls) {
+      // Preview-phase ls.rounds carries the full deck with answers revealed (see
+      // sanitizedLyricsState). broadcastLyricsState already withholds it from non-privileged
+      // connections; a fresh connect must too — this connection hasn't claimed host/screen yet
+      // (that happens via a later message), so it's never privileged at this point.
+      const forConn = this.privilegedConns.has(conn) ? ls : { ...ls, rounds: [] };
+      this.sendTo(conn, { type: "LYRICS_STATE", state: forConn });
+    }
   }
 
   async onMessage(message: string, sender: Party.Connection) {
@@ -256,8 +269,9 @@ export default class HitsterRoom implements Party.Server {
     }
   }
 
-  onClose(_conn: Party.Connection) {
+  onClose(conn: Party.Connection) {
     // No connection→playerId map in v1; players reconnect via REJOIN with their stored playerId.
+    this.privilegedConns.delete(conn);
   }
 
   private handleJoin(conn: Party.Connection, playerId: string, rawName: string) {

@@ -1285,6 +1285,37 @@ describe("Lyrics Mode: preview deck is host/screen-only (regression for the revi
     expect(hostPreview?.state.rounds.length).toBeGreaterThan(0);
   });
 
+  // Regression: security review found onConnect() sent the raw sanitizedLyricsState() (full
+  // rounds/answers during preview) to ANY newly-connecting socket, bypassing broadcastLyricsState's
+  // privilegedConns gate entirely — a player joining or reconnecting mid-preview got the answer key.
+  // Found by /ship's security specialist review on 2026-09-22.
+  it("onConnect does not send the preview deck to a connection that hasn't claimed host or screen", async () => {
+    const { room } = await setupLyricsGame();
+    // Force the room back into preview with a real deck, the way it looks before CONFIRM_LYRICS_PREVIEW.
+    room.lyricsState!.phase = "preview";
+    room.lyricsState!.rounds = [room.lyricsState!.currentRound!];
+
+    const newPlayerConn = makeConn("late-joiner-conn");
+    room.onConnect(newPlayerConn);
+    const sent = (newPlayerConn.send as ReturnType<typeof vi.fn>).mock.calls.map((c: any[]) => JSON.parse(c[0] as string));
+    const lyricsMsg = sent.find((m: any) => m.type === "LYRICS_STATE");
+    expect(lyricsMsg).toBeDefined();
+    expect(lyricsMsg.state.rounds).toEqual([]);
+  });
+
+  it("onConnect sends the full preview deck when the reconnecting connection already claimed host", async () => {
+    const { room, hostConn } = await setupLyricsGame();
+    room.lyricsState!.phase = "preview";
+    room.lyricsState!.rounds = [room.lyricsState!.currentRound!];
+
+    // hostConn already claimed via setupLyricsGame's START_LYRICS_GAME, so it's privileged.
+    (hostConn.send as ReturnType<typeof vi.fn>).mockClear();
+    room.onConnect(hostConn);
+    const sent = (hostConn.send as ReturnType<typeof vi.fn>).mock.calls.map((c: any[]) => JSON.parse(c[0] as string));
+    const lyricsMsg = sent.find((m: any) => m.type === "LYRICS_STATE");
+    expect(lyricsMsg?.state.rounds.length).toBeGreaterThan(0);
+  });
+
   it("a screen that has claimed via GET_LYRICS_AUDIO also gets the preview deck", async () => {
     const { room, hostConn } = await setupLyricsGame();
     // setupLyricsGame already advances past preview; re-derive a fresh preview round the same way
@@ -1298,6 +1329,23 @@ describe("Lyrics Mode: preview deck is host/screen-only (regression for the revi
     room.lyricsState!.phase = "preview";
     room.lyricsState!.rounds = [room.lyricsState!.currentRound!];
     (room as any).broadcastLyricsState();
+    const toScreen = (screenConn.send as ReturnType<typeof vi.fn>).mock.calls.map((c: any[]) => JSON.parse(c[0] as string));
+    expect(toScreen.some((m: any) => m.type === "LYRICS_STATE" && m.state.rounds.length > 0)).toBe(true);
+  });
+
+  // Regression: a stale/closed privileged connection throwing on send() used to abort the whole
+  // broadcastLyricsState loop, silently dropping the update for every OTHER privileged connection
+  // too. sendTo now catches per-connection so one dead socket can't take the rest down with it.
+  // Found by /ship's testing specialist review on 2026-09-22.
+  it("one privileged connection throwing on send does not stop delivery to the others", async () => {
+    const { room, hostConn } = await setupLyricsGame();
+    const screenConn = makeConn("screen-conn");
+    await send(room, screenConn, { type: "GET_LYRICS_AUDIO", screenId: "screen-token" });
+    room.lyricsState!.phase = "preview";
+    room.lyricsState!.rounds = [room.lyricsState!.currentRound!];
+    (hostConn.send as ReturnType<typeof vi.fn>).mockImplementation(() => { throw new Error("WebSocket is not connected"); });
+    (screenConn.send as ReturnType<typeof vi.fn>).mockClear();
+    expect(() => (room as any).broadcastLyricsState()).not.toThrow();
     const toScreen = (screenConn.send as ReturnType<typeof vi.fn>).mock.calls.map((c: any[]) => JSON.parse(c[0] as string));
     expect(toScreen.some((m: any) => m.type === "LYRICS_STATE" && m.state.rounds.length > 0)).toBe(true);
   });
@@ -1754,6 +1802,14 @@ describe("Lyrics Mode: video id is screen-only", () => {
     const reply = lastSentTo(p1Conn);
     expect(reply?.type).toBe("ERROR");
     expect(JSON.stringify(reply)).not.toContain(room.lyricsState!.currentRound!.videoId);
+  });
+
+  // Untrusted client input: the wire type says screenId is a string, but a hand-crafted WebSocket
+  // message can send anything JSON allows. Found by /ship's testing specialist review on 2026-09-22.
+  it("refuses GET_LYRICS_AUDIO with a non-string screenId", async () => {
+    const { room, p1Conn } = await setupLyricsGame();
+    await send(room, p1Conn, { type: "GET_LYRICS_AUDIO", screenId: 12345 as unknown as string });
+    expect(lastSentTo(p1Conn)?.type).toBe("ERROR");
   });
 
   it("first screenId claims the room; a different one is refused", async () => {
