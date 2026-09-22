@@ -21,14 +21,14 @@ export default function PlayerList({ players, placements, targetCardCount, activ
             key={playerId}
             style={{
               borderRadius: 14, padding: "12px 14px", display: "flex", flexDirection: "column", gap: 8,
-              background: isActive ? "rgba(255,107,53,.1)" : "rgba(255,255,255,.05)",
+              background: isActive ? "rgba(255,107,53,.1)" : "#FFF0E8",
               border: isActive ? "1.5px solid rgba(255,107,53,.35)" : "1.5px solid transparent",
             }}
           >
             {/* Name row */}
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
               <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
-                <p style={{ fontWeight: 700, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: "white" }}>{player.name}</p>
+                <p style={{ fontWeight: 700, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: "#1A1A2E" }}>{player.name}</p>
                 {isActive && phase === "guessing" && (
                   <span style={{ fontSize: 10, color: "#FF6B35", fontWeight: 900, textTransform: "uppercase", letterSpacing: ".1em", flexShrink: 0 }}>
                     guessing
@@ -36,7 +36,7 @@ export default function PlayerList({ players, placements, targetCardCount, activ
                 )}
               </div>
               <div style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0, fontSize: 14 }}>
-                <span style={{ fontWeight: 900, color: "#FFD600", fontFamily: "var(--font-mono)" }}>{player.cardCount}</span>
+                <span style={{ fontWeight: 900, color: "#FF6B35", fontFamily: "var(--font-mono)" }}>{player.cardCount}</span>
                 <span style={{ color: "#4A4A5A" }}>/{targetCardCount}</span>
                 <span style={{ color: hasPlaced ? "#00C896" : "#4A4A5A" }}>{hasPlaced ? "✓" : "…"}</span>
               </div>
@@ -73,8 +73,8 @@ function MiniTile({ card }: { card: Card }) {
       }}
       title={`${card.title} – ${card.artist}`}
     >
-      <p style={{ fontFamily: "var(--font-mono)", fontWeight: 700, color: "#FFD600", fontSize: 14, lineHeight: 1 }}>{card.year}</p>
-      <p style={{ fontSize: 9, color: "rgba(255,255,255,.6)", lineHeight: 1.2, width: "100%", textAlign: "center", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{card.artist}</p>
+      <p style={{ fontFamily: "var(--font-mono)", fontWeight: 700, color: "#FF6B35", fontSize: 14, lineHeight: 1 }}>{card.year}</p>
+      <p style={{ fontSize: 9, color: "#7B7B9A", lineHeight: 1.2, width: "100%", textAlign: "center", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{card.artist}</p>
       <p style={{ fontSize: 9, color: "#4A4A5A", lineHeight: 1.2, width: "100%", textAlign: "center", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{card.title}</p>
     </div>
   );
