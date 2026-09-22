@@ -109,6 +109,36 @@ describe("PlayPage: Lyrics Mode guessing", () => {
   });
 });
 
+describe("PlayPage: lobby wrong-code warning", () => {
+  // Regression: TODOS.md "Joining a nonexistent room code shows 'waiting for host' forever" —
+  // found by /qa on 2026-09-21. PartyKit can't distinguish a wrong code from "host hasn't
+  // started yet" (any code is a valid room), so the fix is an honest nudge with an actual way
+  // out, not a hard error.
+  it("shows no warning before 90 seconds of waiting", () => {
+    render(<PlayPage />);
+    serverSends({ type: "STATE", state: lobbyState });
+    act(() => { vi.advanceTimersByTime(89_000); });
+    expect(screen.queryByText(/等待超過 90 秒/)).toBeNull();
+  });
+
+  it("shows an actionable back-to-homepage link after 90 seconds in the lobby", () => {
+    render(<PlayPage />);
+    serverSends({ type: "STATE", state: lobbyState });
+    act(() => { vi.advanceTimersByTime(90_000); });
+    expect(screen.getByText(/等待超過 90 秒/)).toBeTruthy();
+    const link = screen.getByText(/Back to homepage/).closest("a");
+    expect(link?.getAttribute("href")).toBe("/");
+  });
+
+  it("does not warn once the game actually starts before the 90s mark", () => {
+    render(<PlayPage />);
+    serverSends({ type: "STATE", state: lobbyState });
+    serverSends({ type: "STATE", state: { ...lobbyState, phase: "guessing" } });
+    act(() => { vi.advanceTimersByTime(90_000); });
+    expect(screen.queryByText(/等待超過 90 秒/)).toBeNull();
+  });
+});
+
 describe("PlayPage: LYRICS_ABORTED", () => {
   // Regression: ISSUE-002 — players stayed on the WINNER screen after Play Again
   it("drops the ended screen and returns to the waiting lobby", () => {
