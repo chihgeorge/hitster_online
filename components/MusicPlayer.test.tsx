@@ -14,7 +14,7 @@ class FakePlayer {
   constructor(_el: unknown, opts: { videoId: string }) { this.opts = opts; FakePlayer.instances.push(this); }
 }
 
-const props = { phase: "guessing" as const, placementCount: 0, onReveal: () => {}, onNextRound: () => {} };
+const props = { phase: "guessing" as const };
 
 beforeEach(() => {
   FakePlayer.instances = [];
