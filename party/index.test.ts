@@ -359,22 +359,25 @@ describe("START_GAME handler", () => {
     expect(lastSentTo(impostor)?.error).toBe("unauthorized");
   });
 
-  it("rejects START_GAME from a different connection once hostConnId is established via onConnect", async () => {
+  // Regression: host claiming used to require being the room's first-ever connection
+  // (hostConnId). That broke once /screen always connects first (it's what creates the room —
+  // see app/screen/page.tsx), since the real host's later connection would be rejected. Claiming
+  // is now value-wins, not connection-order-wins: any connection can claim host as long as it's
+  // first to send a non-empty hostId.
+  it("claims host on first value sent, regardless of which connection connects first", async () => {
     const room = new HitsterRoom(makeRoom() as any);
+    const screenConn = makeConn("screen-conn"); // /screen is always the room's first connection now
     const hostConn = makeConn("host-conn");
-    const attackerConn = makeConn("attacker-conn");
+    room.onConnect(screenConn);
+    room.onConnect(hostConn); // second connection — would have been rejected under the old gate
 
-    // onConnect from the host — establishes hostConnId
-    room.onConnect(hostConn);
-
-    // Attacker tries to claim host before the real host has loaded anything
-    await send(room, attackerConn, {
+    await send(room, hostConn, {
       type: "START_GAME",
       hostId: "host-uuid",
       playlistUrl: "hitster://test",
     });
-    expect(lastSentTo(attackerConn)?.error).toBe("unauthorized");
-    expect(room.state.hostId).toBe(""); // host not claimed
+    expect(room.state.hostId).toBe("host-uuid");
+    expect(lastSentTo(hostConn)?.type).not.toBe("ERROR");
   });
 
   it("uses AI year when no year in description or title", async () => {
@@ -1098,19 +1101,22 @@ describe("LOAD_SAVED_PLAYLIST handler", () => {
     expect(badSong?.year).toBeNull();
   });
 
-  it("rejects when hostConnId established but a different conn tries to claim host", async () => {
+  // Same regression as the START_GAME test above, for LOAD_SAVED_PLAYLIST — one of the other
+  // three claim entry points — proving the fix applies uniformly, not just to START_GAME.
+  it("claims host via LOAD_SAVED_PLAYLIST from a connection that connected after /screen", async () => {
     const room = new HitsterRoom(makeRoom() as any);
+    const screenConn = makeConn("screen-conn");
+    room.onConnect(screenConn);
     const hostConn = makeConn("host-conn");
-    room.onConnect(hostConn); // establishes hostConnId
-    const attacker = makeConn("attacker");
-    await send(room, attacker, {
+    room.onConnect(hostConn);
+    await send(room, hostConn, {
       type: "LOAD_SAVED_PLAYLIST",
       hostId: "host-uuid",
       playlistId: "pl-123",
       songs: validSongs,
     });
-    expect(lastSentTo(attacker)?.error).toBe("unauthorized");
-    expect(room.state.hostId).toBe(""); // host not claimed
+    expect(room.state.hostId).toBe("host-uuid");
+    expect(lastSentTo(hostConn)?.type).not.toBe("ERROR");
   });
 });
 

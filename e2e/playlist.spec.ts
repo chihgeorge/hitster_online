@@ -7,6 +7,7 @@
  * The playlist party HTTP API is tested directly against the local PartyKit dev server.
  */
 import { test, expect } from "@playwright/test";
+import { createRoomAsHost } from "./helpers";
 
 const PARTYKIT_HOST = process.env.NEXT_PUBLIC_PARTYKIT_HOST ?? "localhost:1999";
 const PARTY_URL = (id: string) => `http://${PARTYKIT_HOST}/parties/playlist/${id}`;
@@ -114,9 +115,7 @@ test.describe("Playlist party HTTP API", () => {
 
 test.describe("Host lobby: save and load playlist", () => {
   test("loads a playlist and shows the Save playlist button", async ({ page }) => {
-    await page.goto("/");
-    await page.getByRole("button", { name: /create/i }).click();
-    await page.waitForURL(/\/room\/[A-Z]{4}\/host$/);
+    await createRoomAsHost(page);
 
     // Use the test seed (no network)
     const input = page.locator('input[type="url"]');
@@ -130,9 +129,7 @@ test.describe("Host lobby: save and load playlist", () => {
   });
 
   test("can expand and collapse the save panel", async ({ page }) => {
-    await page.goto("/");
-    await page.getByRole("button", { name: /create/i }).click();
-    await page.waitForURL(/\/room\/[A-Z]{4}\/host$/);
+    await createRoomAsHost(page);
 
     const input = page.locator('input[type="url"]');
     await input.click();
@@ -146,9 +143,7 @@ test.describe("Host lobby: save and load playlist", () => {
   });
 
   test("save → reload → load saved playlist → start game", async ({ page }) => {
-    await page.goto("/");
-    await page.getByRole("button", { name: /create/i }).click();
-    await page.waitForURL(/\/room\/[A-Z]{4}\/host$/);
+    await createRoomAsHost(page);
 
     // Load test seed
     const urlInput = page.locator('input[type="url"]');
@@ -183,9 +178,7 @@ test.describe("Host lobby: save and load playlist", () => {
   });
 
   test("edit year on a song → verify the edit is reflected in the editor", async ({ page }) => {
-    await page.goto("/");
-    await page.getByRole("button", { name: /create/i }).click();
-    await page.waitForURL(/\/room\/[A-Z]{4}\/host$/);
+    await createRoomAsHost(page);
 
     // Load test seed
     const urlInput = page.locator('input[type="url"]');

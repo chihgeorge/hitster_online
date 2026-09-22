@@ -15,8 +15,10 @@ vi.mock("partysocket/react", () => ({
     return { send: sendSpy };
   },
 }));
+let searchParamsValue = new URLSearchParams("");
 vi.mock("next/navigation", () => ({
   useParams: () => ({ code: "ABCD" }),
+  useSearchParams: () => searchParamsValue,
 }));
 
 // MusicPlayer/LyricsPlayer's own video-loading behavior is already covered by their own test
@@ -81,13 +83,35 @@ beforeEach(() => {
   vi.setSystemTime(new Date("2026-09-22T12:00:00Z"));
   sendSpy.mockClear();
   localStorage.clear();
+  searchParamsValue = new URLSearchParams(""); // default: not the creator
 });
 afterEach(() => { cleanup(); vi.useRealTimers(); });
 
 describe("ScreenPage: waiting / lobby", () => {
-  it("shows the waiting-for-host message before any game starts", () => {
+  it("shows the join QR and room code before any game starts", () => {
     render(<ScreenPage />);
-    expect(screen.getByText(/等待主持人開始遊戲/)).toBeTruthy();
+    expect(screen.getByText(/掃描加入/)).toBeTruthy();
+    expect(screen.getByText("ABCD")).toBeTruthy();
+  });
+
+  it("shows the private manage-as-host link only for the connection that created the room", () => {
+    searchParamsValue = new URLSearchParams("created=1");
+    render(<ScreenPage />);
+    const link = screen.getByTestId("manage-as-host-link");
+    expect(link.getAttribute("href")).toBe("/room/ABCD/host");
+  });
+
+  it("hides the manage-as-host link for a connection that did not create the room", () => {
+    render(<ScreenPage />); // searchParamsValue defaults to no ?created=1 (see beforeEach)
+    expect(screen.queryByTestId("manage-as-host-link")).toBeNull();
+  });
+
+  // Outside-voice finding from /plan-eng-review: the private link must never resurface mid-game.
+  it("hides the manage-as-host link once the game leaves the lobby, even for the creator", () => {
+    searchParamsValue = new URLSearchParams("created=1");
+    render(<ScreenPage />);
+    serverSends({ type: "STATE", state: guessingState });
+    expect(screen.queryByTestId("manage-as-host-link")).toBeNull();
   });
 
   // Regression for TODOS.md P2 "Timeline mode exposes the real video id to all players" — the
@@ -191,7 +215,7 @@ describe("ScreenPage: Lyrics mode", () => {
     expect(screen.queryByText(/那些年錯過的/)).toBeTruthy();
     serverSends({ type: "LYRICS_ABORTED" });
     expect(screen.queryByText(/那些年錯過的/)).toBeNull();
-    expect(screen.getByText(/等待主持人開始遊戲/)).toBeTruthy();
+    expect(screen.getByText(/掃描加入/)).toBeTruthy();
   });
 });
 

@@ -1,23 +1,18 @@
 import { test, expect } from "@playwright/test";
+import { createRoomAsHost } from "./helpers";
 
 test.describe("Landing page", () => {
   test("shows the HITSTER! heading and room entry controls", async ({ page }) => {
     await page.goto("/");
     await expect(page.getByRole("heading", { name: /HITSTER/i })).toBeVisible();
-    await expect(page.getByRole("button", { name: /Create a Room/i })).toBeVisible();
+    await expect(page.getByRole("link", { name: /設定電視/i })).toBeVisible();
     await expect(page.getByPlaceholder("房間代碼")).toBeVisible();
   });
 
   test("creates a room and navigates to host page with 4-char code", async ({ page }) => {
-    await page.goto("/");
-    await page.getByRole("button", { name: /Create a Room/i }).click();
-
-    await page.waitForURL(/\/room\/[A-Z]{4}\/host$/);
-    const url = page.url();
-    const match = url.match(/\/room\/([A-Z]{4})\/host$/);
-    expect(match).not.toBeNull();
+    const roomCode = await createRoomAsHost(page);
     // Room code appears in the header chip (a <p> with mono font)
-    await expect(page.locator("p").filter({ hasText: new RegExp(`^${match![1]}$`) }).first()).toBeVisible();
+    await expect(page.locator("p").filter({ hasText: new RegExp(`^${roomCode}$`) }).first()).toBeVisible();
   });
 
   test("join form routes player to play page", async ({ page }) => {
@@ -46,9 +41,7 @@ test.describe("Landing page", () => {
 
 test.describe("Host lobby", () => {
   test("shows no-players state; Start Game unavailable without a loaded playlist", async ({ page }) => {
-    await page.goto("/");
-    await page.getByRole("button", { name: /Create a Room/i }).click();
-    await page.waitForURL(/\/room\/[A-Z]{4}\/host$/);
+    await createRoomAsHost(page);
 
     // No players in room yet
     await expect(page.getByText("No players yet")).toBeVisible();
