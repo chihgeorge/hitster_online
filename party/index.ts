@@ -126,6 +126,12 @@ export default class HitsterRoom implements Party.Server {
   // hostId is: the first GET_LYRICS_AUDIO with a non-empty screenId claims it, later callers
   // must match exactly. Unlike hostId, no "first connection" race guard applies — the screen
   // is expected to be a second device, connecting after the host.
+  //
+  // KNOWN GAP (TODOS.md, P1, accepted 2026-09-22): screenId is just "whichever connection asks
+  // first," not "actually the TV" — any player can self-issue it from their own tab (devtools,
+  // one WS message) and get the current round's video id sent straight to them, then keeps
+  // receiving every future round's full answer deck via privilegedConns. Also permanently locks
+  // out the real screen once taken. Real fix is a host-minted token; deferred, not built here.
   private screenId = "";
   // Connections that have proven themselves host or screen (see markPrivileged) — the only
   // ones that get the full preview-phase deck (see broadcastLyricsState and onConnect).
