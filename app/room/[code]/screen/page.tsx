@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useParams, useSearchParams } from "next/navigation";
+import Link from "next/link";
 import usePartySocket from "partysocket/react";
 import MusicPlayer from "@/components/MusicPlayer";
 import LyricsPlayer, { lyricsAudioProps, isAudioPhase, needsLyricsAudio } from "@/components/LyricsPlayer";
@@ -109,14 +110,14 @@ export default function ScreenPage() {
                 alt="加入房間 QR"
               />
               <p style={{ fontSize: 14, color: "var(--text3)" }}>
-                或在 <a href="/" style={{ color: "var(--orange)" }}>hitster</a> 輸入房間代碼 <strong style={{ color: "var(--ink)", fontFamily: "var(--font-mono)" }}>{params.code}</strong>
+                或在 <Link href="/" style={{ color: "var(--orange)" }}>hitster</Link> 輸入房間代碼 <strong style={{ color: "var(--ink)", fontFamily: "var(--font-mono)" }}>{params.code}</strong>
               </p>
 
               {/* Private to this browser only — never shown to anyone scanning the QR above
                   (see the isCreator comment). Gated to lobby so it can never resurface mid-game
                   on a reload, per the outside-voice finding from /plan-eng-review. */}
               {isCreator && (
-                <a
+                <Link
                   href={`/room/${params.code}/host`}
                   data-testid="manage-as-host-link"
                   style={{
@@ -124,7 +125,7 @@ export default function ScreenPage() {
                   }}
                 >
                   你是主持人？管理房間 → Manage as host
-                </a>
+                </Link>
               )}
             </div>
           )}

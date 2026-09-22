@@ -2,6 +2,7 @@
 
 import { Suspense, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
+import Link from "next/link";
 import Vinyl from "@/components/Vinyl";
 
 // useSearchParams() (for the QR-embedded ?code=) requires a Suspense boundary on a statically
@@ -143,9 +144,9 @@ function HomePageContent() {
         )}
       </form>
 
-      <a href="/screen" style={{ fontSize: 13, color: "var(--text2)", textDecoration: "underline" }}>
+      <Link href="/screen" style={{ fontSize: 13, color: "var(--text2)", textDecoration: "underline" }}>
         設定電視 / 大螢幕 → Setting up the TV?
-      </a>
+      </Link>
 
       <p style={{ fontSize: 11, color: "#C0B8B0", textAlign: "center" }}>
         Fan project · Not affiliated with Jumbo/Helvetiq
