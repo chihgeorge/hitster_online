@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.8.2.0] — 2026-09-22
+
+### Fixed
+- **Joining with a wrong room code led to a dead end.** The "waiting over 90 seconds? check your room code" warning has been there since the very first release, but it was just text — nothing to do about it. Now has a "返回首頁重新輸入 · Back to homepage" link right next to it
+
 ## [0.8.1.0] — 2026-09-22
 
 ### Fixed
