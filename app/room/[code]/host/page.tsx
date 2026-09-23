@@ -5,6 +5,7 @@ import { useParams } from "next/navigation";
 import usePartySocket from "partysocket/react";
 import PlaylistEditor from "@/components/PlaylistEditor";
 import LyricsTable from "@/components/LyricsTable";
+import LyricRoundItemEditor from "@/components/LyricRoundItemEditor";
 import { Qr } from "@/components/Qr";
 import { getOrCreatePersistedId } from "@/lib/device-id";
 import { importLocalPlaylistsToLibrary } from "@/lib/playlist-library-migration";
@@ -48,6 +49,7 @@ export default function HostPage() {
   const [saving, setSaving] = useState(false);
   const [savedId, setSavedId] = useState<string | null>(null);
   const [showEditor, setShowEditor] = useState(false);
+  const [showLyricsFocus, setShowLyricsFocus] = useState(false);
   const [loadById, setLoadById] = useState("");
   const [copied, setCopied] = useState(false);
   const [saveError, setSaveError] = useState("");
@@ -256,6 +258,7 @@ export default function HostPage() {
         .filter(([, v]) => v.lyricContext !== undefined || v.blankSentence !== undefined)
         .map(([videoId, v]) => ({ videoId, ...v }));
       setPendingLyricsStart(true);
+      setShowLyricsFocus(false); // defense in depth — Focus mode shouldn't be reachable once a start is in flight
       send({
         type: "START_LYRICS_GAME",
         hostId: hostIdRef.current,
@@ -642,6 +645,12 @@ export default function HostPage() {
                   onProposedDiffConsumed={() => setProposedDiff(null)}
                 />
               )}
+              {gameMode === "lyrics" && readySongs.length > 0 && !lyricsState && !pendingLyricsStart && (
+                <button type="button" onClick={() => setShowLyricsFocus(true)}
+                  style={{ alignSelf: "flex-start", background: "rgba(255,107,53,.12)", border: "none", borderRadius: 10, padding: "7px 14px", fontSize: 12, fontWeight: 900, color: "var(--orange)", cursor: "pointer" }}>
+                  🎯 Focus 模式 · Focus mode
+                </button>
+              )}
               {gameMode === "lyrics" && readySongs.length > 0 && (
                 <LyricsTable
                   lyricsPreviewLoading={lyricsPreviewLoading}
@@ -904,6 +913,22 @@ export default function HostPage() {
             </div>
           )}
         </div>
+      )}
+
+      {showLyricsFocus && !lyricsState && !pendingLyricsStart && (
+        <LyricRoundItemEditor
+          readySongs={readySongs}
+          lyricsPreview={lyricsPreview}
+          lyricsPreviewLoading={lyricsPreviewLoading}
+          lyricOverrides={lyricOverrides}
+          setLyricOverrides={setLyricOverrides}
+          lyricInstruction={lyricInstruction}
+          setLyricInstruction={setLyricInstruction}
+          proposingLyricEdits={proposingLyricEdits}
+          onProposeLyricEdits={handleProposeLyricEdits}
+          proposeLyricError={proposeLyricError}
+          onClose={() => setShowLyricsFocus(false)}
+        />
       )}
     </div>
   );

@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.12.7.0] — 2026-09-23
+
+### Added
+- **`LyricRoundItemEditor.tsx` — the Focus editor's Lyrics-mode view** (T6 of docs/designs/full-page-focus-editor.md, the actual reason Approach B/full parity was chosen over timeline-only): a full-page, one-round-at-a-time view for an in-progress room's Lyrics setup, reached via a new "🎯 Focus mode" button next to the existing table. Reads the same `lyricsPreview` + `lyricOverrides` merge the table (T5) already uses, so both views always agree; manual edits go through `lib/use-item-draft.ts` (T1) as a reviewable draft, committed into the shared `lyricOverrides` on "Apply" — AI-proposed edits keep using the existing shared pipeline unchanged. Gated by `lyricsState === null` AND `!pendingLyricsStart` (T2's race-window flag) — not reachable once "Start Lyrics" has been clicked, matching the table going read-only at the same point. This completes the Focus editor's full parity across both game modes
+
 ## [0.12.6.0] — 2026-09-23
 
 ### Changed

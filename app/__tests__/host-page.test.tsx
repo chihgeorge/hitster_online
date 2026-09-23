@@ -113,3 +113,36 @@ describe("HostPage: Lyrics mode Start-Lyrics race (T2, docs/designs/full-page-fo
     expect(screen.queryByText(/^✨ Ask AI$/)).toBeNull();
   });
 });
+
+// T6 (docs/designs/full-page-focus-editor.md): the Lyrics Focus mode entry point must be
+// gated exactly like the table/Ask-AI box — reachable only before "Start Lyrics" is ever
+// clicked (lyricsState === null) and not mid-flight (pendingLyricsStart, T2).
+describe("HostPage: Lyrics Focus mode entry point gating (T6)", () => {
+  it("shows the Focus mode button once the preview is ready", async () => {
+    loadLyricsPlaylistWithPlayer();
+    await waitFor(() => expect(screen.getByText(/Focus 模式/)).toBeTruthy());
+  });
+
+  it("hides the Focus mode button once Start is clicked, before lyricsState arrives", async () => {
+    loadLyricsPlaylistWithPlayer();
+    await waitFor(() => expect(screen.getByText(/Focus 模式/)).toBeTruthy());
+    clickStartGame();
+    expect(screen.queryByText(/Focus 模式/)).toBeNull();
+  });
+
+  it("stays hidden once lyricsState arrives", async () => {
+    loadLyricsPlaylistWithPlayer();
+    await waitFor(() => expect(screen.getByText(/Focus 模式/)).toBeTruthy());
+    clickStartGame();
+    serverSends({
+      type: "LYRICS_STATE",
+      state: {
+        mode: "lyrics", phase: "preview",
+        players: { p1: { name: "Alice", score: 0, connected: true } },
+        rounds: [{ videoId: "v1", title: "Song A", artist: "Artist A", language: "en", lyricContext: "I want ___", blankSentence: "you" }],
+        currentRound: null, roundStart: null, timerSeconds: 60, answers: {}, totalRounds: 1, currentRoundIndex: 0, consecutiveSkips: 0,
+      },
+    });
+    expect(screen.queryByText(/Focus 模式/)).toBeNull();
+  });
+});
