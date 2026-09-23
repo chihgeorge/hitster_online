@@ -60,6 +60,13 @@ export default function HostPage() {
   const [lyricsConfig, setLyricsConfig] = useState<LyricsGameConfig>({ timerSeconds: 60, totalRounds: 10, fuzzyEnabled: false });
   const [lyricInstruction, setLyricInstruction] = useState("");
   const [proposingLyricEdits, setProposingLyricEdits] = useState(false);
+  // T2 (docs/designs/full-page-focus-editor.md): closes a real race the eng review's
+  // outside-voice pass found. Unlike the timeline path (setStarting(true) before sending
+  // START_GAME), the lyrics path used to send START_LYRICS_GAME with no local flag at all —
+  // between the click and the server's lyricsState broadcast arriving, lyricsState was still
+  // null and the table/Focus mode would incorrectly stay editable. Reset on LYRICS_STATE,
+  // ERROR, or LYRICS_ABORTED so a failed start doesn't lock the host out forever.
+  const [pendingLyricsStart, setPendingLyricsStart] = useState(false);
   const [proposeLyricError, setProposeLyricError] = useState<string | null>(null);
   const hostIdRef = useRef<string>("");
   const loadedUrlRef = useRef<string>("");
@@ -130,6 +137,7 @@ export default function HostPage() {
       if (msg.type === "ERROR") {
         setError(msg.error);
         setStarting(false);
+        setPendingLyricsStart(false);
       }
       if (msg.type === "DIAGNOSTIC") {
         setDiagnostic(msg.songs);
@@ -161,8 +169,8 @@ export default function HostPage() {
         setError(msg.error);
         setLoadStatus("error");
       }
-      if (msg.type === "LYRICS_STATE") setLyricsState(msg.state);
-      if (msg.type === "LYRICS_ABORTED") setLyricsState(null);
+      if (msg.type === "LYRICS_STATE") { setLyricsState(msg.state); setPendingLyricsStart(false); }
+      if (msg.type === "LYRICS_ABORTED") { setLyricsState(null); setPendingLyricsStart(false); }
       if (msg.type === "LYRICS_PREVIEW") {
         setLyricsPreviewLoading(msg.loading);
         if (!msg.loading) setLyricsPreview(msg.rounds);
@@ -204,7 +212,7 @@ export default function HostPage() {
 
   function handleProposeLyricEdits() {
     const trimmed = lyricInstruction.trim();
-    if (!trimmed || proposingLyricEdits) return;
+    if (!trimmed || proposingLyricEdits || pendingLyricsStart) return;
     const previewMap = new Map(lyricsPreview.map((r) => [r.videoId, r]));
     const rounds: EditableLyricRound[] = readySongs
       .map((s) => {
@@ -246,6 +254,7 @@ export default function HostPage() {
       const overrides = Object.entries(lyricOverrides)
         .filter(([, v]) => v.lyricContext !== undefined || v.blankSentence !== undefined)
         .map(([videoId, v]) => ({ videoId, ...v }));
+      setPendingLyricsStart(true);
       send({
         type: "START_LYRICS_GAME",
         hostId: hostIdRef.current,
@@ -643,7 +652,7 @@ export default function HostPage() {
                           ? `${lyricsPreview.length} / ${readySongs.length} songs have questions ready`
                           : `${readySongs.length} songs loaded`}
                   </p>
-                  {(lyricsState?.rounds?.length ?? 0) === 0 && lyricsPreview.length > 0 && (
+                  {(lyricsState?.rounds?.length ?? 0) === 0 && !pendingLyricsStart && lyricsPreview.length > 0 && (
                     <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
                       <div style={{ display: "flex", gap: 8 }}>
                         <input
@@ -710,8 +719,9 @@ export default function HostPage() {
                                     rows={2}
                                     value={qValue}
                                     placeholder={lyricsPreviewLoading ? "…" : "—"}
-                                    onChange={(e) => setLyricOverrides(prev => ({ ...prev, [s.videoId]: { ...prev[s.videoId], lyricContext: e.target.value } }))}
-                                    style={{ ...cellBase, color: ov.lyricContext ? "var(--ink)" : "var(--text2)", resize: "vertical", minHeight: 40 }}
+                                    readOnly={pendingLyricsStart}
+                                    onChange={(e) => { if (!pendingLyricsStart) setLyricOverrides(prev => ({ ...prev, [s.videoId]: { ...prev[s.videoId], lyricContext: e.target.value } })); }}
+                                    style={{ ...cellBase, color: ov.lyricContext ? "var(--ink)" : "var(--text2)", resize: "vertical", minHeight: 40, opacity: pendingLyricsStart ? 0.6 : 1 }}
                                   />
                                 ) : <span style={{ padding: "4px 8px", color: "#D0CEDC" }}>—</span>}
                               </td>
@@ -721,8 +731,9 @@ export default function HostPage() {
                                     type="text"
                                     value={aValue}
                                     placeholder={lyricsPreviewLoading ? "…" : "—"}
-                                    onChange={(e) => setLyricOverrides(prev => ({ ...prev, [s.videoId]: { ...prev[s.videoId], blankSentence: e.target.value } }))}
-                                    style={{ ...cellBase, fontWeight: 900, color: ov.blankSentence ? "var(--ink)" : aValue ? "var(--orange)" : "#D0CEDC" }}
+                                    readOnly={pendingLyricsStart}
+                                    onChange={(e) => { if (!pendingLyricsStart) setLyricOverrides(prev => ({ ...prev, [s.videoId]: { ...prev[s.videoId], blankSentence: e.target.value } })); }}
+                                    style={{ ...cellBase, fontWeight: 900, color: ov.blankSentence ? "var(--ink)" : aValue ? "var(--orange)" : "#D0CEDC", opacity: pendingLyricsStart ? 0.6 : 1 }}
                                   />
                                 ) : <span style={{ padding: "4px 8px", color: "#D0CEDC" }}>—</span>}
                               </td>

@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.12.3.0] — 2026-09-23
+
+### Fixed
+- **Closed the Lyrics-mode Start-Game race window** (T2 of docs/designs/full-page-focus-editor.md, found by the plan-eng-review's outside-voice pass): clicking "Start Lyrics" sent `START_LYRICS_GAME` with no local flag, unlike the timeline path's `setStarting(true)` — leaving a real window (the network round trip) where `lyricsState` was still `null` and the Ask-AI box and lyric fields incorrectly stayed live/editable. Added a `pendingLyricsStart` flag, set synchronously before the send and cleared on `LYRICS_STATE`/`ERROR`/`LYRICS_ABORTED`, gating the Ask-AI box's visibility and making the lyric fields read-only while a start is in flight. First direct unit tests for `host/page.tsx` (`app/__tests__/host-page.test.tsx`), covering this exact race
+
 ## [0.12.2.0] — 2026-09-23
 
 ### Changed
