@@ -217,17 +217,24 @@ export default function HostPage() {
     const trimmed = lyricInstruction.trim();
     if (!trimmed || proposingLyricEdits || pendingLyricsStart) return;
     const previewMap = new Map(lyricsPreview.map((r) => [r.videoId, r]));
-    const rounds: EditableLyricRound[] = readySongs
-      .map((s) => {
-        const lr = previewMap.get(s.videoId);
-        const ov = lyricOverrides[s.videoId] ?? {};
-        const lyricContext = ov.lyricContext ?? lr?.lyricContext ?? "";
-        const blankSentence = ov.blankSentence ?? lr?.blankSentence ?? "";
-        return lyricContext || blankSentence
-          ? { videoId: s.videoId, title: s.title, artist: s.artist, lyricContext, blankSentence }
-          : null;
-      })
-      .filter((r): r is EditableLyricRound => r !== null);
+    // Regression (host testing): songs with no existing lyricContext/blankSentence used to be
+    // filtered out here entirely — a song the bulk generator couldn't confidently produce data
+    // for was silently excluded from every Ask-AI request too, so "give me the full chorus"
+    // for that exact song always returned nothing, with no way for the host to tell why. Now
+    // every song goes to the AI; PROPOSE_LYRIC_EDITS_SYSTEM_PROMPT still won't invent lyrics
+    // it isn't confident about, so this doesn't trade accuracy for coverage — it just stops
+    // silently hiding songs from the one tool that might still help.
+    const rounds: EditableLyricRound[] = readySongs.map((s) => {
+      const lr = previewMap.get(s.videoId);
+      const ov = lyricOverrides[s.videoId] ?? {};
+      return {
+        videoId: s.videoId,
+        title: s.title,
+        artist: s.artist,
+        lyricContext: ov.lyricContext ?? lr?.lyricContext ?? "",
+        blankSentence: ov.blankSentence ?? lr?.blankSentence ?? "",
+      };
+    });
     if (rounds.length === 0) return;
     setProposingLyricEdits(true);
     setProposeLyricError(null);

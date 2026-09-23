@@ -246,7 +246,7 @@ export async function proposeEdits(
 
 const PROPOSE_LYRIC_EDITS_SYSTEM_PROMPT = `You edit a Lyrics-mode music quiz's rounds based on a host's plain-language instruction.
 
-Each round shows a lyric snippet with one line blanked out (lyricContext, using ___ for the blank) and the blanked line itself (blankSentence, the correct answer players must type).
+Each round shows a lyric snippet with one line blanked out (lyricContext, using ___ for the blank) and the blanked line itself (blankSentence, the correct answer players must type). A round with empty context/answer means the bulk generator couldn't confidently produce one — the host may be asking you to fill it in from scratch (e.g. "give me the chorus for this song").
 
 Given the current rounds and an instruction, return ONLY a JSON array of field-level changes:
 [{"v":"VIDEO_ID","f":"lyricContext"|"blankSentence","n":"new value"},...]
@@ -258,6 +258,7 @@ Rules:
 - lyricContext must still contain a "___" placeholder marking exactly where blankSentence fits.
 - Only include entries for fields that actually need to change per the instruction — never restate unchanged rounds.
 - If the instruction doesn't clearly map to any round in the list, return an empty array [].
+- Filling in an empty round: only output lyrics you know VERBATIM and with high confidence. If you're not sure, leave that round out of the response entirely — never guess or invent lyrics, even when explicitly asked for "the chorus" or "any lyrics you know". Wrong lyrics are worse than no question.
 - Preserve CJK characters exactly.`;
 
 type RawLyricEditDiff = { v?: unknown; f?: unknown; n?: unknown };

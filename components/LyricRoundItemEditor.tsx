@@ -98,18 +98,20 @@ export default function LyricRoundItemEditor({
       </div>
 
       <div style={{ display: "flex", flexDirection: "column", gap: 12, width: "100%", maxWidth: 420 }}>
-        {hasData || lyricsPreviewLoading ? (
-          <>
-            <textarea rows={3} value={draft.lyricContext} placeholder={lyricsPreviewLoading ? "…" : "Question"}
-              onChange={(e) => setField("lyricContext", e.target.value)}
-              style={{ ...fieldBox, fontSize: 15, resize: "vertical" }} />
-            <input type="text" value={draft.blankSentence} placeholder={lyricsPreviewLoading ? "…" : "Answer"}
-              onChange={(e) => setField("blankSentence", e.target.value)}
-              style={{ ...fieldBox, fontSize: 16, fontWeight: 900, color: "var(--orange)" }} />
-          </>
-        ) : (
-          <p style={{ textAlign: "center", color: "var(--text3)", fontSize: 13 }}>No question generated for this song yet.</p>
+        {/* Always editable, even with no AI-generated data — the table (LyricsTable.tsx) has
+            the same fix, see its comment. A song AI can't confidently generate for shouldn't be
+            a dead end; the host may already know the song and just needs a way to type it in. */}
+        {!hasData && !lyricsPreviewLoading && (
+          <p style={{ textAlign: "center", color: "var(--text3)", fontSize: 12, margin: 0 }}>
+            AI 沒有這首歌的資料，可手動輸入 · No AI data for this song — enter it yourself below
+          </p>
         )}
+        <textarea rows={3} value={draft.lyricContext} placeholder={lyricsPreviewLoading ? "…" : "Question"}
+          onChange={(e) => setField("lyricContext", e.target.value)}
+          style={{ ...fieldBox, fontSize: 15, resize: "vertical" }} />
+        <input type="text" value={draft.blankSentence} placeholder={lyricsPreviewLoading ? "…" : "Answer"}
+          onChange={(e) => setField("blankSentence", e.target.value)}
+          style={{ ...fieldBox, fontSize: 16, fontWeight: 900, color: "var(--orange)" }} />
       </div>
 
       <div style={{ display: "flex", flexDirection: "column", gap: 6, width: "100%", maxWidth: 420 }}>
