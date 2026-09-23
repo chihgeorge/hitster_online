@@ -69,6 +69,10 @@ export interface GameState {
   placements: Record<string, number>;
   activePlayerId: string | null; // whose turn it is to guess this round
   hostId: string;
+  // Whether ANY device has claimed host, broadcast to every client — never the real hostId
+  // itself (sanitizedState always zeros that). Lets a client know "claimed" vs "not yet"
+  // without learning the token: see /room/[code]/screen's stale-tab handoff race fix.
+  hostClaimed: boolean;
   winner: string | null; // playerId of winner once phase === 'ended'
 }
 

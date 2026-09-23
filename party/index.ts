@@ -162,6 +162,7 @@ export default class HitsterRoom implements Party.Server {
       placements: {},
       activePlayerId: null,
       hostId: "",
+      hostClaimed: false,
       winner: null,
     };
   }
@@ -175,6 +176,11 @@ export default class HitsterRoom implements Party.Server {
     return {
       ...rest,
       hostId: "",
+      // Derived signal only — "is it claimed", never the token itself. Lets /screen hide its
+      // stale creator-device link once host is claimed from anywhere (see docs/designs and
+      // app/room/[code]/screen/page.tsx). this.state.hostId (not the stripped copy) is the
+      // real source of truth here.
+      hostClaimed: this.state.hostId !== "",
       // Strip year AND video id from the whole remaining deck — a player reading `songs[]`
       // straight off the WebSocket (no rendering needed) could otherwise look up every future
       // round's real video id in advance, not just the current one. Same mechanism as
@@ -460,12 +466,21 @@ export default class HitsterRoom implements Party.Server {
    * authorizeHost.
    */
   private claimOrValidateHost(conn: Party.Connection, hostId: string): boolean {
-    return this.claimOrValidateFirstClaim(
+    // Broadcast on the FIRST successful claim only (not on every later host action reconfirming
+    // the same hostId) — this is the one signal every client, including /screen, needs to learn
+    // "host claimed" for the cross-device handoff hostClaimed check. None of the 4 entry points
+    // that route through this (LOAD_PLAYLIST, LOAD_SAVED_PLAYLIST, START_GAME,
+    // START_LYRICS_GAME) otherwise broadcast state on their own — found live during QA: the
+    // stale-tab link stayed visible after a real claim until some unrelated later broadcast.
+    const wasUnclaimed = this.state.hostId === "";
+    const claimed = this.claimOrValidateFirstClaim(
       this.state.hostId,
       hostId,
       (v) => { this.state.hostId = v; },
       conn
     );
+    if (claimed && wasUnclaimed) this.broadcastState();
+    return claimed;
   }
 
   /**

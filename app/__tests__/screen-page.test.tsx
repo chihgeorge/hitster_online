@@ -51,7 +51,7 @@ const P2 = "22222222-2222-4222-8222-222222222222";
 
 const lobbyState: GameState = {
   phase: "lobby", players: {}, targetCardCount: 10, currentRound: 0, playlistId: "", songs: [],
-  currentSong: null, placements: {}, activePlayerId: null, hostId: "", winner: null,
+  currentSong: null, placements: {}, activePlayerId: null, hostId: "", hostClaimed: false, winner: null,
 };
 
 const guessingState: GameState = {
@@ -144,6 +144,17 @@ describe("ScreenPage: waiting / lobby", () => {
     searchParamsValue = new URLSearchParams("created=1");
     render(<ScreenPage />);
     serverSends({ type: "STATE", state: guessingState });
+    expect(screen.queryByTestId("manage-as-host-link")).toBeNull();
+  });
+
+  // Cross-device host handoff (docs/designs, /plan-eng-review 2026-09-22): closes the
+  // stale-tab race — once host is claimed from ANY device (hostClaimed: true), this creator
+  // tab's own link disappears too, even though it's still in the lobby and still the creator.
+  it("hides the manage-as-host link once host is claimed elsewhere, even while still in the lobby", () => {
+    searchParamsValue = new URLSearchParams("created=1");
+    render(<ScreenPage />);
+    expect(screen.getByTestId("manage-as-host-link")).toBeTruthy();
+    serverSends({ type: "STATE", state: { ...lobbyState, hostClaimed: true } });
     expect(screen.queryByTestId("manage-as-host-link")).toBeNull();
   });
 

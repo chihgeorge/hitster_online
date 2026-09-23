@@ -114,6 +114,51 @@ describe("onConnect", () => {
     expect(msg?.type).toBe("STATE");
     expect(msg?.state.phase).toBe("lobby");
   });
+
+  // Cross-device host handoff (docs/designs, /plan-eng-review 2026-09-22): hostClaimed is a
+  // derived yes/no signal, never the real hostId — sanitizedState always zeros that separately.
+  it("reports hostClaimed: false before any host claim", () => {
+    const room = new HitsterRoom(makeRoom() as any);
+    const conn = makeConn();
+    room.onConnect(conn);
+    const msg = lastSentTo(conn);
+    expect(msg?.state.hostClaimed).toBe(false);
+    expect(msg?.state.hostId).toBe("");
+  });
+
+  it("reports hostClaimed: true after a host claim, still without exposing the real hostId", async () => {
+    const room = new HitsterRoom(makeRoom() as any);
+    const conn = makeConn();
+    await send(room, conn, { type: "LOAD_PLAYLIST", hostId: "host-uuid", playlistUrl: "hitster://test" });
+
+    const conn2 = makeConn("conn-2");
+    room.onConnect(conn2);
+    const msg = lastSentTo(conn2);
+    expect(msg?.state.hostClaimed).toBe(true);
+    expect(msg?.state.hostId).toBe("");
+  });
+
+  // Regression: found live during QA — the claim itself (inside handleLoadPlaylist) never used
+  // to broadcast, so an already-open /screen tab never learned hostClaimed flipped to true until
+  // some unrelated later broadcast. Fixed at the shared claimOrValidateHost wrapper, not per-caller.
+  it("broadcasts STATE exactly once, on the FIRST successful host claim", async () => {
+    const room = new HitsterRoom(makeRoom() as any);
+    const conn = makeConn();
+    await send(room, conn, { type: "LOAD_PLAYLIST", hostId: "host-uuid", playlistUrl: "hitster://test" });
+    expect(room.room.broadcast).toHaveBeenCalledTimes(1);
+    const broadcasted = lastBroadcast(room);
+    expect(broadcasted?.type).toBe("STATE");
+    expect(broadcasted?.state.hostClaimed).toBe(true);
+  });
+
+  it("does not re-broadcast when the SAME host reconfirms via a later action", async () => {
+    const room = new HitsterRoom(makeRoom() as any);
+    const conn = makeConn();
+    await send(room, conn, { type: "LOAD_PLAYLIST", hostId: "host-uuid", playlistUrl: "hitster://test" });
+    (room.room.broadcast as ReturnType<typeof vi.fn>).mockClear();
+    await send(room, conn, { type: "ABORT_LOAD", hostId: "host-uuid" });
+    expect(room.room.broadcast).not.toHaveBeenCalled();
+  });
 });
 
 // ─── JOIN ─────────────────────────────────────────────────────────────────────
@@ -1309,6 +1354,9 @@ describe("PROPOSE_EDITS handler", () => {
     vi.mocked(proposeEdits).mockResolvedValue([{ videoId: "v1", field: "year", oldValue: 1994, newValue: 1995 }]);
     const { room, conn } = await hostedRoom();
     const phaseBefore = room.state.phase;
+    // hostedRoom()'s own setup (claiming host via LOAD_PLAYLIST) legitimately broadcasts once —
+    // clear it so this only asserts on PROPOSE_EDITS's own behavior.
+    (room.room.broadcast as ReturnType<typeof vi.fn>).mockClear();
     await send(room, conn, { type: "PROPOSE_EDITS", hostId: "host-uuid", instruction: "fix it", songs: SONGS });
 
     expect(room.state.phase).toBe(phaseBefore);

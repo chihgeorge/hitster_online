@@ -22,7 +22,7 @@ const PLAYER = "11111111-1111-4111-8111-111111111111";
 
 const lobbyState: GameState = {
   phase: "lobby", players: {}, targetCardCount: 10, currentRound: 0, playlistId: "", songs: [],
-  currentSong: null, placements: {}, activePlayerId: null, hostId: "", winner: null,
+  currentSong: null, placements: {}, activePlayerId: null, hostId: "", hostClaimed: false, winner: null,
 };
 
 function lyricsState(over: Partial<PublicLyricsGameState> = {}): PublicLyricsGameState {
