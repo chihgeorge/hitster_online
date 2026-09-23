@@ -14,6 +14,7 @@ import {
   type LyricsRound,
   type PublicLyricsGameState,
   type PublicLyricsRound,
+  type EditableLyricRound,
 } from "../lib/game";
 import { isValidYear, sanitizeText } from "../lib/utils";
 import {
@@ -24,7 +25,7 @@ import {
   channelToArtist,
   extractYearFromTitle,
 } from "../lib/youtube";
-import { resolveTracksWithAI, proposeEdits, type AITrackMeta } from "../lib/ai-metadata";
+import { resolveTracksWithAI, proposeEdits, proposeLyricEdits, type AITrackMeta } from "../lib/ai-metadata";
 import { resolveLyricsForTracks, MODEL_GAME, type LyricsResult } from "../lib/lyrics-resolver";
 import { isCorrect, computePoints } from "../lib/fuzzy";
 
@@ -277,6 +278,9 @@ export default class HitsterRoom implements Party.Server {
         break;
       case "PROPOSE_EDITS":
         await this.handleProposeEdits(sender, msg.hostId, msg.instruction, msg.songs);
+        break;
+      case "PROPOSE_LYRIC_EDITS":
+        await this.handleProposeLyricEdits(sender, msg.hostId, msg.instruction, msg.rounds);
         break;
       case "START_GAME":
         await this.handleStartGame(sender, msg.hostId, msg.playlistUrl, msg.targetCardCount, msg.songs);
@@ -812,6 +816,35 @@ export default class HitsterRoom implements Party.Server {
     } catch (err) {
       console.error(`[handleProposeEdits] ${err instanceof Error ? err.message : "unknown_error"}`);
       this.sendTo(conn, { type: "EDITS_PROPOSAL_FAILED", error: "propose_failed" });
+    }
+  }
+
+  private async handleProposeLyricEdits(
+    conn: Party.Connection,
+    hostId: string,
+    instruction: string,
+    rounds: EditableLyricRound[]
+  ) {
+    if (!this.authorizeHost(conn, hostId)) {
+      this.sendTo(conn, { type: "LYRIC_EDITS_PROPOSAL_FAILED", error: "unauthorized" });
+      return;
+    }
+    if (!Array.isArray(rounds) || rounds.length === 0 || typeof instruction !== "string" || !instruction.trim()) {
+      this.sendTo(conn, { type: "LYRIC_EDITS_PROPOSAL_FAILED", error: "invalid_request" });
+      return;
+    }
+
+    try {
+      const { anthropicKey } = this.resolveEnv();
+      if (!anthropicKey) {
+        this.sendTo(conn, { type: "LYRIC_EDITS_PROPOSAL_FAILED", error: "api_key_missing" });
+        return;
+      }
+      const diff = await proposeLyricEdits(instruction, rounds, anthropicKey);
+      this.sendTo(conn, { type: "LYRIC_EDITS_PROPOSED", diff });
+    } catch (err) {
+      console.error(`[handleProposeLyricEdits] ${err instanceof Error ? err.message : "unknown_error"}`);
+      this.sendTo(conn, { type: "LYRIC_EDITS_PROPOSAL_FAILED", error: "propose_failed" });
     }
   }
 

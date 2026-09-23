@@ -47,6 +47,7 @@ vi.mock("../lib/youtube", async (importOriginal) => {
 vi.mock("../lib/ai-metadata", () => ({
   resolveTracksWithAI: vi.fn().mockResolvedValue(new Map()),
   proposeEdits: vi.fn().mockResolvedValue([]),
+  proposeLyricEdits: vi.fn().mockResolvedValue([]),
 }));
 
 vi.mock("../lib/lyrics-resolver", () => ({
@@ -54,7 +55,7 @@ vi.mock("../lib/lyrics-resolver", () => ({
 }));
 
 import { fetchPlaylistItems, fetchEmbeddableVideoIds } from "../lib/youtube";
-import { resolveTracksWithAI, proposeEdits } from "../lib/ai-metadata";
+import { resolveTracksWithAI, proposeEdits, proposeLyricEdits } from "../lib/ai-metadata";
 import { resolveLyricsForTracks } from "../lib/lyrics-resolver";
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -1358,6 +1359,102 @@ describe("PROPOSE_EDITS handler", () => {
     // clear it so this only asserts on PROPOSE_EDITS's own behavior.
     (room.room.broadcast as ReturnType<typeof vi.fn>).mockClear();
     await send(room, conn, { type: "PROPOSE_EDITS", hostId: "host-uuid", instruction: "fix it", songs: SONGS });
+
+    expect(room.state.phase).toBe(phaseBefore);
+    expect(room.room.broadcast).not.toHaveBeenCalled();
+  });
+});
+
+describe("PROPOSE_LYRIC_EDITS handler", () => {
+  const ROUNDS = [
+    { videoId: "v1", title: "愛你", artist: "Twice", lyricContext: "I want you 想要有 ___ 陪伴", blankSentence: "你的愛" },
+    { videoId: "v2", title: "Dynamite", artist: "BTS", lyricContext: "Cos I, I, I'm in the ___", blankSentence: "stars" },
+  ];
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(proposeLyricEdits).mockResolvedValue([]);
+    process.env.ANTHROPIC_API_KEY = "test-key";
+  });
+
+  afterEach(() => {
+    delete process.env.ANTHROPIC_API_KEY;
+  });
+
+  async function hostedRoom() {
+    const room = new HitsterRoom(makeRoom() as any);
+    const conn = makeConn();
+    vi.mocked(fetchPlaylistItems).mockResolvedValue([]);
+    vi.mocked(fetchEmbeddableVideoIds).mockResolvedValue(new Set());
+    await send(room, conn, { type: "LOAD_PLAYLIST", hostId: "host-uuid", playlistUrl: "hitster://test" });
+    return { room, conn };
+  }
+
+  it("sends back the proposed diff on success", async () => {
+    const diff = [{ videoId: "v1", field: "blankSentence" as const, oldValue: "你的愛", newValue: "你的心" }];
+    vi.mocked(proposeLyricEdits).mockResolvedValue(diff);
+
+    const { room, conn } = await hostedRoom();
+    await send(room, conn, { type: "PROPOSE_LYRIC_EDITS", hostId: "host-uuid", instruction: "fix the answer", rounds: ROUNDS });
+
+    expect(lastSentTo(conn)).toEqual({ type: "LYRIC_EDITS_PROPOSED", diff });
+  });
+
+  it("passes the instruction and rounds through to proposeLyricEdits with the server's API key", async () => {
+    const { room, conn } = await hostedRoom();
+    await send(room, conn, { type: "PROPOSE_LYRIC_EDITS", hostId: "host-uuid", instruction: "fix the answer", rounds: ROUNDS });
+
+    expect(proposeLyricEdits).toHaveBeenCalledWith("fix the answer", ROUNDS, "test-key");
+  });
+
+  it("rejects a non-host connection", async () => {
+    const { room } = await hostedRoom();
+    const intruder = makeConn("intruder");
+    await send(room, intruder, { type: "PROPOSE_LYRIC_EDITS", hostId: "wrong-host", instruction: "fix it", rounds: ROUNDS });
+
+    expect(lastSentTo(intruder)).toEqual({ type: "LYRIC_EDITS_PROPOSAL_FAILED", error: "unauthorized" });
+    expect(proposeLyricEdits).not.toHaveBeenCalled();
+  });
+
+  it("rejects an empty rounds list", async () => {
+    const { room, conn } = await hostedRoom();
+    await send(room, conn, { type: "PROPOSE_LYRIC_EDITS", hostId: "host-uuid", instruction: "fix it", rounds: [] });
+
+    expect(lastSentTo(conn)).toEqual({ type: "LYRIC_EDITS_PROPOSAL_FAILED", error: "invalid_request" });
+    expect(proposeLyricEdits).not.toHaveBeenCalled();
+  });
+
+  it("rejects a blank instruction", async () => {
+    const { room, conn } = await hostedRoom();
+    await send(room, conn, { type: "PROPOSE_LYRIC_EDITS", hostId: "host-uuid", instruction: "   ", rounds: ROUNDS });
+
+    expect(lastSentTo(conn)).toEqual({ type: "LYRIC_EDITS_PROPOSAL_FAILED", error: "invalid_request" });
+    expect(proposeLyricEdits).not.toHaveBeenCalled();
+  });
+
+  it("fails gracefully when the Anthropic API key isn't configured", async () => {
+    delete process.env.ANTHROPIC_API_KEY;
+    const { room, conn } = await hostedRoom();
+    await send(room, conn, { type: "PROPOSE_LYRIC_EDITS", hostId: "host-uuid", instruction: "fix it", rounds: ROUNDS });
+
+    expect(lastSentTo(conn)).toEqual({ type: "LYRIC_EDITS_PROPOSAL_FAILED", error: "api_key_missing" });
+    expect(proposeLyricEdits).not.toHaveBeenCalled();
+  });
+
+  it("sends LYRIC_EDITS_PROPOSAL_FAILED if proposeLyricEdits throws unexpectedly", async () => {
+    vi.mocked(proposeLyricEdits).mockRejectedValue(new Error("boom"));
+    const { room, conn } = await hostedRoom();
+    await send(room, conn, { type: "PROPOSE_LYRIC_EDITS", hostId: "host-uuid", instruction: "fix it", rounds: ROUNDS });
+
+    expect(lastSentTo(conn)).toEqual({ type: "LYRIC_EDITS_PROPOSAL_FAILED", error: "propose_failed" });
+  });
+
+  it("never mutates room state — only sends the diff back to the requesting connection", async () => {
+    vi.mocked(proposeLyricEdits).mockResolvedValue([{ videoId: "v1", field: "blankSentence", oldValue: "你的愛", newValue: "你的心" }]);
+    const { room, conn } = await hostedRoom();
+    const phaseBefore = room.state.phase;
+    (room.room.broadcast as ReturnType<typeof vi.fn>).mockClear();
+    await send(room, conn, { type: "PROPOSE_LYRIC_EDITS", hostId: "host-uuid", instruction: "fix it", rounds: ROUNDS });
 
     expect(room.state.phase).toBe(phaseBefore);
     expect(room.room.broadcast).not.toHaveBeenCalled();

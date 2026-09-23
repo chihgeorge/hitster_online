@@ -111,6 +111,28 @@ export interface LyricOverride {
   skip?: boolean;
 }
 
+/** A Lyrics-mode round as shown to proposeLyricEdits() — same idea as EditableSong for the
+ * timeline mode's chat-to-diff editing (v0.9.0.0), just with lyricContext/blankSentence instead
+ * of title/artist/year. */
+export interface EditableLyricRound {
+  videoId: string;
+  title: string;
+  artist: string;
+  lyricContext: string;
+  blankSentence: string;
+}
+
+/** One field-level change AI proposes for a Lyrics-mode round in response to a natural-language
+ * instruction — see lib/ai-metadata.ts's proposeLyricEdits(). Mirrors SongEditDiff's chat-to-diff
+ * pattern: shown to the host as a reviewable diff (a dirty lyricOverrides row) before it's ever
+ * sent in START_LYRICS_GAME's lyricOverrides. */
+export interface LyricEditDiff {
+  videoId: string;
+  field: "lyricContext" | "blankSentence";
+  oldValue: string | null;
+  newValue: string | null;
+}
+
 export type ClientMessage =
   | { type: "JOIN"; name: string; playerId: string }
   | { type: "REJOIN"; playerId: string; name: string }
@@ -131,7 +153,8 @@ export type ClientMessage =
   | { type: "CONFIRM_LYRICS_PREVIEW"; hostId: string }
   | { type: "GET_LYRICS_AUDIO"; screenId: string }
   | { type: "JOIN_SCREEN"; screenId: string }
-  | { type: "PROPOSE_EDITS"; hostId: string; instruction: string; songs: EditableSong[] };
+  | { type: "PROPOSE_EDITS"; hostId: string; instruction: string; songs: EditableSong[] }
+  | { type: "PROPOSE_LYRIC_EDITS"; hostId: string; instruction: string; rounds: EditableLyricRound[] };
 
 export type SongDiagnostic = {
   title: string;
@@ -167,7 +190,9 @@ export type ServerMessage =
   | { type: "TOO_LATE" }
   | { type: "LYRICS_PREVIEW"; rounds: PublicLyricsRound[]; loading: boolean }
   | { type: "EDITS_PROPOSED"; diff: SongEditDiff[] }
-  | { type: "EDITS_PROPOSAL_FAILED"; error: string };
+  | { type: "EDITS_PROPOSAL_FAILED"; error: string }
+  | { type: "LYRIC_EDITS_PROPOSED"; diff: LyricEditDiff[] }
+  | { type: "LYRIC_EDITS_PROPOSAL_FAILED"; error: string };
 
 // --- Placement evaluation (core game logic) ---
 

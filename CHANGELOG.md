@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.11.0.0] — 2026-09-22
+
+### Added
+- **AI chat-to-diff editing for Lyrics mode's question table.** Same pattern as the timeline mode's song editor (v0.9.0.0): the host can type a fix in plain language — "the 1st round's answer has a typo, it's 大雨滂沱" — and Claude proposes the change as a reviewable dirty row on the existing preview table, before it's ever applied. Covers `lyricContext` (the blanked-out lyric snippet) and `blankSentence` (the answer)
+
 ## [0.10.1.0] — 2026-09-22
 
 ### Fixed
