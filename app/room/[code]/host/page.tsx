@@ -538,7 +538,7 @@ export default function HostPage() {
             <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
               <div style={{ background: "var(--surface2)", borderRadius: 14, border: "2px solid rgba(255,107,53,.15)", padding: "14px 16px", display: "flex", flexDirection: "column", gap: 8 }}>
                 <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", fontSize: 13 }}>
-                  <span style={{ fontWeight: 700, color: "var(--ink)" }}>查找發行年份中…</span>
+                  <span style={{ fontWeight: 700, color: "var(--ink)" }}>{gameMode === "lyrics" ? "解析歌曲資料中…" : "查找發行年份中…"}</span>
                   {diagnostic && (
                     <span style={{ color: "var(--text3)" }}>
                       <span style={{ color: "var(--orange)", fontWeight: 900 }}>{diagnostic.filter((s) => s.year !== null).length}</span>
@@ -559,7 +559,7 @@ export default function HostPage() {
                 const resolvedCount = diagnostic?.filter((s) => s.year !== null).length ?? 0;
                 return (
                   <div style={{ background: "var(--surface2)", border: "2px solid rgba(255,107,53,.35)", borderRadius: 14, padding: "16px", display: "flex", flexDirection: "column", gap: 10 }}>
-                    <p style={{ fontWeight: 900, fontSize: 13, color: "var(--orange-dk)" }}>仍在搜索年份中… Still searching</p>
+                    <p style={{ fontWeight: 900, fontSize: 13, color: "var(--orange-dk)" }}>{gameMode === "lyrics" ? "仍在解析歌曲中… Still loading" : "仍在搜索年份中… Still searching"}</p>
                     <p style={{ fontSize: 12, color: "var(--text2)" }}>
                       已找到 <span style={{ color: "var(--orange)", fontWeight: 900 }}>{resolvedCount}</span> 首歌曲。繼續搜索或立即開始？
                     </p>
