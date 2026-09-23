@@ -124,7 +124,7 @@ export type ClientMessage =
   | { type: "NEXT_ROUND"; hostId: string }
   | { type: "RESET_GAME"; hostId: string }
   | { type: "START_LYRICS_ROUND"; hostId: string }
-  | { type: "SUBMIT_LYRICS_ANSWER"; playerId: string; text: string; ts: number }
+  | { type: "SUBMIT_LYRICS_ANSWER"; playerId: string; text: string }
   | { type: "SHOW_LYRICS_RESULTS"; hostId: string }
   | { type: "NEXT_LYRICS_ROUND"; hostId: string }
   | { type: "RESET_LYRICS_GAME"; hostId: string }

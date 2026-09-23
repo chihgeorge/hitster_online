@@ -129,7 +129,7 @@ export default function PlayPage() {
     const text = lyricsAnswer.trim();
     if (!text || lyricsSubmitted || lyricsTimerLeft === 0) return;
     setLyricsSubmitted(true);
-    send({ type: "SUBMIT_LYRICS_ANSWER", playerId: playerIdRef.current, text, ts: Date.now() });
+    send({ type: "SUBMIT_LYRICS_ANSWER", playerId: playerIdRef.current, text });
   }
 
   const phase = state?.phase ?? "lobby";
