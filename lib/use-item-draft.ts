@@ -15,7 +15,7 @@
 
 import { useState } from "react";
 
-export interface UseItemDraft<TBase extends { videoId: string }> {
+interface UseItemDraft<TBase extends { videoId: string }> {
   /** The item merged with any pending edits for it — what the UI should render. */
   getDraft(item: TBase): TBase;
   /** Records a pending edit to one field. Does not touch the server/room. */

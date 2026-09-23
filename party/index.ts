@@ -16,8 +16,9 @@ import {
   type PublicLyricsRound,
   type EditableLyricRound,
   type GameMode,
+  type LyricOverride,
 } from "../lib/game";
-import { isValidYear, sanitizeText } from "../lib/utils";
+import { isValidYear, sanitizeText, shuffle } from "../lib/utils";
 import { proposeEdits, proposeLyricEdits, type AITrackMeta } from "../lib/ai-metadata";
 import { resolveLyricsForTracks, MODEL_GAME, type LyricsResult } from "../lib/lyrics-resolver";
 import { isCorrect, computePoints } from "../lib/fuzzy";
@@ -810,7 +811,7 @@ export default class HitsterRoom implements Party.Server {
         this.sendTo(conn, { type: "ERROR", error: "not_enough_songs" });
         return;
       }
-      this.state.songs = [...resolvedCards].sort(() => Math.random() - 0.5);
+      this.state.songs = shuffle(resolvedCards);
       this.broadcast({ type: "DIAGNOSTIC", songs: pending.diagnostics });
       this.pendingPlaylist = null;
       this.dealStartingCardsAndStart();
@@ -829,7 +830,7 @@ export default class HitsterRoom implements Party.Server {
       // deliberate difference. resolvePlaylistFromUrl always filters now, for every caller.
       const { songs } = await resolvePlaylistFromUrl(playlistId, { youtubeKey, anthropicKey }, this.room.storage);
       if (songs.length < 2) { this.sendTo(conn, { type: "ERROR", error: "not_enough_songs" }); return; }
-      this.state.songs = songs.sort(() => Math.random() - 0.5);
+      this.state.songs = shuffle(songs);
       this.dealStartingCardsAndStart();
     } catch (err) {
       this.sendTo(conn, { type: "ERROR", error: parseResolveErrorCode(err) });
@@ -984,7 +985,7 @@ export default class HitsterRoom implements Party.Server {
     hostId: string,
     playlistUrl: string,
     config: LyricsGameConfig,
-    lyricOverrides?: { videoId: string; lyricContext?: string; blankSentence?: string; acceptableVariants?: string[]; skip?: boolean }[]
+    lyricOverrides?: LyricOverride[]
   ) {
     if (this.state.phase !== "lobby") {
       this.sendTo(conn, { type: "ERROR", error: "wrong_phase" });
@@ -1080,8 +1081,7 @@ export default class HitsterRoom implements Party.Server {
         const ov = (lyricOverrides ?? []).find((o) => o.videoId === t.videoId);
         return !ov?.skip;
       });
-      const deckCandidates = candidateTracks
-        .sort(() => Math.random() - 0.5)
+      const deckCandidates = shuffle(candidateTracks)
         .slice(0, this.lyricsConfig.totalRounds * 3); // oversample to handle Sonnet skips
 
       // Re-resolve deck candidates with Sonnet for accuracy. Cache keyed with model suffix.
@@ -1137,7 +1137,7 @@ export default class HitsterRoom implements Party.Server {
         return;
       }
 
-      this.lyricsDeck = deck.sort(() => Math.random() - 0.5).slice(0, this.lyricsConfig.totalRounds);
+      this.lyricsDeck = shuffle(deck).slice(0, this.lyricsConfig.totalRounds);
       this.lyricsState.totalRounds = this.lyricsDeck.length;
       this.lyricsState.phase = "preview";
       this.lyricsState.rounds = this.lyricsDeck;
