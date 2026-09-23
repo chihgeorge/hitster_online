@@ -151,32 +151,32 @@ Stop: MAX_ITERATIONS
 Synthesized from `/plan-eng-review`'s findings (2026-09-23). Each task derives from a
 specific finding above.
 
-- [ ] **T1 (P1, human: ~3h / CC: ~30min)** — lib — Extract `lib/use-item-draft.ts`
+- [x] **T1 (P1, human: ~3h / CC: ~30min)** — lib — Extract `lib/use-item-draft.ts`
   - Surfaced by: Open Questions D3 — shared hook shape, resolved
   - Files: `lib/use-item-draft.ts` (new), `components/PlaylistEditor.tsx` (refactored onto it)
   - Verify: `PlaylistEditor.test.tsx`'s existing suite stays green with zero behavior change
 
-- [ ] **T2 (P1, human: ~1h / CC: ~10min)** — app — Local pending flag for Lyrics Focus
+- [x] **T2 (P1, human: ~1h / CC: ~10min)** — app — Local pending flag for Lyrics Focus
   - Surfaced by: Outside-voice pass — real race window in the `!lyricsState` gate
   - Files: `app/room/[code]/host/page.tsx` (`pendingLyricsStart` state, set before `send({ type: "START_LYRICS_GAME" })`)
   - Verify: new test — Focus mode is non-editable immediately after clicking "Start Lyrics," before the server's `lyricsState` broadcast arrives
 
-- [ ] **T3 (P1, human: ~4h / CC: ~40min)** — party — T8's HTTP AI-editing action on `party/playlist.ts`
+- [x] **T3 (P1, human: ~4h / CC: ~40min)** — party — T8's HTTP AI-editing action on `party/playlist.ts`
   - Surfaced by: T2 of the earlier decoupling arc, deferred pending this design; reference corrected to `RESOLVE_FROM_URL`, not `handleProposeEdits`
   - Files: `party/playlist.ts`
   - Verify: mirrors `party/playlist.test.ts`'s `RESOLVE_FROM_URL` test shape
 
-- [ ] **T4 (P1, human: ~4h / CC: ~40min)** — app — `SongItemEditor.tsx` on `/playlists`
+- [x] **T4 (P1, human: ~4h / CC: ~40min)** — app — `SongItemEditor.tsx` on `/playlists`
   - Surfaced by: Problem Statement — the headline feature, timeline mode first
   - Files: `components/SongItemEditor.tsx` (new), `app/playlists/page.tsx`
   - Verify: new test file; empty-list case (entry point absent) per D2
 
-- [ ] **T5 (P1, human: ~2h / CC: ~20min)** — app — Extract `LyricsTable.tsx` from `host/page.tsx`
+- [x] **T5 (P1, human: ~2h / CC: ~20min)** — app — Extract `LyricsTable.tsx` from `host/page.tsx`
   - Surfaced by: Outside-voice pass — Lyrics mode has no componentization step, going into a 1098-line file
   - Files: `components/LyricsTable.tsx` (new), `app/room/[code]/host/page.tsx` (uses it)
   - Verify: existing Lyrics-table behavior unchanged (manual QA against current e2e coverage, since no dedicated unit test file exists for this table today)
 
-- [ ] **T6 (P1, human: ~5h / CC: ~50min)** — app — Lyrics-mode `LyricRoundItemEditor.tsx`
+- [x] **T6 (P1, human: ~5h / CC: ~50min)** — app — Lyrics-mode `LyricRoundItemEditor.tsx`
   - Surfaced by: Recommended Approach — the actual reason B was chosen over A
   - Files: `components/LyricRoundItemEditor.tsx` (new), consumes `lib/use-item-draft.ts` (T1) and `components/LyricsTable.tsx` (T5)
   - Verify: regression test for the corrected gating (`lyricsState === null` AND `!pendingLyricsStart`); merge-precedence test matching the existing table's `ov.field ?? lr?.field ?? ""`
