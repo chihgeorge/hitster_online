@@ -7,6 +7,7 @@ import {
   buildCardsFromAI,
   parseTrackMetas,
   storageBatchGet,
+  resolveEnv,
   type TrackItem,
 } from "./playlist-resolver";
 
@@ -182,5 +183,32 @@ describe("parseTrackMetas / storageBatchGet", () => {
     const result = await storageBatchGet<string>(storage, Object.keys(entries));
     expect(result.size).toBe(150);
     expect(result.get("k149")).toBe("v149");
+  });
+});
+
+describe("resolveEnv", () => {
+  const ORIGINAL_ENV = process.env;
+  beforeEach(() => { process.env = { ...ORIGINAL_ENV }; });
+
+  it("prefers the pkvar- prefixed var over a plain one", () => {
+    const keys = resolveEnv({ "pkvar-YOUTUBE_API_KEY": "pk-key", YOUTUBE_API_KEY: "plain-key" });
+    expect(keys.youtubeKey).toBe("pk-key");
+  });
+
+  it("falls back to the plain env var when no pkvar- variant is set", () => {
+    const keys = resolveEnv({ ANTHROPIC_API_KEY: "plain-anthropic" });
+    expect(keys.anthropicKey).toBe("plain-anthropic");
+  });
+
+  it("falls back to process.env as a last resort", () => {
+    process.env.YOUTUBE_API_KEY = "process-env-key";
+    const keys = resolveEnv(undefined);
+    expect(keys.youtubeKey).toBe("process-env-key");
+  });
+
+  it("returns undefined for a key set nowhere", () => {
+    delete process.env.ANTHROPIC_API_KEY;
+    const keys = resolveEnv({});
+    expect(keys.anthropicKey).toBeUndefined();
   });
 });

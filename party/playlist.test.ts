@@ -2,17 +2,36 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import PlaylistParty from "./playlist";
 import type { EditableSong } from "../lib/game";
 
+vi.mock("../lib/playlist-resolver", async (importOriginal) => {
+  const actual = (await importOriginal()) as object;
+  return { ...actual, resolvePlaylistFromUrl: vi.fn() };
+});
+import { resolvePlaylistFromUrl } from "../lib/playlist-resolver";
+
 // ─── Mock PartyKit room ───────────────────────────────────────────────────────
 
-function makeRoom(id = "test-playlist-id") {
+/** D2a: room.context.parties.library.get(hostId).fetch(...) is how PlaylistParty writes
+ * to the library index server-side. This stub records every such call so tests can assert
+ * on it, and defaults to a 200 OK response. */
+function makeLibraryFetchMock() {
+  return vi.fn().mockResolvedValue(new Response(JSON.stringify({ ok: true }), { status: 200 }));
+}
+
+function makeRoom(id = "test-playlist-id", libraryFetch = makeLibraryFetchMock()) {
   const store = new Map<string, unknown>();
   return {
     id,
+    env: {},
     storage: {
       get: vi.fn((key: string) => Promise.resolve(store.get(key))),
       put: vi.fn((key: string, val: unknown) => { store.set(key, val); return Promise.resolve(); }),
       delete: vi.fn((key: string) => { store.delete(key); return Promise.resolve(); }),
       deleteAll: vi.fn(() => { store.clear(); return Promise.resolve(); }),
+    },
+    context: {
+      parties: {
+        library: { get: (_hostId: string) => ({ fetch: libraryFetch }) },
+      },
     },
     // expose internal store for assertions
     _store: store,
@@ -109,6 +128,140 @@ describe("PlaylistParty: POST — save playlist", () => {
     const req = makeRequest("POST", { ownerHostId: "host-1", name: "My Mix", songs: badSongs });
     const { status } = await parseResponse(await party.onRequest(req));
     expect(status).toBe(400);
+  });
+});
+
+describe("PlaylistParty: POST action RESOLVE_FROM_URL (D1/D2)", () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it("resolves a playlist server-side and saves it, same as the client-songs path", async () => {
+    vi.mocked(resolvePlaylistFromUrl).mockResolvedValue({
+      tracks: [], metas: [], aiResults: new Map(), diagnostics: [], skippedEmbeddingCount: 0,
+      songs: [{ id: "v1", videoId: "v1", title: "T", artist: "A", year: 2020 }],
+      allSongs: [{ videoId: "v1", title: "T", artist: "A", year: 2020 }, { videoId: "v2", title: "T2", artist: "A2", year: 2019 }],
+    });
+
+    const room = makeRoom();
+    const party = new PlaylistParty(room);
+    const req = makeRequest("POST", {
+      ownerHostId: "host-1", name: "From URL", action: "RESOLVE_FROM_URL", playlistUrl: "https://www.youtube.com/playlist?list=PLtest",
+    });
+    const { status, body } = await parseResponse(await party.onRequest(req));
+
+    expect(status).toBe(201);
+    expect(body.playlistId).toBe("test-playlist-id");
+    expect(room._store.get("playlist")).toMatchObject({
+      songs: [{ videoId: "v1", title: "T", artist: "A", year: 2020 }, { videoId: "v2", title: "T2", artist: "A2", year: 2019 }],
+    });
+  });
+
+  it("rejects a missing playlistUrl", async () => {
+    const room = makeRoom();
+    const party = new PlaylistParty(room);
+    const req = makeRequest("POST", { ownerHostId: "host-1", name: "From URL", action: "RESOLVE_FROM_URL" });
+    const { status } = await parseResponse(await party.onRequest(req));
+    expect(status).toBe(400);
+    expect(resolvePlaylistFromUrl).not.toHaveBeenCalled();
+  });
+
+  it("rejects an unparseable playlistUrl", async () => {
+    const room = makeRoom();
+    const party = new PlaylistParty(room);
+    const req = makeRequest("POST", { ownerHostId: "host-1", name: "From URL", action: "RESOLVE_FROM_URL", playlistUrl: "not a url" });
+    const { status, body } = await parseResponse(await party.onRequest(req));
+    expect(status).toBe(400);
+    expect(body.error).toBe("playlist_load_failed");
+  });
+
+  it("returns not_enough_songs when fewer than 2 songs resolve", async () => {
+    vi.mocked(resolvePlaylistFromUrl).mockResolvedValue({
+      tracks: [], metas: [], aiResults: new Map(), diagnostics: [], skippedEmbeddingCount: 0,
+      songs: [], allSongs: [{ videoId: "v1", title: "T", artist: "A", year: 2020 }],
+    });
+    const room = makeRoom();
+    const party = new PlaylistParty(room);
+    const req = makeRequest("POST", {
+      ownerHostId: "host-1", name: "From URL", action: "RESOLVE_FROM_URL", playlistUrl: "https://www.youtube.com/playlist?list=PLtest",
+    });
+    const { status, body } = await parseResponse(await party.onRequest(req));
+    expect(status).toBe(400);
+    expect(body.error).toBe("not_enough_songs");
+  });
+
+  it("maps a resolution failure to a stable error code instead of throwing", async () => {
+    vi.mocked(resolvePlaylistFromUrl).mockRejectedValue(new Error("QUOTA_EXCEEDED"));
+    const room = makeRoom();
+    const party = new PlaylistParty(room);
+    const req = makeRequest("POST", {
+      ownerHostId: "host-1", name: "From URL", action: "RESOLVE_FROM_URL", playlistUrl: "https://www.youtube.com/playlist?list=PLtest",
+    });
+    const { status, body } = await parseResponse(await party.onRequest(req));
+    expect(status).toBe(400);
+    expect(body.error).toBe("quota_exceeded");
+  });
+
+  it("never partially saves a playlist when resolution fails", async () => {
+    vi.mocked(resolvePlaylistFromUrl).mockRejectedValue(new Error("boom"));
+    const room = makeRoom();
+    const party = new PlaylistParty(room);
+    const req = makeRequest("POST", {
+      ownerHostId: "host-1", name: "From URL", action: "RESOLVE_FROM_URL", playlistUrl: "https://www.youtube.com/playlist?list=PLtest",
+    });
+    await party.onRequest(req);
+    expect(room._store.has("playlist")).toBe(false);
+  });
+});
+
+describe("PlaylistParty: library sync on create/delete (D2a)", () => {
+  it("UPSERTs the library index on successful create, with the right owner/entry shape", async () => {
+    const libraryFetch = makeLibraryFetchMock();
+    const room = makeRoom("test-playlist-id", libraryFetch);
+    const party = new PlaylistParty(room);
+
+    await createPlaylist(party, [song("v1"), song("v2")], "My Mix");
+
+    expect(libraryFetch).toHaveBeenCalledTimes(1);
+    const [, init] = libraryFetch.mock.calls[0];
+    expect(JSON.parse(init.body as string)).toEqual({
+      action: "UPSERT",
+      entry: { id: "test-playlist-id", name: "My Mix", songCount: 2 },
+    });
+  });
+
+  it("REMOVEs the library entry on successful delete", async () => {
+    const libraryFetch = makeLibraryFetchMock();
+    const room = makeRoom("test-playlist-id", libraryFetch);
+    const party = new PlaylistParty(room);
+    await createPlaylist(party, [song("v1"), song("v2")]);
+    libraryFetch.mockClear();
+
+    await party.onRequest(makeRequest("DELETE", { ownerHostId: "host-1" }));
+
+    expect(libraryFetch).toHaveBeenCalledTimes(1);
+    const [, init] = libraryFetch.mock.calls[0];
+    expect(JSON.parse(init.body as string)).toEqual({ action: "REMOVE", id: "test-playlist-id" });
+  });
+
+  it("still returns 201 even when the library sync fails — playlist write is not rolled back", async () => {
+    const libraryFetch = vi.fn().mockRejectedValue(new Error("library DO unreachable"));
+    const room = makeRoom("test-playlist-id", libraryFetch);
+    const party = new PlaylistParty(room);
+
+    const res = await createPlaylist(party, [song("v1"), song("v2")]);
+    const { status } = await parseResponse(res);
+
+    expect(status).toBe(201);
+    expect(room._store.has("playlist")).toBe(true);
+  });
+
+  it("still returns 200 even when the library sync returns a non-OK response on delete", async () => {
+    const libraryFetch = vi.fn().mockResolvedValue(new Response(JSON.stringify({ error: "boom" }), { status: 500 }));
+    const room = makeRoom("test-playlist-id", libraryFetch);
+    const party = new PlaylistParty(room);
+    await createPlaylist(party, [song("v1"), song("v2")]);
+
+    const res = await party.onRequest(makeRequest("DELETE", { ownerHostId: "host-1" }));
+    expect((await parseResponse(res)).status).toBe(200);
   });
 });
 

@@ -25,15 +25,17 @@ import {
   resolvePlaylistFromUrl,
   fetchAndFilterTracks,
   resolveAIWithCache,
+  resolveEnv,
+  parseResolveErrorCode,
   storageBatchGet,
   buildCardsFromAI,
+  PLAYLIST_ID_PATTERN,
   type TrackItem,
 } from "../lib/playlist-resolver";
 
 const DEFAULT_TARGET_CARD_COUNT = 10;
 const MAX_TARGET_CARD_COUNT = 20;
 const MAX_PLAYERS_SOFT = 8;
-const PLAYLIST_ID_PATTERN = /^[A-Za-z0-9_-]{5,64}$/;
 
 // Real C-pop seed for hitster://cpop-test (used by both classic and Lyrics Mode).
 const CPOP_SEED = [
@@ -436,29 +438,6 @@ export default class HitsterRoom implements Party.Server {
     this.allConns.add(conn);
   }
 
-  private resolveEnv() {
-    return {
-      youtubeKey:
-        (this.room.env?.["pkvar-YOUTUBE_API_KEY"] as string | undefined) ??
-        (this.room.env?.YOUTUBE_API_KEY as string | undefined) ??
-        process.env.YOUTUBE_API_KEY,
-      anthropicKey:
-        (this.room.env?.["pkvar-ANTHROPIC_API_KEY"] as string | undefined) ??
-        (this.room.env?.ANTHROPIC_API_KEY as string | undefined) ??
-        process.env.ANTHROPIC_API_KEY,
-    };
-  }
-
-  private parseErrorCode(err: unknown): string {
-    const msg = err instanceof Error ? err.message : "unknown_error";
-    if (msg === "QUOTA_EXCEEDED") return "quota_exceeded";
-    if (msg.includes("API_KEY") || msg.includes("not set")) return "api_key_missing";
-    if (msg.includes("403")) return "playlist_forbidden";
-    if (msg.includes("404")) return "playlist_not_found";
-    if (msg.includes("YouTube API error")) return `youtube_error:${msg.match(/\d{3}/)?.[0] ?? "unknown"}`;
-    return "playlist_load_failed";
-  }
-
   private async handleLoadPlaylist(conn: Party.Connection, hostId: string, playlistUrl: string, gameMode?: GameMode) {
     if (this.state.phase !== "lobby") {
       this.sendTo(conn, { type: "PLAYLIST_LOAD_ERROR", error: "wrong_phase" });
@@ -496,7 +475,7 @@ export default class HitsterRoom implements Party.Server {
     this.pendingPlaylist = null;
 
     try {
-      const { youtubeKey, anthropicKey } = this.resolveEnv();
+      const { youtubeKey, anthropicKey } = resolveEnv(this.room.env);
 
       const result = await resolvePlaylistFromUrl(
         playlistId,
@@ -548,11 +527,11 @@ export default class HitsterRoom implements Party.Server {
       // load, spending real Anthropic calls generating lyric questions even for a host who only
       // ever plays timeline mode.
       if (gameMode === "lyrics") {
-        const { anthropicKey: lyricsKey } = this.resolveEnv();
+        const { anthropicKey: lyricsKey } = resolveEnv(this.room.env);
         void this.generateLyricsPreview(allSongs, aiResults, lyricsKey);
       }
     } catch (err) {
-      this.sendTo(conn, { type: "PLAYLIST_LOAD_ERROR", error: this.parseErrorCode(err) });
+      this.sendTo(conn, { type: "PLAYLIST_LOAD_ERROR", error: parseResolveErrorCode(err) });
     }
   }
 
@@ -725,7 +704,7 @@ export default class HitsterRoom implements Party.Server {
     }
 
     try {
-      const { anthropicKey } = this.resolveEnv();
+      const { anthropicKey } = resolveEnv(this.room.env);
       if (!anthropicKey) {
         this.sendTo(conn, { type: "EDITS_PROPOSAL_FAILED", error: "api_key_missing" });
         return;
@@ -754,7 +733,7 @@ export default class HitsterRoom implements Party.Server {
     }
 
     try {
-      const { anthropicKey } = this.resolveEnv();
+      const { anthropicKey } = resolveEnv(this.room.env);
       if (!anthropicKey) {
         this.sendTo(conn, { type: "LYRIC_EDITS_PROPOSAL_FAILED", error: "api_key_missing" });
         return;
@@ -844,7 +823,7 @@ export default class HitsterRoom implements Party.Server {
       return;
     }
     try {
-      const { youtubeKey, anthropicKey } = this.resolveEnv();
+      const { youtubeKey, anthropicKey } = resolveEnv(this.room.env);
       // D3 (docs/designs/decouple-quiz-bank.md): this fallback used to skip the
       // embeddability filter handleLoadPlaylist applies — an inconsistency, not a
       // deliberate difference. resolvePlaylistFromUrl always filters now, for every caller.
@@ -853,7 +832,7 @@ export default class HitsterRoom implements Party.Server {
       this.state.songs = songs.sort(() => Math.random() - 0.5);
       this.dealStartingCardsAndStart();
     } catch (err) {
-      this.sendTo(conn, { type: "ERROR", error: this.parseErrorCode(err) });
+      this.sendTo(conn, { type: "ERROR", error: parseResolveErrorCode(err) });
     }
   }
 
@@ -1044,7 +1023,7 @@ export default class HitsterRoom implements Party.Server {
     this.broadcastLyricsState();
 
     try {
-      const { anthropicKey, youtubeKey } = this.resolveEnv();
+      const { anthropicKey, youtubeKey } = resolveEnv(this.room.env);
 
       // Resolve playlist songs (reuse cached AI metadata)
       let tracks: TrackItem[] = [];
@@ -1166,7 +1145,7 @@ export default class HitsterRoom implements Party.Server {
       this.lyricsState.answers = {};
       this.broadcastLyricsState();
     } catch (err) {
-      this.sendTo(conn, { type: "ERROR", error: this.parseErrorCode(err) });
+      this.sendTo(conn, { type: "ERROR", error: parseResolveErrorCode(err) });
       this.abortLyricsStart();
     }
   }

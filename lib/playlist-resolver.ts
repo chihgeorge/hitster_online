@@ -15,7 +15,7 @@
 // party/index.ts's handleStartGame fallback used to skip this filter while handleLoadPlaylist
 // applied it — an inconsistency, not a deliberate design point. One pipeline, one behavior.
 
-import type { Storage as PartyStorage } from "partykit/server";
+import type { Storage as PartyStorage, Room as PartyRoom } from "partykit/server";
 import type { Card, EditableSong, SongDiagnostic } from "./game";
 import {
   fetchPlaylistItems,
@@ -26,6 +26,37 @@ import {
   extractYearFromTitle,
 } from "./youtube";
 import { resolveTracksWithAI, type AITrackMeta } from "./ai-metadata";
+
+/** Same lookup order every party (room, playlist, library) uses to find the YouTube/Anthropic
+ * keys — `pkvar-` prefix (PartyKit's --var flag), then a plain env var, then process.env as a
+ * local-dev fallback. Was a private method on HitsterRoom; extracted so party/playlist.ts's
+ * new RESOLVE_FROM_URL action (docs/designs/decouple-quiz-bank.md, D1) doesn't need its own copy. */
+export function resolveEnv(env: PartyRoom["env"] | undefined): { youtubeKey?: string; anthropicKey?: string } {
+  return {
+    youtubeKey:
+      (env?.["pkvar-YOUTUBE_API_KEY"] as string | undefined) ??
+      (env?.YOUTUBE_API_KEY as string | undefined) ??
+      process.env.YOUTUBE_API_KEY,
+    anthropicKey:
+      (env?.["pkvar-ANTHROPIC_API_KEY"] as string | undefined) ??
+      (env?.ANTHROPIC_API_KEY as string | undefined) ??
+      process.env.ANTHROPIC_API_KEY,
+  };
+}
+
+export const PLAYLIST_ID_PATTERN = /^[A-Za-z0-9_-]{5,64}$/;
+
+/** Maps a thrown resolution error into a stable client-facing error code — shared so the
+ * room and the standalone playlist party report the same codes for the same failures. */
+export function parseResolveErrorCode(err: unknown): string {
+  const msg = err instanceof Error ? err.message : "unknown_error";
+  if (msg === "QUOTA_EXCEEDED") return "quota_exceeded";
+  if (msg.includes("API_KEY") || msg.includes("not set")) return "api_key_missing";
+  if (msg.includes("403")) return "playlist_forbidden";
+  if (msg.includes("404")) return "playlist_not_found";
+  if (msg.includes("YouTube API error")) return `youtube_error:${msg.match(/\d{3}/)?.[0] ?? "unknown"}`;
+  return "playlist_load_failed";
+}
 
 export type TrackItem = { videoId: string; title: string; description: string; channelTitle: string };
 export type TrackMeta = { artist: string; descYear: number | null; titleYear: number | null };

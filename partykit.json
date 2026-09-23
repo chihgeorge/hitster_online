@@ -4,6 +4,7 @@
   "main": "party/index.ts",
   "compatibilityDate": "2024-01-01",
   "parties": {
-    "playlist": "party/playlist.ts"
+    "playlist": "party/playlist.ts",
+    "library": "party/library.ts"
   }
 }

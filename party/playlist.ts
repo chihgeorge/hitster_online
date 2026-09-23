@@ -1,6 +1,13 @@
 import type * as Party from "partykit/server";
 import { isValidYear, sanitizeText } from "../lib/utils";
 import type { EditableSong, SavedPlaylist } from "../lib/game";
+import { extractPlaylistId } from "../lib/game";
+import {
+  resolvePlaylistFromUrl,
+  resolveEnv,
+  parseResolveErrorCode,
+  PLAYLIST_ID_PATTERN,
+} from "../lib/playlist-resolver";
 
 const MAX_SONGS = 500;
 const MAX_NAME_LEN = 80;
@@ -51,6 +58,29 @@ function sanitizeSongs(songs: EditableSong[]): EditableSong[] {
 export default class PlaylistParty implements Party.Server {
   constructor(readonly room: Party.Room) {}
 
+  /**
+   * D2a (docs/designs/decouple-quiz-bank.md): keeps the owner's library index in sync with
+   * this playlist's own storage — called from POST (create) and DELETE, server-side, so a
+   * client never has to make two calls itself (and can't half-fail into an orphan by
+   * closing the tab between them). Durable Objects don't support cross-DO transactions, so
+   * this is best-effort: a failure here is logged but never fails the playlist write/delete
+   * that already succeeded. Accepted gap, not a hard guarantee — see D2a's Implementation
+   * Task for the self-heal path (a library read missing an entry the client expects
+   * triggers a reconcile), not built in this PR.
+   */
+  private async syncLibrary(action: "UPSERT" | "REMOVE", ownerHostId: string, entry: { id: string; name: string; songCount: number } | { id: string }) {
+    try {
+      const stub = this.room.context.parties.library.get(ownerHostId);
+      const body = action === "UPSERT" ? { action, entry } : { action, id: entry.id };
+      const res = await stub.fetch("/", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+      if (!res.ok) {
+        console.error(JSON.stringify({ event: "library_sync_failed", action, ownerHostId, playlistId: entry.id, status: res.status }));
+      }
+    } catch (err) {
+      console.error(JSON.stringify({ event: "library_sync_failed", action, ownerHostId, playlistId: entry.id, error: String(err) }));
+    }
+  }
+
   async onRequest(req: Party.Request): Promise<Response> {
     const method = req.method.toUpperCase();
 
@@ -73,31 +103,55 @@ export default class PlaylistParty implements Party.Server {
       return err("Invalid JSON");
     }
 
-    // POST /parties/playlist/:id — save new playlist
+    // POST /parties/playlist/:id — save new playlist. Either the client already resolved
+    // songs (the original path) or asks THIS party to resolve them from a YouTube URL
+    // itself (action: "RESOLVE_FROM_URL" — docs/designs/decouple-quiz-bank.md, D1/D2): the
+    // one entry point a room-less standalone page needs, since this party never had a
+    // WebSocket to stream progress over, this blocks until the whole pipeline finishes.
     if (method === "POST") {
       const existing = await this.room.storage.get<SavedPlaylist>("playlist");
       if (existing) return err("Playlist already exists — use PUT to update", 409);
 
-      const { ownerHostId, name, songs } = body as {
+      const { ownerHostId, name, action } = body as {
         ownerHostId?: unknown;
         name?: unknown;
-        songs?: unknown;
+        action?: unknown;
       };
       if (typeof ownerHostId !== "string" || ownerHostId.trim().length === 0)
         return err("ownerHostId required");
       if (typeof name !== "string" || name.trim().length === 0)
         return err("name required");
-      if (!validateSongs(songs)) return err("songs invalid — array of {videoId,title,artist,year} required");
+
+      let songs: EditableSong[];
+      if (action === "RESOLVE_FROM_URL") {
+        const { playlistUrl } = body as { playlistUrl?: unknown };
+        if (typeof playlistUrl !== "string" || !playlistUrl.trim()) return err("playlistUrl required");
+        const playlistId = extractPlaylistId(playlistUrl);
+        if (!PLAYLIST_ID_PATTERN.test(playlistId)) return err("playlist_load_failed");
+        try {
+          const keys = resolveEnv(this.room.env);
+          const resolved = await resolvePlaylistFromUrl(playlistId, keys, this.room.storage);
+          if (resolved.allSongs.length < 2) return err("not_enough_songs");
+          songs = resolved.allSongs;
+        } catch (e) {
+          return err(parseResolveErrorCode(e));
+        }
+      } else {
+        const { songs: rawSongs } = body as { songs?: unknown };
+        if (!validateSongs(rawSongs)) return err("songs invalid — array of {videoId,title,artist,year} required");
+        songs = sanitizeSongs(rawSongs);
+      }
 
       const playlist: SavedPlaylist = {
         id: this.room.id,
         name: sanitizeText(name, MAX_NAME_LEN),
-        songs: sanitizeSongs(songs),
+        songs,
         createdAt: Date.now(),
         updatedAt: Date.now(),
       };
       await this.room.storage.put("playlist", playlist);
       await this.room.storage.put("ownerHostId", ownerHostId.trim());
+      await this.syncLibrary("UPSERT", ownerHostId.trim(), { id: playlist.id, name: playlist.name, songCount: playlist.songs.length });
       return json({ playlistId: playlist.id }, 201);
     }
 
@@ -178,6 +232,7 @@ export default class PlaylistParty implements Party.Server {
       const { ownerHostId } = body as { ownerHostId?: unknown };
       if (ownerHostId !== storedOwner) return err("Unauthorized", 403);
       await this.room.storage.deleteAll();
+      if (storedOwner) await this.syncLibrary("REMOVE", storedOwner, { id: this.room.id });
       return json({ ok: true });
     }
 
