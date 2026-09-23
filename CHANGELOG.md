@@ -1,6 +1,12 @@
 # Changelog
 
-## [0.11.1.0] — 2026-09-22
+## [0.11.2.0] — 2026-09-22
+
+### Fixed
+- **`START_GAME`'s no-prior-`LOAD_PLAYLIST` fallback path now filters non-embeddable videos**, matching `LOAD_PLAYLIST`'s existing behavior — previously a non-embeddable video reaching this path would show a broken player mid-game with no diagnostic. Found during the T1 refactor below (docs/designs/decouple-quiz-bank.md, decision D3).
+
+### Changed
+- **Extracted the YouTube-fetch + AI-metadata-resolution pipeline into `lib/playlist-resolver.ts`**, shared by all 3 places that load a playlist (`LOAD_PLAYLIST`, `START_GAME`'s fallback, `START_LYRICS_GAME`) instead of 3 duplicated copies. Pure refactor otherwise — first step of decoupling quiz/playlist creation from room setup so a host can build a quiz library ahead of time (docs/designs/decouple-quiz-bank.md)
 
 ### Fixed
 - **Lyrics preview no longer generates when the host is loading a playlist for timeline mode.** `LOAD_PLAYLIST` used to kick off lyrics question/answer generation unconditionally regardless of which mode the host had selected, spending real Anthropic calls on a mode the host might never play. The client now sends its current mode, and the server only generates a lyrics preview when it's `"lyrics"`
