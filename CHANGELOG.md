@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.12.5.0] — 2026-09-23
+
+### Added
+- **`SongItemEditor.tsx` — the Focus editor's timeline-mode view, on `/playlists`** (T4 of docs/designs/full-page-focus-editor.md, the headline feature): a full-page, one-song-at-a-time view — title/artist/year centered, a "✨ Ask AI" box wired to the new `PROPOSE_EDITS` HTTP action (T3), prev/next navigation with no wraparound at the boundaries. Entered via a new "🎯 Focus mode" button next to the existing table (only rendered when the playlist has songs, per D2); AI edits land as reviewable drafts via `lib/use-item-draft.ts` (T1), saved through the same `UPDATE_SONG` path `PlaylistEditor.tsx` already uses. Purely additive — the existing table is untouched and still the default view. Live-QA'd against a local PartyKit dev instance
+
 ## [0.12.4.0] — 2026-09-23
 
 ### Added
