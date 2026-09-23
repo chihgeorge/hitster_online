@@ -146,3 +146,42 @@ describe("HostPage: Lyrics Focus mode entry point gating (T6)", () => {
     expect(screen.queryByText(/Focus 模式/)).toBeNull();
   });
 });
+
+// Regression (host testing feedback): a song with no AI-generated lyricContext/blankSentence
+// used to be silently excluded from the Ask-AI request entirely — so asking AI to fill in a
+// song it couldn't auto-generate for always returned nothing, with no visible reason why.
+describe("HostPage: Ask AI includes songs with no existing lyrics data (regression)", () => {
+  it("sends every ready song in the PROPOSE_LYRIC_EDITS payload, including ones AI couldn't auto-generate for", async () => {
+    render(<HostPage />);
+    serverSends({ type: "STATE", state: lobbyStateEmpty });
+    fireEvent.click(screen.getByText("🎵 歌詞模式"));
+    fireEvent.change(screen.getByPlaceholderText(/youtube.com\/playlist/), { target: { value: "hitster://cpop-test" } });
+    fireEvent.click(screen.getByText("載入 Load"));
+    serverSends({
+      type: "PLAYLIST_READY", songCount: 3,
+      songs: [
+        { videoId: "v1", title: "Song A", artist: "Artist A", year: 2000 },
+        { videoId: "v2", title: "Song B (no data)", artist: "Artist B", year: 2001 },
+      ],
+    });
+    // Only v1 gets a round back — v2 is the "AI couldn't confidently generate one" case.
+    serverSends({
+      type: "LYRICS_PREVIEW", loading: false,
+      rounds: [{ videoId: "v1", title: "Song A", artist: "Artist A", language: "en", lyricContext: "I want ___", blankSentence: "you" }],
+    });
+    serverSends({ type: "STATE", state: lobbyStateWithPlayer });
+
+    await waitFor(() => expect(screen.getByText(/^✨ Ask AI$/)).toBeTruthy());
+
+    const instructionInput = screen.getByPlaceholderText(/round 2's answer has a typo/);
+    fireEvent.change(instructionInput, { target: { value: "give me the full chorus for Song B" } });
+    fireEvent.click(screen.getByText(/^✨ Ask AI$/));
+
+    const sent = sendSpy.mock.calls.map((c) => JSON.parse(c[0] as string));
+    const propose = sent.find((m) => m.type === "PROPOSE_LYRIC_EDITS");
+    expect(propose).toBeDefined();
+    const videoIds = propose.rounds.map((r: { videoId: string }) => r.videoId);
+    expect(videoIds).toContain("v2"); // the no-data song — previously silently dropped
+    expect(videoIds).toContain("v1");
+  });
+});

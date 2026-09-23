@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.13.1.0] — 2026-09-23
+
+### Fixed
+- **Songs the AI couldn't auto-generate a Lyrics-mode question for were a dead end.** Real host feedback: the table and Focus editor both showed a plain "—" instead of an editable field for a song with no AI data (no lrclib.net hit, no confident memory), and asking AI to fill it in — "give me the full chorus" — silently did nothing, because `handleProposeLyricEdits` excluded exactly those songs from the request before it ever reached the AI. Both fixed: the table (`LyricsTable.tsx`) and Focus editor (`LyricRoundItemEditor.tsx`) now always show editable Question/Answer fields, so a host who already knows the song can type it in directly; Ask AI now includes every song in its request, with `PROPOSE_LYRIC_EDITS_SYSTEM_PROMPT` carrying the same "never invent lyrics you're not confident about" discipline the bulk generator already has, so this doesn't trade accuracy for coverage
+
 ## [0.13.0.1] — 2026-09-23
 
 ### Fixed

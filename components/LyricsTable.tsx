@@ -101,28 +101,29 @@ export default function LyricsTable({
                     <td style={{ padding: "8px 14px", fontWeight: 700, color: "var(--ink)", maxWidth: 160, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{s.title}</td>
                     <td style={{ padding: "8px 14px", color: "var(--text2)", maxWidth: 120, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{s.artist}</td>
                     <td style={{ maxWidth: 240, padding: "4px 6px" }}>
-                      {hasData || lyricsPreviewLoading ? (
-                        <textarea
-                          rows={2}
-                          value={qValue}
-                          placeholder={lyricsPreviewLoading ? "…" : "—"}
-                          readOnly={pendingLyricsStart}
-                          onChange={(e) => { if (!pendingLyricsStart) setLyricOverrides((prev) => ({ ...prev, [s.videoId]: { ...prev[s.videoId], lyricContext: e.target.value } })); }}
-                          style={{ ...cellBase, color: ov.lyricContext ? "var(--ink)" : "var(--text2)", resize: "vertical", minHeight: 40, opacity: pendingLyricsStart ? 0.6 : 1 }}
-                        />
-                      ) : <span style={{ padding: "4px 8px", color: "#D0CEDC" }}>—</span>}
+                      {/* Always editable, even with no AI-generated data (regression per host
+                          testing: a song the AI can't confidently generate for — no lrclib hit,
+                          no confident memory — used to show a plain "—" with no way to type in
+                          a question manually. Asking AI again hits the same no-invention rule,
+                          so a host who already knows the song had no way in at all. */}
+                      <textarea
+                        rows={2}
+                        value={qValue}
+                        placeholder={lyricsPreviewLoading ? "…" : hasData ? "—" : "手動輸入歌詞片段…"}
+                        readOnly={pendingLyricsStart}
+                        onChange={(e) => { if (!pendingLyricsStart) setLyricOverrides((prev) => ({ ...prev, [s.videoId]: { ...prev[s.videoId], lyricContext: e.target.value } })); }}
+                        style={{ ...cellBase, color: ov.lyricContext ? "var(--ink)" : "var(--text2)", resize: "vertical", minHeight: 40, opacity: pendingLyricsStart ? 0.6 : 1 }}
+                      />
                     </td>
                     <td style={{ maxWidth: 180, padding: "4px 6px" }}>
-                      {hasData || lyricsPreviewLoading ? (
-                        <input
-                          type="text"
-                          value={aValue}
-                          placeholder={lyricsPreviewLoading ? "…" : "—"}
-                          readOnly={pendingLyricsStart}
-                          onChange={(e) => { if (!pendingLyricsStart) setLyricOverrides((prev) => ({ ...prev, [s.videoId]: { ...prev[s.videoId], blankSentence: e.target.value } })); }}
-                          style={{ ...cellBase, fontWeight: 900, color: ov.blankSentence ? "var(--ink)" : aValue ? "var(--orange)" : "#D0CEDC", opacity: pendingLyricsStart ? 0.6 : 1 }}
-                        />
-                      ) : <span style={{ padding: "4px 8px", color: "#D0CEDC" }}>—</span>}
+                      <input
+                        type="text"
+                        value={aValue}
+                        placeholder={lyricsPreviewLoading ? "…" : hasData ? "—" : "手動輸入答案…"}
+                        readOnly={pendingLyricsStart}
+                        onChange={(e) => { if (!pendingLyricsStart) setLyricOverrides((prev) => ({ ...prev, [s.videoId]: { ...prev[s.videoId], blankSentence: e.target.value } })); }}
+                        style={{ ...cellBase, fontWeight: 900, color: ov.blankSentence ? "var(--ink)" : aValue ? "var(--orange)" : "#D0CEDC", opacity: pendingLyricsStart ? 0.6 : 1 }}
+                      />
                     </td>
                   </tr>
                 );

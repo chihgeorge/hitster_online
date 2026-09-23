@@ -83,4 +83,35 @@ describe("LyricRoundItemEditor (T6, docs/designs/full-page-focus-editor.md)", ()
     fireEvent.click(screen.getByText(/關閉/));
     expect(onClose).toHaveBeenCalled();
   });
+
+  // Regression (host testing feedback): a song AI can't confidently generate a question for
+  // used to hide the input fields entirely behind a "No question generated" message, with no
+  // way to type one in manually — a dead end, since asking AI again hits the same wall.
+  describe("song with no AI-generated data (regression)", () => {
+    const songsWithGap: EditableSong[] = [
+      { videoId: "v1", title: "Song A", artist: "Artist A", year: 2000 },
+      { videoId: "v3", title: "Song C (no AI data)", artist: "Artist C", year: 2002 },
+    ];
+
+    it("still renders editable fields, not a dead-end message", () => {
+      setup({ readySongs: songsWithGap });
+      fireEvent.click(screen.getByText(/下一首/)); // v3, which has no lyricsPreview entry
+      expect(screen.getByText("Song C (no AI data)")).toBeTruthy();
+      expect(screen.queryByText(/No question generated/)).toBeNull();
+      expect(screen.getByPlaceholderText("Question")).toBeTruthy();
+      expect(screen.getByPlaceholderText("Answer")).toBeTruthy();
+    });
+
+    it("lets the host type a manual question and commit it via Apply", () => {
+      const { setLyricOverrides } = setup({ readySongs: songsWithGap });
+      fireEvent.click(screen.getByText(/下一首/));
+
+      fireEvent.change(screen.getByPlaceholderText("Question"), { target: { value: "手動輸入 ___" } });
+      fireEvent.change(screen.getByPlaceholderText("Answer"), { target: { value: "答案" } });
+      fireEvent.click(screen.getByText(/套用/));
+
+      const updater = setLyricOverrides.mock.calls[0][0];
+      expect(updater({})).toEqual({ v3: { lyricContext: "手動輸入 ___", blankSentence: "答案" } });
+    });
+  });
 });
