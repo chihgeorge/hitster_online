@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.12.6.0] — 2026-09-23
+
+### Changed
+- **Extracted `components/LyricsTable.tsx` from `host/page.tsx`** (T5 of docs/designs/full-page-focus-editor.md): pure extraction, byte-identical JSX, zero behavior change — `host/page.tsx` drops from 1109 to 1021 lines. Surfaced by the plan-eng-review's outside-voice pass (Lyrics mode had no componentization step going into an already-1000+-line file). Verified by the existing `host-page.test.tsx` suite (T2), which exercises this exact table's rendering path unchanged. This is the component the upcoming Lyrics Focus editor (T6) will sit alongside
+
 ## [0.12.5.0] — 2026-09-23
 
 ### Added
