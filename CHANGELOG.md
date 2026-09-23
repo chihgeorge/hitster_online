@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.10.0.0] — 2026-09-22
+
+### Added
+- **Cross-device host handoff.** After creating a room, the host can now continue setup from a second device — type the room code on the homepage (or scan the same join QR everyone else scans) and tap "或者：管理此房間 · Or: manage this room" to reach the setup screen. Guarded by a confirm dialog, since the claim is permanent for the room
+
+### Fixed
+- **The host's stale "manage as host" link no longer sits there after host is claimed elsewhere.** Once anyone claims host — including from a different device — the original creator tab's private link disappears instead of leading to a confusing "already has a host" error later
+
 ## [0.9.0.0] — 2026-09-22
 
 ### Added

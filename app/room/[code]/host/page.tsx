@@ -980,7 +980,13 @@ function errorInfo(code: string): { message: string; detail?: string; hint?: str
   if (code === "missing_url") return { message: "Paste a YouTube playlist URL" };
   if (code === "save_failed") return { message: "Could not save playlist", detail: "Check your connection and try again." };
   if (code === "saved_playlist_not_found") return { message: "Saved playlist not found", detail: "It may have been deleted or expired.", hint: "Try loading a YouTube playlist URL instead." };
-  if (code === "unauthorized") return { message: "Host token mismatch — refresh and try again" };
+  // Was "Host token mismatch — refresh and try again" — misleading, since refreshing never
+  // helps: the claim is permanent for the room's lifetime (no re-claim path). The real cause
+  // is always "someone got here first" — often the host themself, on another device.
+  if (code === "unauthorized") return {
+    message: "此房間已經有主持人了 · This room already has a host",
+    detail: "可能是你，用了另一台裝置 · Maybe you, on another device.",
+  };
   if (code === "quota_exceeded") return {
     message: "YouTube API quota exceeded",
     detail: "The daily quota for the YouTube Data API has been used up.",

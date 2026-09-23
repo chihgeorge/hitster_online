@@ -134,8 +134,12 @@ export default function ScreenPage() {
 
               {/* Private to this browser only — never shown to anyone scanning the QR above
                   (see the isCreator comment). Gated to lobby so it can never resurface mid-game
-                  on a reload, per the outside-voice finding from /plan-eng-review. */}
-              {isCreator && (
+                  on a reload, per the outside-voice finding from /plan-eng-review. Also hidden
+                  once host is claimed from ANYWHERE (state.hostClaimed — never the real token,
+                  see sanitizedState) — closes the stale-tab race where the host moved setup to
+                  their phone but this old creator tab is still sitting open: a later tap here
+                  would just fail with "already has a host" instead of doing anything useful. */}
+              {isCreator && !state?.hostClaimed && (
                 <Link
                   href={`/room/${params.code}/host`}
                   data-testid="manage-as-host-link"

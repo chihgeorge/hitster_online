@@ -53,6 +53,18 @@ function HomePageContent() {
     router.push(`/room/${code}/screen?created=1`);
   }
 
+  // Cross-device host handoff: the room code isn't secret (it's on the screen already), but
+  // reaching /host from it is a PERMANENT, one-shot claim with no re-claim path — an
+  // accidental tap here would silently lock the real host out for the rest of the game.
+  // The confirm is the one cheap guard that keeps that risk where it was before this link
+  // existed (deliberate action only), per /plan-eng-review's outside-voice finding.
+  function handleManageAsHost() {
+    const code = joinCode.trim().toUpperCase();
+    if (code.length !== 4) return;
+    const ok = window.confirm("只有負責設定這個房間的人才需要點這個，繼續嗎？\nOnly tap this if you set up this room — continue?");
+    if (ok) router.push(`/room/${code}/host`);
+  }
+
   return (
     <main className="flex min-h-screen flex-col items-center justify-center gap-8 px-5 py-12"
       style={{ background: "var(--bg)" }}>
@@ -149,6 +161,19 @@ function HomePageContent() {
         )}
         {error && (
           <p style={{ color: "var(--red)", fontSize: 13, textAlign: "center" }}>{error}</p>
+        )}
+        {joinCode.trim().length === 4 && (
+          <button
+            type="button"
+            data-testid="manage-as-host-link"
+            onClick={handleManageAsHost}
+            style={{
+              background: "none", border: "none", color: "var(--text3)", fontSize: 11,
+              cursor: "pointer", textDecoration: "underline", alignSelf: "center", padding: 0,
+            }}
+          >
+            或者：管理此房間 · Or: manage this room
+          </button>
         )}
       </form>
 
