@@ -41,7 +41,16 @@ function makeRoom() {
 // fakeTrack descriptions are parsed correctly without extra stubbing.
 vi.mock("../lib/youtube", async (importOriginal) => {
   const actual = (await importOriginal()) as object;
-  return { ...actual, fetchPlaylistItems: vi.fn(), fetchEmbeddableVideoIds: vi.fn() };
+  return {
+    ...actual,
+    fetchPlaylistItems: vi.fn(),
+    // Default: every requested video is embeddable (the realistic case) — tests that
+    // specifically exercise the embeddability filter override this with their own
+    // mockResolvedValue. Without a default, every test that doesn't care about this filter
+    // would need to mock it anyway just to avoid `undefined.size` (fetchAndFilterTracks in
+    // lib/playlist-resolver.ts, used by every playlist-loading path per D3).
+    fetchEmbeddableVideoIds: vi.fn().mockImplementation((ids: string[]) => Promise.resolve(new Set(ids))),
+  };
 });
 
 vi.mock("../lib/ai-metadata", () => ({
@@ -333,6 +342,35 @@ describe("START_GAME handler", () => {
     expect(room.state.phase).toBe("guessing");
     expect(room.state.hostId).toBe("host-uuid");
     expect(room.state.currentSong).not.toBeNull();
+  });
+
+  // Regression for D3 (docs/designs/decouple-quiz-bank.md): this fallback path (LOAD_PLAYLIST
+  // wasn't called first) used to skip the embeddability filter that LOAD_PLAYLIST itself
+  // applies — an inconsistency, not a deliberate difference. Now shared via
+  // lib/playlist-resolver.ts's fetchAndFilterTracks, so behavior matches everywhere.
+  it("filters out non-embeddable videos even on the fallback (no prior LOAD_PLAYLIST) path", async () => {
+    vi.mocked(fetchPlaylistItems).mockResolvedValue([
+      fakeTrack("v1", 1980),
+      fakeTrack("v2", 1985),
+      fakeTrack("v3", 1990),
+    ]);
+    // Only v1/v2 are embeddable — v3 should never reach the deck. mockResolvedValueOnce, not
+    // mockResolvedValue: the latter would persist past this test (vi.clearAllMocks() only
+    // clears call history, not implementations) and silently filter v3 out of every later
+    // test in this file that assumes the file-level "everything embeddable" default.
+    vi.mocked(fetchEmbeddableVideoIds).mockResolvedValueOnce(new Set(["v1", "v2"]));
+
+    const room = new HitsterRoom(makeRoom() as any);
+    const conn = makeConn();
+    await send(room, conn, { type: "JOIN", playerId: P1, name: "Alice" });
+    await send(room, conn, {
+      type: "START_GAME",
+      hostId: "host-uuid",
+      playlistUrl: "https://www.youtube.com/playlist?list=PL123",
+    });
+
+    expect(room.state.phase).toBe("guessing");
+    expect(room.state.songs.some((s) => s.videoId === "v3")).toBe(false);
   });
 
   it("respects custom targetCardCount", async () => {
