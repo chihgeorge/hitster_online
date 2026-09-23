@@ -1,6 +1,9 @@
 # Changelog
 
-## [0.12.1.0] — 2026-09-22
+## [0.12.2.0] — 2026-09-23
+
+### Changed
+- **Extracted shared draft-tracking logic into `lib/use-item-draft.ts`** (T1 of docs/designs/full-page-focus-editor.md), generic over any item shape keyed by `videoId`. `PlaylistEditor.tsx` refactored onto it — confirmed zero behavior change via its existing 12-test suite. First step toward the Focus Mode editor redesign; also adds `docs/designs/full-page-focus-editor.md`, the approved and eng-reviewed design doc for that redesign
 
 ### Changed
 - **Saved Playlists are now cross-device** (T6/T7 of docs/designs/decouple-quiz-bank.md, closing the P3 TODO from 2026-08-28): the room-setup page's "Saved Playlists" panel now reads from the same server-side library (`party/library.ts`) the new `/playlists` page uses, instead of that browser's own localStorage. A playlist created on one device — or on the standalone page — now shows up everywhere, immediately. Existing localStorage-only playlists migrate in automatically on first load after this update, silently and idempotently — nothing to click, nothing lost

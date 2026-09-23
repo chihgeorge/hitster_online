@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import type { EditableSong, SongEditDiff } from "@/lib/game";
 import { isValidYear } from "@/lib/utils";
+import { useItemDraft } from "@/lib/use-item-draft";
 
 interface Props {
   playlistId: string | null;
@@ -29,7 +30,7 @@ export default function PlaylistEditor({
   playlistId, songs, hostId, partyKitHost, onSongsChange,
   onProposeEdits, proposing, proposedDiff, proposeError, onProposedDiffConsumed,
 }: Props) {
-  const [editing, setEditing] = useState<Record<string, Partial<EditableSong>>>({});
+  const { getDraft, setField: setDraftField, isDirty, discard, discardAll: discardAllDrafts } = useItemDraft<EditableSong>();
   const [saving, setSaving] = useState<Record<string, boolean>>({});
   const [savingAll, setSavingAll] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -38,10 +39,7 @@ export default function PlaylistEditor({
   const [confirmingDiscard, setConfirmingDiscard] = useState(false);
 
   function setField(videoId: string, field: keyof EditableSong, value: string | number) {
-    setEditing((prev) => ({
-      ...prev,
-      [videoId]: { ...prev[videoId], [field]: value },
-    }));
+    setDraftField(videoId, field, value as EditableSong[typeof field]);
     setErrors((prev) => { const n = { ...prev }; delete n[videoId]; return n; });
   }
 
@@ -61,26 +59,6 @@ export default function PlaylistEditor({
   }, [proposedDiff]);
   /* eslint-enable react-hooks/set-state-in-effect */
 
-  function getDraft(song: EditableSong): EditableSong {
-    const overrides = editing[song.videoId] ?? {};
-    return {
-      videoId: song.videoId,
-      title: (overrides.title as string | undefined) ?? song.title,
-      artist: (overrides.artist as string | undefined) ?? song.artist,
-      year: (overrides.year as number | null | undefined) ?? song.year,
-    };
-  }
-
-  function isDirty(song: EditableSong): boolean {
-    const ov = editing[song.videoId];
-    if (!ov) return false;
-    return (
-      (ov.title !== undefined && ov.title !== song.title) ||
-      (ov.artist !== undefined && ov.artist !== song.artist) ||
-      (ov.year !== undefined && ov.year !== song.year)
-    );
-  }
-
   async function handleSaveSong(song: EditableSong) {
     const draft = getDraft(song);
     if (!draft.title.trim()) {
@@ -94,7 +72,7 @@ export default function PlaylistEditor({
     if (!playlistId) {
       // No saved playlist yet — apply locally only
       onSongsChange(songs.map((s) => s.videoId === song.videoId ? { ...s, ...draft } : s));
-      setEditing((prev) => { const n = { ...prev }; delete n[song.videoId]; return n; });
+      discard(song.videoId);
       return;
     }
     setSaving((prev) => ({ ...prev, [song.videoId]: true }));
@@ -117,7 +95,7 @@ export default function PlaylistEditor({
         return;
       }
       onSongsChange(songs.map((s) => s.videoId === song.videoId ? { ...s, ...draft } : s));
-      setEditing((prev) => { const n = { ...prev }; delete n[song.videoId]; return n; });
+      discard(song.videoId);
     } catch {
       setErrors((prev) => ({ ...prev, [song.videoId]: "update_failed" }));
     } finally {
@@ -147,7 +125,7 @@ export default function PlaylistEditor({
     if (!playlistId) {
       // Local-only: apply all in one shot.
       onSongsChange(songs.map((s) => { const d = drafts.get(s.videoId); return d ? { ...s, ...d } : s; }));
-      setEditing({});
+      discardAllDrafts();
       return;
     }
 
@@ -185,7 +163,7 @@ export default function PlaylistEditor({
 
     if (saved.size > 0) {
       onSongsChange(songs.map((s) => { const d = drafts.get(s.videoId); return saved.has(s.videoId) && d ? { ...s, ...d } : s; }));
-      setEditing((prev) => { const n = { ...prev }; for (const id of saved) delete n[id]; return n; });
+      for (const id of saved) discard(id);
     }
     if (Object.keys(failErrors).length > 0) setErrors((prev) => ({ ...prev, ...failErrors }));
 
@@ -241,7 +219,7 @@ export default function PlaylistEditor({
   }
 
   function handleDiscardAll() {
-    setEditing({});
+    discardAllDrafts();
     setErrors({});
     setConfirmingDiscard(false);
   }
