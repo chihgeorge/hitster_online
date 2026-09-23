@@ -1,6 +1,9 @@
 # Changelog
 
-## [0.12.0.0] — 2026-09-22
+## [0.12.1.0] — 2026-09-22
+
+### Changed
+- **Saved Playlists are now cross-device** (T6/T7 of docs/designs/decouple-quiz-bank.md, closing the P3 TODO from 2026-08-28): the room-setup page's "Saved Playlists" panel now reads from the same server-side library (`party/library.ts`) the new `/playlists` page uses, instead of that browser's own localStorage. A playlist created on one device — or on the standalone page — now shows up everywhere, immediately. Existing localStorage-only playlists migrate in automatically on first load after this update, silently and idempotently — nothing to click, nothing lost
 
 ### Added
 - **Standalone quiz-bank page at `/playlists`** (T5 of docs/designs/decouple-quiz-bank.md): create and edit playlists ahead of time, with no room required — the headline feature the T1-T4 backend work was building toward. Paste a YouTube URL + name to create (using the room-less `RESOLVE_FROM_URL` action), see your library list from any device (via `party/library.ts`), edit songs manually (reuses the existing `PlaylistEditor` table), delete. AI chat-to-diff editing isn't wired up here yet (deferred to its own follow-up, T8) — manual editing only for now, matching what the room's editor already supported before v0.9.0.0

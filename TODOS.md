@@ -109,9 +109,9 @@
 
 ## P3 — Nice to have
 
-- [ ] **P3** Cross-device playlist library listing  
+- [x] **P3** Cross-device playlist library listing  
   Per-playlist DOs keyed by UUID make individual playlists cross-device accessible via URL, but the full library listing comes from localStorage — empty on a new device. Fix: add a host-library DO (keyed by hostId) that stores the playlist index so the full library is visible from any device.  
-  _Surfaced by /plan-eng-review on feat/custom-playlist, 2026-08-28_
+  _Surfaced by /plan-eng-review on feat/custom-playlist, 2026-08-28_. **Completed:** v0.12.1.0 (2026-09-22), `party/library.ts` + one-time localStorage migration, part of docs/designs/decouple-quiz-bank.md.
 
 - [ ] **P3** `docs/wireframes/hitster-v1.png`  
   The initial wireframe sketch was never committed. Low priority — the code is the spec now.  

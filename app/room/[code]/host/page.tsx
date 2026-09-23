@@ -6,24 +6,20 @@ import usePartySocket from "partysocket/react";
 import PlaylistEditor from "@/components/PlaylistEditor";
 import { Qr } from "@/components/Qr";
 import { getOrCreatePersistedId } from "@/lib/device-id";
+import { importLocalPlaylistsToLibrary } from "@/lib/playlist-library-migration";
 import type { GameState, ServerMessage, ClientMessage, SongDiagnostic, EditableSong, PublicLyricsGameState, PublicLyricsRound, LyricsGameConfig, SongEditDiff, EditableLyricRound, LyricEditDiff } from "@/lib/game";
 
 const PARTYKIT_HOST = process.env.NEXT_PUBLIC_PARTYKIT_HOST || "localhost:1999";
 
+// D2/T7 (docs/designs/decouple-quiz-bank.md): this panel used to read/write "hitster_playlists"
+// in localStorage directly — empty on a new device. Now backed by party/library.ts, the same
+// source app/playlists/page.tsx uses, so a playlist created there shows up here too (and vice
+// versa) instead of two permanently-diverged lists.
 type SavedPlaylistMeta = { id: string; name: string; songCount: number };
 
-function loadSavedPlaylistIndex(): SavedPlaylistMeta[] {
-  try {
-    return JSON.parse(localStorage.getItem("hitster_playlists") ?? "[]") as SavedPlaylistMeta[];
-  } catch {
-    return [];
-  }
-}
-
-function saveSavedPlaylistIndex(index: SavedPlaylistMeta[]) {
-  try {
-    localStorage.setItem("hitster_playlists", JSON.stringify(index));
-  } catch {}
+function libraryUrl(hostId: string): string {
+  const protocol = PARTYKIT_HOST.startsWith("localhost") ? "http" : "https";
+  return `${protocol}://${PARTYKIT_HOST}/parties/library/${hostId}`;
 }
 
 type LoadStatus = "idle" | "loading" | "ready" | "error";
@@ -74,8 +70,21 @@ export default function HostPage() {
 
   useEffect(() => {
     hostIdRef.current = getOrCreatePersistedId("hitster_host_id");
-    setSavedPlaylists(loadSavedPlaylistIndex());
+    // D2b: migrate any pre-existing localStorage-only entries into the library index first,
+    // so they still show up here (not just on app/playlists/page.tsx) after this switch.
+    void importLocalPlaylistsToLibrary(hostIdRef.current, PARTYKIT_HOST).then(() => refreshSavedPlaylists());
   }, []);
+
+  async function refreshSavedPlaylists() {
+    try {
+      const res = await fetch(libraryUrl(hostIdRef.current));
+      if (!res.ok) return;
+      const body = (await res.json()) as { entries: SavedPlaylistMeta[] };
+      setSavedPlaylists(body.entries);
+    } catch {
+      // Best-effort — the panel just stays empty/stale, same as any other network hiccup here.
+    }
+  }
 
   // 5-minute checkpoint timer: show prompt if loading takes too long.
   useEffect(() => {
@@ -316,10 +325,9 @@ export default function HostPage() {
         setSaveError(body.error ?? "Failed to save playlist — please try again.");
         return;
       }
-      const meta: SavedPlaylistMeta = { id, name, songCount: readySongs.length };
-      const newIndex = [...savedPlaylists, meta];
-      saveSavedPlaylistIndex(newIndex);
-      setSavedPlaylists(newIndex);
+      // party/playlist.ts's POST already synced the library index server-side (D2a) — just
+      // re-read it, rather than guessing the new state locally.
+      await refreshSavedPlaylists();
       setSavedId(id);
       setShowSavePanel(false);
       setSavePlaylistName("");
@@ -377,9 +385,8 @@ export default function HostPage() {
     } catch {
       return;
     }
-    const newIndex = savedPlaylists.filter((p) => p.id !== id);
-    saveSavedPlaylistIndex(newIndex);
-    setSavedPlaylists(newIndex);
+    // party/playlist.ts's DELETE already synced the library index server-side (D2a).
+    await refreshSavedPlaylists();
   }
 
   const phase = state?.phase ?? "lobby";

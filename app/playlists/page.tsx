@@ -14,6 +14,7 @@ import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import PlaylistEditor from "@/components/PlaylistEditor";
 import { getOrCreatePersistedId } from "@/lib/device-id";
+import { importLocalPlaylistsToLibrary } from "@/lib/playlist-library-migration";
 import type { EditableSong } from "@/lib/game";
 
 const PARTYKIT_HOST = process.env.NEXT_PUBLIC_PARTYKIT_HOST || "localhost:1999";
@@ -50,7 +51,9 @@ export default function PlaylistsPage() {
 
   useEffect(() => {
     hostIdRef.current = getOrCreatePersistedId("hitster_host_id");
-    void refreshLibrary();
+    // D2b: migrate any localStorage-only playlists (from before this page existed) into the
+    // library index first, so they show up in this very first load instead of needing a reload.
+    void importLocalPlaylistsToLibrary(hostIdRef.current, PARTYKIT_HOST).then(() => refreshLibrary());
   }, []);
 
   async function refreshLibrary() {
