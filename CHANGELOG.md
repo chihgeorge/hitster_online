@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.12.4.0] — 2026-09-23
+
+### Added
+- **`PROPOSE_EDITS` HTTP action on `party/playlist.ts`** (T3 of docs/designs/full-page-focus-editor.md, closes T8): AI chat-to-diff editing for the standalone `/playlists` page, which has no WebSocket to route through. HTTP-shaped like the existing `RESOLVE_FROM_URL` action (blocking request/response), not WebSocket-shaped like `party/index.ts`'s room-based `handleProposeEdits` — both call the same `lib/ai-metadata.proposeEdits`. Returns a diff for the client to review; never mutates the stored playlist itself
+
 ## [0.12.3.0] — 2026-09-23
 
 ### Fixed

@@ -8,6 +8,7 @@ import {
   parseResolveErrorCode,
   PLAYLIST_ID_PATTERN,
 } from "../lib/playlist-resolver";
+import { proposeEdits } from "../lib/ai-metadata";
 
 const MAX_SONGS = 500;
 const MAX_NAME_LEN = 80;
@@ -208,6 +209,25 @@ export default class PlaylistParty implements Party.Server {
         stored.updatedAt = Date.now();
         await this.room.storage.put("playlist", stored);
         return json({ ok: true });
+      }
+
+      // PROPOSE_EDITS: AI chat-to-diff editing (T3, docs/designs/full-page-focus-editor.md;
+      // HTTP-shaped like RESOLVE_FROM_URL above, not WebSocket-shaped like party/index.ts's
+      // handleProposeEdits, which this mirrors otherwise). Never mutates the stored playlist —
+      // returns a diff for the client to review and PUT back via UPDATE_SONG, same contract
+      // as the room's own chat-to-diff editing.
+      if (action === "PROPOSE_EDITS") {
+        const { instruction } = body as { instruction?: unknown };
+        if (typeof instruction !== "string" || !instruction.trim()) return err("instruction required");
+        const { anthropicKey } = resolveEnv(this.room.env);
+        if (!anthropicKey) return err("api_key_missing", 503);
+        try {
+          const diff = await proposeEdits(instruction, stored.songs, anthropicKey);
+          return json({ diff });
+        } catch (e) {
+          console.error(JSON.stringify({ event: "propose_edits_failed", playlistId: this.room.id, error: String(e) }));
+          return err("propose_failed", 502);
+        }
       }
 
       // Default PUT: replace name and/or songs

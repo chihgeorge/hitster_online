@@ -8,6 +8,9 @@ vi.mock("../lib/playlist-resolver", async (importOriginal) => {
 });
 import { resolvePlaylistFromUrl } from "../lib/playlist-resolver";
 
+vi.mock("../lib/ai-metadata", () => ({ proposeEdits: vi.fn() }));
+import { proposeEdits } from "../lib/ai-metadata";
+
 // ─── Mock PartyKit room ───────────────────────────────────────────────────────
 
 /** D2a: room.context.parties.library.get(hostId).fetch(...) is how PlaylistParty writes
@@ -408,5 +411,67 @@ describe("PlaylistParty: DELETE — delete playlist", () => {
     const req = makeRequest("DELETE", { ownerHostId: "wrong-host" });
     const { status } = await parseResponse(await party.onRequest(req));
     expect(status).toBe(403);
+  });
+});
+
+// T3 (docs/designs/full-page-focus-editor.md): closes T8, the standalone /playlists page's
+// AI chat-to-diff editing. HTTP-shaped like RESOLVE_FROM_URL, not WebSocket-shaped like
+// party/index.ts's handleProposeEdits — same underlying lib/ai-metadata.proposeEdits call.
+describe("PlaylistParty: PUT PROPOSE_EDITS — AI chat-to-diff editing", () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it("returns the proposed diff without mutating the stored playlist", async () => {
+    const room = makeRoom();
+    room.env = { ANTHROPIC_API_KEY: "test-key" };
+    const party = new PlaylistParty(room);
+    await createPlaylist(party, [song("v1", 1999)]);
+
+    const diff = [{ videoId: "v1", field: "year" as const, oldValue: 1999, newValue: 2000 }];
+    vi.mocked(proposeEdits).mockResolvedValue(diff);
+
+    const req = makeRequest("PUT", { ownerHostId: "host-1", action: "PROPOSE_EDITS", instruction: "fix the year" });
+    const { status, body } = await parseResponse(await party.onRequest(req));
+
+    expect(status).toBe(200);
+    expect(body.diff).toEqual(diff);
+    expect(proposeEdits).toHaveBeenCalledWith("fix the year", [song("v1", 1999)], "test-key");
+
+    const stored = await parseResponse(await party.onRequest(makeRequest("GET")));
+    expect((stored.body.songs as EditableSong[])[0].year).toBe(1999); // unchanged
+  });
+
+  it("rejects a missing instruction", async () => {
+    const room = makeRoom();
+    room.env = { ANTHROPIC_API_KEY: "test-key" };
+    const party = new PlaylistParty(room);
+    await createPlaylist(party, [song("v1")]);
+
+    const req = makeRequest("PUT", { ownerHostId: "host-1", action: "PROPOSE_EDITS", instruction: "  " });
+    const { status } = await parseResponse(await party.onRequest(req));
+    expect(status).toBe(400);
+    expect(proposeEdits).not.toHaveBeenCalled();
+  });
+
+  it("returns 503 when no Anthropic key is configured", async () => {
+    const room = makeRoom(); // env: {} — no key
+    const party = new PlaylistParty(room);
+    await createPlaylist(party, [song("v1")]);
+
+    const req = makeRequest("PUT", { ownerHostId: "host-1", action: "PROPOSE_EDITS", instruction: "fix it" });
+    const { status } = await parseResponse(await party.onRequest(req));
+    expect(status).toBe(503);
+    expect(proposeEdits).not.toHaveBeenCalled();
+  });
+
+  it("rejects unauthorized requests", async () => {
+    const room = makeRoom();
+    room.env = { ANTHROPIC_API_KEY: "test-key" };
+    const party = new PlaylistParty(room);
+    await createPlaylist(party, [song("v1")]);
+
+    const req = makeRequest("PUT", { ownerHostId: "wrong-host", action: "PROPOSE_EDITS", instruction: "fix it" });
+    const { status } = await parseResponse(await party.onRequest(req));
+    expect(status).toBe(403);
+    expect(proposeEdits).not.toHaveBeenCalled();
   });
 });
