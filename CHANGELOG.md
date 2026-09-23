@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.11.3.0] — 2026-09-22
+
+### Added
+- **Backend plumbing for the decoupled quiz bank** (T2-T4 of docs/designs/decouple-quiz-bank.md, no UI yet — that's the next PR): `party/playlist.ts` gained a `RESOLVE_FROM_URL` action so a playlist can be created from a YouTube URL without a room existing (calls the shared `lib/playlist-resolver.ts` pipeline from T1, blocking request/response since this party has no WebSocket to stream progress over). New `party/library.ts` — one Durable Object per host, indexing which playlists they own ({id, name, songCount}), so a host's playlist library will be visible from any device once the UI lands, not just the browser that created it. `party/playlist.ts` now keeps that index in sync server-side on playlist create/delete (best-effort — a sync failure never rolls back or fails the playlist write itself)
+
 ## [0.11.2.0] — 2026-09-22
 
 ### Fixed
