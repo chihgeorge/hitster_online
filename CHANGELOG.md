@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.13.0.1] — 2026-09-23
+
+### Fixed
+- **Lyrics mode's loading screen no longer says "查找發行年份中…" (searching for release year)** — that's Timeline-mode language; a Lyrics-mode host doesn't care about years. Now shows "解析歌曲資料中…" (resolving song info) / "仍在解析歌曲中…" for Lyrics mode, Timeline mode's copy unchanged
+
 ## [0.13.0.0] — 2026-09-23
 
 ### Added
