@@ -13,6 +13,7 @@
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import PlaylistEditor from "@/components/PlaylistEditor";
+import SongItemEditor from "@/components/SongItemEditor";
 import { getOrCreatePersistedId } from "@/lib/device-id";
 import { importLocalPlaylistsToLibrary } from "@/lib/playlist-library-migration";
 import type { EditableSong } from "@/lib/game";
@@ -48,6 +49,7 @@ export default function PlaylistsPage() {
   const [selectedError, setSelectedError] = useState("");
 
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [focusMode, setFocusMode] = useState(false);
 
   useEffect(() => {
     hostIdRef.current = getOrCreatePersistedId("hitster_host_id");
@@ -99,6 +101,7 @@ export default function PlaylistsPage() {
   }
 
   async function handleSelect(id: string) {
+    setFocusMode(false);
     setSelectedId(id);
     setSelectedLoading(true);
     setSelectedError("");
@@ -207,17 +210,34 @@ export default function PlaylistsPage() {
             {selectedLoading && <p style={{ fontSize: 12, color: "var(--text3)" }}>載入中… Loading…</p>}
             {selectedError && <p style={{ fontSize: 12, color: "var(--red)" }}>{selectedError}</p>}
             {!selectedLoading && !selectedError && selectedSongs.length > 0 && (
-              <PlaylistEditor
-                playlistId={selectedId}
-                songs={selectedSongs}
-                hostId={hostIdRef.current}
-                partyKitHost={PARTYKIT_HOST}
-                onSongsChange={setSelectedSongs}
-              />
+              <>
+                <button type="button" onClick={() => setFocusMode(true)}
+                  style={{ alignSelf: "flex-start", background: "rgba(255,107,53,.12)", border: "none", borderRadius: 10, padding: "7px 14px", fontSize: 12, fontWeight: 900, color: "var(--orange)", cursor: "pointer" }}>
+                  🎯 Focus 模式 · Focus mode
+                </button>
+                <PlaylistEditor
+                  playlistId={selectedId}
+                  songs={selectedSongs}
+                  hostId={hostIdRef.current}
+                  partyKitHost={PARTYKIT_HOST}
+                  onSongsChange={setSelectedSongs}
+                />
+              </>
             )}
           </div>
         )}
       </div>
+
+      {focusMode && selectedId && selectedSongs.length > 0 && (
+        <SongItemEditor
+          playlistId={selectedId}
+          songs={selectedSongs}
+          hostId={hostIdRef.current}
+          partyKitHost={PARTYKIT_HOST}
+          onSongsChange={setSelectedSongs}
+          onClose={() => setFocusMode(false)}
+        />
+      )}
     </main>
   );
 }
