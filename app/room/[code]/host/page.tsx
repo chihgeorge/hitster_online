@@ -6,7 +6,7 @@ import usePartySocket from "partysocket/react";
 import PlaylistEditor from "@/components/PlaylistEditor";
 import { Qr } from "@/components/Qr";
 import { getOrCreatePersistedId } from "@/lib/device-id";
-import type { GameState, ServerMessage, ClientMessage, SongDiagnostic, EditableSong, PublicLyricsGameState, PublicLyricsRound, LyricsGameConfig } from "@/lib/game";
+import type { GameState, ServerMessage, ClientMessage, SongDiagnostic, EditableSong, PublicLyricsGameState, PublicLyricsRound, LyricsGameConfig, SongEditDiff } from "@/lib/game";
 
 const PARTYKIT_HOST = process.env.NEXT_PUBLIC_PARTYKIT_HOST || "localhost:1999";
 
@@ -42,6 +42,9 @@ export default function HostPage() {
   const [showContinuePrompt, setShowContinuePrompt] = useState(false);
   // Saved playlists
   const [readySongs, setReadySongs] = useState<EditableSong[]>([]);
+  const [proposingEdits, setProposingEdits] = useState(false);
+  const [proposedDiff, setProposedDiff] = useState<SongEditDiff[] | null>(null);
+  const [proposeError, setProposeError] = useState<string | null>(null);
   const [savedPlaylists, setSavedPlaylists] = useState<SavedPlaylistMeta[]>([]);
   const [showSavePanel, setShowSavePanel] = useState(false);
   const [savePlaylistName, setSavePlaylistName] = useState("");
@@ -152,11 +155,26 @@ export default function HostPage() {
         setLyricsPreviewLoading(msg.loading);
         if (!msg.loading) setLyricsPreview(msg.rounds);
       }
+      if (msg.type === "EDITS_PROPOSED") {
+        setProposingEdits(false);
+        setProposeError(msg.diff.length === 0 ? "AI 沒有找到對應的更改 · No matching changes found" : null);
+        if (msg.diff.length > 0) setProposedDiff(msg.diff);
+      }
+      if (msg.type === "EDITS_PROPOSAL_FAILED") {
+        setProposingEdits(false);
+        setProposeError("無法處理，請再試一次 · Couldn't process that, try again");
+      }
     },
   });
 
   function send(msg: ClientMessage) {
     socket.send(JSON.stringify(msg));
+  }
+
+  function handleProposeEdits(instruction: string) {
+    setProposingEdits(true);
+    setProposeError(null);
+    send({ type: "PROPOSE_EDITS", hostId: hostIdRef.current, instruction, songs: readySongsRef.current });
   }
 
   function handleLoadPlaylist() {
@@ -563,7 +581,11 @@ export default function HostPage() {
                 </button>
               )}
               {gameMode === "timeline" && showEditor && readySongs.length > 0 && (
-                <PlaylistEditor playlistId={savedId} songs={readySongs} hostId={hostIdRef.current} partyKitHost={PARTYKIT_HOST} onSongsChange={setReadySongs} />
+                <PlaylistEditor
+                  playlistId={savedId} songs={readySongs} hostId={hostIdRef.current} partyKitHost={PARTYKIT_HOST} onSongsChange={setReadySongs}
+                  onProposeEdits={handleProposeEdits} proposing={proposingEdits} proposedDiff={proposedDiff} proposeError={proposeError}
+                  onProposedDiffConsumed={() => setProposedDiff(null)}
+                />
               )}
               {gameMode === "lyrics" && readySongs.length > 0 && (
                 <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>

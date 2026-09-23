@@ -4,6 +4,8 @@
 // covers essentially all catalog music through mid-2025.
 // Falls back gracefully: returns an empty Map on any API or parse failure.
 
+import type { EditableSong, SongEditDiff } from "./game";
+
 export interface AITrackMeta {
   title: string;
   artist: string;
@@ -42,14 +44,16 @@ function formatBatch(
 // Compact field names: v=videoId, t=title, a=artist, y=year
 type RawResult = { v?: unknown; t?: unknown; a?: unknown; y?: unknown };
 
-function parseResponse(text: string): RawResult[] {
+// Untyped on purpose — shared by resolveBatch (RawResult[]) and proposeEdits (RawEditDiff[]),
+// which parse differently-shaped arrays from the same "strip fences, find the outer []" logic.
+function parseResponse(text: string): unknown[] {
   // Strip optional markdown fences the model might add despite instructions.
   const cleaned = text.replace(/^```(?:json)?\n?/m, "").replace(/\n?```$/m, "").trim();
   // Find the outermost JSON array.
   const start = cleaned.indexOf("[");
   const end = cleaned.lastIndexOf("]");
   if (start === -1 || end === -1) return [];
-  return JSON.parse(cleaned.slice(start, end + 1)) as RawResult[];
+  return JSON.parse(cleaned.slice(start, end + 1)) as unknown[];
 }
 
 async function resolveBatch(
@@ -85,7 +89,7 @@ async function resolveBatch(
 
   let parsed: RawResult[] = [];
   try {
-    parsed = parseResponse(text);
+    parsed = parseResponse(text) as RawResult[];
   } catch (e) {
     console.error(`[ai-metadata] parse error: ${e}`);
     return result;
@@ -144,4 +148,98 @@ export async function resolveTracksWithAI(
   }
 
   return combined;
+}
+
+const PROPOSE_EDITS_SYSTEM_PROMPT = `You edit a music quiz's song list based on a host's plain-language instruction.
+
+Given the current song list and an instruction, return ONLY a JSON array of field-level changes:
+[{"v":"VIDEO_ID","f":"title"|"artist"|"year","n":"new value, or an integer for year"},...]
+
+Rules:
+- v: the videoId of the song being changed — must match one from the input list exactly.
+- f: which field changes — "title", "artist", or "year".
+- n: the new value. For "year", a 4-digit integer. For "title"/"artist", the corrected string.
+- Only include entries for fields that actually need to change per the instruction — never restate unchanged songs.
+- If the instruction doesn't clearly map to any song in the list, return an empty array [].
+- Preserve CJK characters exactly.`;
+
+type RawEditDiff = { v?: unknown; f?: unknown; n?: unknown };
+
+/**
+ * Proposes field-level edits to a song list from a host's natural-language instruction
+ * (e.g. "the 3rd song's year is wrong, it's 1998"). Never applies anything itself — the
+ * caller renders the returned diff as a reviewable change (PlaylistEditor's existing
+ * dirty-row state) before the host explicitly saves it.
+ *
+ * Old values are computed from the passed-in `songs`, not trusted from the model's
+ * response, so a round-tripping error in the AI's echo of the old value can't corrupt
+ * the diff. A no-op "change" (new value equals current value) is dropped, not proposed.
+ *
+ * @returns [] on empty input, missing instruction, or any API/parse failure — same
+ *          fail-open contract as resolveTracksWithAI.
+ */
+export async function proposeEdits(
+  instruction: string,
+  songs: EditableSong[],
+  apiKey: string
+): Promise<SongEditDiff[]> {
+  if (!apiKey || songs.length === 0 || !instruction.trim()) return [];
+
+  const songList = songs
+    .map((s) => `${s.videoId} | "${s.title}" | ${s.artist} | ${s.year ?? "?"}`)
+    .join("\n");
+
+  const res = await fetch(ANTHROPIC_API, {
+    method: "POST",
+    headers: {
+      "x-api-key": apiKey,
+      "anthropic-version": "2023-06-01",
+      "content-type": "application/json",
+    },
+    body: JSON.stringify({
+      model: MODEL,
+      max_tokens: 1000,
+      system: PROPOSE_EDITS_SYSTEM_PROMPT,
+      messages: [{ role: "user", content: `Song list:\n${songList}\n\nInstruction: ${instruction}` }],
+    }),
+  });
+
+  if (!res.ok) {
+    const body = await res.text().catch(() => "");
+    console.error(`[ai-metadata] proposeEdits API error ${res.status}: ${body.slice(0, 300)}`);
+    return [];
+  }
+
+  const data = (await res.json()) as { content?: { type: string; text: string }[] };
+  const text = data.content?.find((b) => b.type === "text")?.text ?? "";
+
+  let parsed: RawEditDiff[] = [];
+  try {
+    parsed = parseResponse(text) as RawEditDiff[];
+  } catch (e) {
+    console.error(`[ai-metadata] proposeEdits parse error: ${e}`);
+    return [];
+  }
+
+  const byId = new Map(songs.map((s) => [s.videoId, s]));
+  const diffs: SongEditDiff[] = [];
+  for (const item of parsed) {
+    const videoId = typeof item.v === "string" ? item.v : null;
+    const field = item.f === "title" || item.f === "artist" || item.f === "year" ? item.f : null;
+    if (!videoId || !field) continue;
+    const song = byId.get(videoId);
+    if (!song) continue; // AI must reference a song actually in the list — never invent one
+
+    if (field === "year") {
+      const n = typeof item.n === "number" ? item.n : parseInt(String(item.n), 10);
+      if (isNaN(n) || n < 1900 || n > new Date().getFullYear() + 1) continue;
+      if (n === song.year) continue;
+      diffs.push({ videoId, field, oldValue: song.year, newValue: n });
+    } else {
+      const n = typeof item.n === "string" ? item.n.trim() : "";
+      if (!n || n === song[field]) continue;
+      diffs.push({ videoId, field, oldValue: song[field], newValue: n });
+    }
+  }
+  return diffs;
 }

@@ -1,7 +1,7 @@
 "use client";
 
-import { useState } from "react";
-import type { EditableSong } from "@/lib/game";
+import { useEffect, useState } from "react";
+import type { EditableSong, SongEditDiff } from "@/lib/game";
 import { isValidYear } from "@/lib/utils";
 
 interface Props {
@@ -10,6 +10,14 @@ interface Props {
   hostId: string;
   partyKitHost: string;
   onSongsChange: (songs: EditableSong[]) => void;
+  // Chat-to-diff editing (docs/designs/ai-assisted-quiz-generation.md, Approach A). The host
+  // page owns the websocket, so it sends the request and hands the async reply back down here —
+  // PlaylistEditor stays a "dumb" presentational component, same as its existing props.
+  onProposeEdits?: (instruction: string) => void;
+  proposing?: boolean;
+  proposedDiff?: SongEditDiff[] | null;
+  proposeError?: string | null;
+  onProposedDiffConsumed?: () => void;
 }
 
 function partyUrl(partyKitHost: string, playlistId: string): string {
@@ -17,12 +25,17 @@ function partyUrl(partyKitHost: string, playlistId: string): string {
   return `${protocol}://${partyKitHost}/parties/playlist/${playlistId}`;
 }
 
-export default function PlaylistEditor({ playlistId, songs, hostId, partyKitHost, onSongsChange }: Props) {
+export default function PlaylistEditor({
+  playlistId, songs, hostId, partyKitHost, onSongsChange,
+  onProposeEdits, proposing, proposedDiff, proposeError, onProposedDiffConsumed,
+}: Props) {
   const [editing, setEditing] = useState<Record<string, Partial<EditableSong>>>({});
   const [saving, setSaving] = useState<Record<string, boolean>>({});
   const [savingAll, setSavingAll] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [deleting, setDeleting] = useState<Record<string, boolean>>({});
+  const [instruction, setInstruction] = useState("");
+  const [confirmingDiscard, setConfirmingDiscard] = useState(false);
 
   function setField(videoId: string, field: keyof EditableSong, value: string | number) {
     setEditing((prev) => ({
@@ -31,6 +44,22 @@ export default function PlaylistEditor({ playlistId, songs, hostId, partyKitHost
     }));
     setErrors((prev) => { const n = { ...prev }; delete n[videoId]; return n; });
   }
+
+  // Apply an AI-proposed diff through the exact same setField() path a human typing into a
+  // cell would use — this is the whole point of choosing chat-to-diff on the existing table:
+  // no new diff-rendering UI, the proposed changes just become dirty rows (isDirty/getDraft
+  // below already render those) that the host reviews and Saves like any manual edit. Never
+  // touches room/server state directly — that only happens when the host hits Save/Save all.
+  /* eslint-disable react-hooks/set-state-in-effect -- syncing an external async result (the
+   * party server's reply, handed down as a prop) into local review state is exactly what this
+   * effect is for; the diff array's own identity gates it to run once per proposal. */
+  useEffect(() => {
+    if (!proposedDiff || proposedDiff.length === 0) return;
+    for (const d of proposedDiff) setField(d.videoId, d.field, d.newValue ?? "");
+    onProposedDiffConsumed?.();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- setField is stable per render; only proposedDiff identity should re-trigger this
+  }, [proposedDiff]);
+  /* eslint-enable react-hooks/set-state-in-effect */
 
   function getDraft(song: EditableSong): EditableSong {
     const overrides = editing[song.videoId] ?? {};
@@ -200,8 +229,50 @@ export default function PlaylistEditor({ playlistId, songs, hostId, partyKitHost
 
   const dirtyCount = songs.filter(isDirty).length;
 
+  // Not a <form> — PlaylistEditor renders inside the host page's own outer <form
+  // onSubmit={handleStartGame}> (the whole "設定遊戲" panel), and HTML doesn't allow nested
+  // forms. A nested <form> here submitted the OUTER form instead on click (caught live: it
+  // reset the whole host page back to an unloaded state). Plain click/Enter handling instead.
+  function handleAskAI() {
+    const trimmed = instruction.trim();
+    if (!trimmed || proposing) return;
+    onProposeEdits?.(trimmed);
+    setInstruction("");
+  }
+
+  function handleDiscardAll() {
+    setEditing({});
+    setErrors({});
+    setConfirmingDiscard(false);
+  }
+
   return (
     <div className="flex flex-col gap-2 mt-2">
+      {onProposeEdits && (
+        <div className="flex flex-col gap-1">
+          <div className="flex gap-2">
+            <input
+              type="text"
+              value={instruction}
+              onChange={(e) => setInstruction(e.target.value)}
+              onKeyDown={(e) => { if (e.key === "Enter") handleAskAI(); }}
+              placeholder={'e.g. "the 3rd song\'s year is wrong, it\'s 1998"'}
+              disabled={proposing}
+              className="flex-1 rounded px-2 py-1.5 outline-none text-xs"
+              style={{ background: "rgba(26,26,46,.04)", color: "var(--ink)", border: "1.5px solid rgba(255,107,53,.15)" }}
+            />
+            <button
+              type="button"
+              onClick={handleAskAI}
+              disabled={proposing || !instruction.trim()}
+              style={{ flexShrink: 0, borderRadius: 8, background: "var(--orange)", padding: "6px 14px", fontSize: 12, fontWeight: 900, color: "white", border: "none", cursor: "pointer", opacity: proposing || !instruction.trim() ? 0.6 : 1 }}
+            >
+              {proposing ? "詢問中…" : "✨ Ask AI"}
+            </button>
+          </div>
+          {proposeError && <p className="text-red-400 text-[10px]">{proposeError}</p>}
+        </div>
+      )}
       <div className="flex items-center justify-between gap-2">
         <p className="text-xs text-gray-400">
           {playlistId
@@ -209,14 +280,34 @@ export default function PlaylistEditor({ playlistId, songs, hostId, partyKitHost
             : "Click Apply on a row to update it for this game. Save the playlist above to persist edits across sessions."}
         </p>
         {dirtyCount > 0 && (
-          <button
-            type="button"
-            disabled={savingAll}
-            onClick={() => void handleSaveAll()}
-            style={{ flexShrink: 0, borderRadius: 8, background: "var(--orange)", padding: "6px 12px", fontSize: 12, fontWeight: 900, color: "white", border: "none", cursor: "pointer" }}
-          >
-            {savingAll ? "Saving…" : `${playlistId ? "Save" : "Apply"} all (${dirtyCount})`}
-          </button>
+          <div className="flex gap-2 flex-shrink-0">
+            {confirmingDiscard ? (
+              <>
+                <span className="text-[11px] self-center" style={{ color: "var(--text3)" }}>放棄所有更改？</span>
+                <button type="button" onClick={handleDiscardAll}
+                  style={{ borderRadius: 8, background: "rgba(255,59,92,.12)", color: "var(--red)", padding: "6px 10px", fontSize: 12, fontWeight: 700, border: "none", cursor: "pointer" }}>
+                  確認
+                </button>
+                <button type="button" onClick={() => setConfirmingDiscard(false)}
+                  style={{ borderRadius: 8, background: "rgba(26,26,46,.04)", color: "var(--text3)", padding: "6px 10px", fontSize: 12, fontWeight: 700, border: "none", cursor: "pointer" }}>
+                  取消
+                </button>
+              </>
+            ) : (
+              <button type="button" onClick={() => setConfirmingDiscard(true)}
+                style={{ borderRadius: 8, background: "rgba(26,26,46,.04)", color: "var(--text3)", padding: "6px 10px", fontSize: 12, fontWeight: 700, border: "none", cursor: "pointer" }}>
+                放棄更改
+              </button>
+            )}
+            <button
+              type="button"
+              disabled={savingAll}
+              onClick={() => void handleSaveAll()}
+              style={{ borderRadius: 8, background: "var(--orange)", padding: "6px 12px", fontSize: 12, fontWeight: 900, color: "white", border: "none", cursor: "pointer" }}
+            >
+              {savingAll ? "Saving…" : `${playlistId ? "Save" : "Apply"} all (${dirtyCount})`}
+            </button>
+          </div>
         )}
       </div>
       <div className="overflow-x-auto rounded-xl" style={{ border: "1px solid rgba(255,107,53,.12)" }}>
