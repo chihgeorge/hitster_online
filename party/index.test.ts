@@ -2056,7 +2056,7 @@ describe("Lyrics Mode: generateLyricsPreview broadcasts LYRICS_PREVIEW", () => {
 
     const room = new HitsterRoom(mockRoom as any);
     const conn = makeConn();
-    await send(room, conn, { type: "LOAD_PLAYLIST", hostId: "host-uuid", playlistUrl: "PLtest" });
+    await send(room, conn, { type: "LOAD_PLAYLIST", hostId: "host-uuid", playlistUrl: "PLtest", gameMode: "lyrics" });
     // Flush all pending microtasks so the void generateLyricsPreview() completes
     await new Promise<void>((resolve) => setTimeout(resolve, 0));
 
@@ -2069,6 +2069,28 @@ describe("Lyrics Mode: generateLyricsPreview broadcasts LYRICS_PREVIEW", () => {
     expect(finalPreview?.rounds.length).toBeGreaterThan(0);
     // resolveLyricsForTracks should NOT be called (all cached)
     expect(vi.mocked(resolveLyricsForTracks)).not.toHaveBeenCalled();
+  });
+
+  // Regression: LOAD_PLAYLIST used to kick off lyrics preview generation unconditionally,
+  // spending real Anthropic calls even when the host only ever plays timeline mode.
+  it.each([
+    ["timeline mode", "timeline" as const],
+    ["gameMode omitted", undefined],
+  ])("does not generate a lyrics preview when the host loads in %s", async (_label, gameMode) => {
+    vi.mocked(fetchPlaylistItems).mockResolvedValue([
+      { videoId: "v1", title: "Song A", description: "", channelTitle: "Artist" },
+    ]);
+    vi.mocked(fetchEmbeddableVideoIds).mockResolvedValue(new Set(["v1"]));
+    vi.mocked(resolveTracksWithAI).mockResolvedValue(new Map());
+
+    const room = new HitsterRoom(makeRoom() as any);
+    const conn = makeConn();
+    await send(room, conn, { type: "LOAD_PLAYLIST", hostId: "host-uuid", playlistUrl: "PLtest", gameMode });
+    await new Promise<void>((resolve) => setTimeout(resolve, 0));
+
+    const broadcasts = (room.room.broadcast as ReturnType<typeof vi.fn>).mock.calls
+      .map((c: unknown[]) => JSON.parse(c[0] as string));
+    expect(broadcasts.some((m: { type: string }) => m.type === "LYRICS_PREVIEW")).toBe(false);
   });
 });
 

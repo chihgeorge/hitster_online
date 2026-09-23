@@ -15,6 +15,7 @@ import {
   type PublicLyricsGameState,
   type PublicLyricsRound,
   type EditableLyricRound,
+  type GameMode,
 } from "../lib/game";
 import { isValidYear, sanitizeText } from "../lib/utils";
 import {
@@ -268,7 +269,7 @@ export default class HitsterRoom implements Party.Server {
         this.handlePlace(sender, msg.playerId, msg.position);
         break;
       case "LOAD_PLAYLIST":
-        await this.handleLoadPlaylist(sender, msg.hostId, msg.playlistUrl);
+        await this.handleLoadPlaylist(sender, msg.hostId, msg.playlistUrl, msg.gameMode);
         break;
       case "ABORT_LOAD":
         if (this.authorizeHost(sender, msg.hostId)) this.abortLoad = true;
@@ -536,7 +537,7 @@ export default class HitsterRoom implements Party.Server {
     return "playlist_load_failed";
   }
 
-  private async handleLoadPlaylist(conn: Party.Connection, hostId: string, playlistUrl: string) {
+  private async handleLoadPlaylist(conn: Party.Connection, hostId: string, playlistUrl: string, gameMode?: GameMode) {
     if (this.state.phase !== "lobby") {
       this.sendTo(conn, { type: "PLAYLIST_LOAD_ERROR", error: "wrong_phase" });
       return;
@@ -628,10 +629,14 @@ export default class HitsterRoom implements Party.Server {
         songs: allSongs,
       });
 
-      // Kick off lyrics generation in background immediately after playlist is ready.
-      // Results are broadcast via LYRICS_PREVIEW and cached in DO storage for fast START_LYRICS_GAME.
-      const { anthropicKey: lyricsKey } = this.resolveEnv();
-      void this.generateLyricsPreview(allSongs, aiResults, lyricsKey);
+      // Kick off lyrics generation in background immediately after playlist is ready — but only
+      // when the host is actually in Lyrics mode. This used to run unconditionally on every
+      // load, spending real Anthropic calls generating lyric questions even for a host who only
+      // ever plays timeline mode.
+      if (gameMode === "lyrics") {
+        const { anthropicKey: lyricsKey } = this.resolveEnv();
+        void this.generateLyricsPreview(allSongs, aiResults, lyricsKey);
+      }
     } catch (err) {
       this.sendTo(conn, { type: "PLAYLIST_LOAD_ERROR", error: this.parseErrorCode(err) });
     }

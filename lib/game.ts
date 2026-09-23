@@ -137,7 +137,10 @@ export type ClientMessage =
   | { type: "JOIN"; name: string; playerId: string }
   | { type: "REJOIN"; playerId: string; name: string }
   | { type: "PLACE"; playerId: string; position: number }
-  | { type: "LOAD_PLAYLIST"; hostId: string; playlistUrl: string }
+  // gameMode gates lyrics preview generation server-side (handleLoadPlaylist): omitted or
+  // "timeline" skips it entirely, since generating AI lyric questions for a mode the host
+  // isn't playing was pure waste (spent real Anthropic calls for both modes on every load).
+  | { type: "LOAD_PLAYLIST"; hostId: string; playlistUrl: string; gameMode?: GameMode }
   | { type: "ABORT_LOAD"; hostId: string }
   | { type: "START_GAME"; hostId: string; playlistUrl: string; targetCardCount?: number; songs?: EditableSong[] }
   | { type: "START_LYRICS_GAME"; hostId: string; playlistUrl: string; config: LyricsGameConfig; lyricOverrides?: LyricOverride[] }

@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.11.1.0] — 2026-09-22
+
+### Fixed
+- **Lyrics preview no longer generates when the host is loading a playlist for timeline mode.** `LOAD_PLAYLIST` used to kick off lyrics question/answer generation unconditionally regardless of which mode the host had selected, spending real Anthropic calls on a mode the host might never play. The client now sends its current mode, and the server only generates a lyrics preview when it's `"lyrics"`
+
 ## [0.11.0.0] — 2026-09-22
 
 ### Added

@@ -227,7 +227,7 @@ export default function HostPage() {
     pendingSavedIdRef.current = null;
     loadedUrlRef.current = url;
     nextPromptAtRef.current = Date.now() + 5 * 60 * 1000;
-    send({ type: "LOAD_PLAYLIST", hostId: hostIdRef.current, playlistUrl: url });
+    send({ type: "LOAD_PLAYLIST", hostId: hostIdRef.current, playlistUrl: url, gameMode });
   }
 
   function handleStartGame(e: React.FormEvent) {
