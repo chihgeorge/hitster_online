@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.12.0.0] — 2026-09-22
+
+### Added
+- **Standalone quiz-bank page at `/playlists`** (T5 of docs/designs/decouple-quiz-bank.md): create and edit playlists ahead of time, with no room required — the headline feature the T1-T4 backend work was building toward. Paste a YouTube URL + name to create (using the room-less `RESOLVE_FROM_URL` action), see your library list from any device (via `party/library.ts`), edit songs manually (reuses the existing `PlaylistEditor` table), delete. AI chat-to-diff editing isn't wired up here yet (deferred to its own follow-up, T8) — manual editing only for now, matching what the room's editor already supported before v0.9.0.0
+
 ## [0.11.3.0] — 2026-09-22
 
 ### Added
