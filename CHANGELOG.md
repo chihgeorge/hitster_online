@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.13.0.0] — 2026-09-23
+
+### Added
+- **Lyrics Mode's blank-selection is now grounded in a real popularity signal** (docs/designs/lyrics-question-search-grounding.md): before picking which line to blank, a dedicated single-purpose Anthropic call (`lib/lyrics-popularity.ts`) searches the web for which line of the song's chorus is actually most-cited by fans, and the result is injected as plain grounding text into the existing generation prompt — the generation call itself never gets search-tool access, so there's no ambiguity about whether a pick was actually grounded (Approach C from the design doc, chosen over letting the model decide mid-generation whether to search). Cached per-song in Durable Object storage (`lyrics-popularity:${videoId}`), same convention as `lyrics:`/`lyrics-sonnet:`, so repeat loads don't re-spend the search cost. Applies to the Sonnet re-resolve step for the actual game deck (not the cheaper Haiku bulk preview, to bound cost). Any fetch failure for a song falls back to today's ungrounded pick for that song only — never blocks the load. Validated by two spikes against the real `CPOP_SEED` catalog before implementation: both the model-directed and the deterministic-pre-fetch mechanisms changed 8/8 picks vs. today's baseline, and recovered 3 songs the baseline currently drops entirely on low AI confidence
+
 ## [0.12.10.0] — 2026-09-23
 
 ### Fixed

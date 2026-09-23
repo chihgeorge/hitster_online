@@ -300,3 +300,47 @@ describe("resolveLyricsForTracks — Anthropic error handling", () => {
     expect(result.size).toBe(1);
   });
 });
+
+// docs/designs/lyrics-question-search-grounding.md — the popularitySummaries param
+describe("popularity grounding (search-based blank selection)", () => {
+  it("includes a POPULARITY line in the prompt when a summary is provided for the track", async () => {
+    mockFetch.mockResolvedValueOnce(lrclibGetResponse());
+    mockFetch.mockResolvedValueOnce(
+      anthropicResponse([
+        { v: "v1", language: "en", lyricContext: "I don't believe that ___\nBackbeat", blankSentence: "anybody feels", acceptableVariants: [] },
+      ])
+    );
+
+    const summaries = new Map([["v1", "This exact line is cited as the song's most quoted moment."]]);
+    await resolveLyricsForTracks([TRACK], "key", undefined, undefined, summaries);
+
+    const body = JSON.parse(mockFetch.mock.calls[1][1].body as string);
+    expect(body.messages[0].content).toContain("POPULARITY: This exact line is cited");
+  });
+
+  it("omits the POPULARITY line for a track with no summary — falls back to today's prompt", async () => {
+    mockFetch.mockResolvedValueOnce(lrclibGetResponse());
+    mockFetch.mockResolvedValueOnce(
+      anthropicResponse([{ v: "v1", language: "en", lyricContext: "x ___", blankSentence: "y", acceptableVariants: [] }])
+    );
+
+    // Empty summaries map (the default) — same as not passing the param at all.
+    await resolveLyricsForTracks([TRACK], "key");
+
+    const body = JSON.parse(mockFetch.mock.calls[1][1].body as string);
+    expect(body.messages[0].content).not.toContain("POPULARITY:");
+  });
+
+  it("never sends a tools param — the generation call has no search access (Approach C's core property)", async () => {
+    mockFetch.mockResolvedValueOnce(lrclibGetResponse());
+    mockFetch.mockResolvedValueOnce(
+      anthropicResponse([{ v: "v1", language: "en", lyricContext: "x ___", blankSentence: "y", acceptableVariants: [] }])
+    );
+
+    const summaries = new Map([["v1", "some popularity signal"]]);
+    await resolveLyricsForTracks([TRACK], "key", undefined, undefined, summaries);
+
+    const body = JSON.parse(mockFetch.mock.calls[1][1].body as string);
+    expect(body.tools).toBeUndefined();
+  });
+});

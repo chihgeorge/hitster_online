@@ -21,6 +21,7 @@ import {
 import { isValidYear, sanitizeText, shuffle } from "../lib/utils";
 import { proposeEdits, proposeLyricEdits, type AITrackMeta } from "../lib/ai-metadata";
 import { resolveLyricsForTracks, MODEL_GAME, type LyricsResult } from "../lib/lyrics-resolver";
+import { fetchPopularitySummaries } from "../lib/lyrics-popularity";
 import { isCorrect, computePoints } from "../lib/fuzzy";
 import {
   resolvePlaylistFromUrl,
@@ -1093,8 +1094,32 @@ export default class HitsterRoom implements Party.Server {
       );
       const sonnetUncached = deckCandidates.filter((t) => !sonnetCached.has(t.videoId));
 
+      // Popularity grounding (docs/designs/lyrics-question-search-grounding.md, Approach C):
+      // cached per videoId like the lyrics results above, since each summary costs a real
+      // Anthropic call. Only fetched for songs actually getting a fresh Sonnet resolve — the
+      // deck's already-cached rounds don't need it re-fetched. Best-effort: a fetch failure for
+      // any song just means that song falls back to resolveLyricsBatch's ungrounded prompt.
+      let popularitySummaries = new Map<string, string>();
+      if (anthropicKey && sonnetUncached.length > 0) {
+        const popularityCacheRaw = await storageBatchGet<string>(this.room.storage,
+          sonnetUncached.map((t) => `lyrics-popularity:${t.videoId}`)
+        );
+        popularitySummaries = new Map([...popularityCacheRaw].map(([k, v]) => [k.slice(18), v]));
+        const popularityUncached = sonnetUncached.filter((t) => !popularitySummaries.has(t.videoId));
+        if (popularityUncached.length > 0) {
+          const fresh = await fetchPopularitySummaries(popularityUncached, anthropicKey);
+          if (fresh.size > 0) {
+            const entries = [...fresh].map(([id, s]) => [`lyrics-popularity:${id}`, s] as const);
+            for (let i = 0; i < entries.length; i += 128) {
+              this.room.storage.put(Object.fromEntries(entries.slice(i, i + 128))).catch(() => {});
+            }
+            for (const [id, s] of fresh) popularitySummaries.set(id, s);
+          }
+        }
+      }
+
       const sonnetFresh = anthropicKey && sonnetUncached.length > 0
-        ? await resolveLyricsForTracks(sonnetUncached, anthropicKey, undefined, MODEL_GAME)
+        ? await resolveLyricsForTracks(sonnetUncached, anthropicKey, undefined, MODEL_GAME, popularitySummaries)
         : new Map<string, LyricsResult>();
 
       if (sonnetFresh.size > 0) {

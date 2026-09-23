@@ -43,24 +43,32 @@ async function resolveLyricsBatch(
   tracks: TrackInput[],
   apiKey: string,
   model: string = MODEL_BULK,
-  fetchedLyrics: Map<string, string> = new Map()
+  fetchedLyrics: Map<string, string> = new Map(),
+  popularitySummaries: Map<string, string> = new Map()
 ): Promise<Map<string, LyricsResult>> {
   const result = new Map<string, LyricsResult>();
   if (tracks.length === 0) return result;
 
   // Build per-track prompt lines. Tracks with real lyrics get the full text;
   // tracks without fall back to Claude's memory (with low-confidence escape hatch).
+  // A popularity summary (docs/designs/lyrics-question-search-grounding.md), when present,
+  // is appended as plain grounding text — never a tool the model can invoke here. Fetched
+  // deterministically beforehand (lib/lyrics-popularity.ts); missing for a song (search
+  // failure, timeout, nothing found) just means that song falls back to this prompt's
+  // existing unguided "pick a memorable couplet" behavior — same as today, no error, no gap.
   const promptLines = tracks.map((t) => {
     const lyrics = fetchedLyrics.get(t.videoId);
     const lang = detectLanguageHint(t.title, t.artist);
+    const popularity = popularitySummaries.get(t.videoId);
+    const popularityLine = popularity ? `\nPOPULARITY: ${popularity}` : "";
     if (lyrics) {
       // Truncate to ~1500 chars to stay within token budget while keeping the chorus.
       // Sanitize bare `---` lines so they don't break the per-track block separator.
       const truncated = (lyrics.length > 1500 ? lyrics.slice(0, 1500) + "\n[…]" : lyrics)
         .replace(/^-{3,}$/gm, "- - -");
-      return `${t.videoId} | "${t.title}" by ${t.artist} (${t.year}) | language: ${lang}\nLYRICS:\n${truncated}\n---`;
+      return `${t.videoId} | "${t.title}" by ${t.artist} (${t.year}) | language: ${lang}${popularityLine}\nLYRICS:\n${truncated}\n---`;
     }
-    return `${t.videoId} | "${t.title}" by ${t.artist} (${t.year}) | language: ${lang} | NO_LYRICS`;
+    return `${t.videoId} | "${t.title}" by ${t.artist} (${t.year}) | language: ${lang}${popularityLine} | NO_LYRICS`;
   });
 
   const prompt = promptLines.join("\n\n");
@@ -69,6 +77,7 @@ async function resolveLyricsBatch(
 
 When LYRICS are provided: use ONLY the actual lyrics text supplied. Do NOT add, change, or invent words.
 When NO_LYRICS: only output lyrics you know VERBATIM from memory. If uncertain, return {"v":"VIDEO_ID","blankSentence":""}.
+When a POPULARITY line is present: it was pre-fetched from a real web search about which line real listeners actually cite/quote for this song. Prefer the couplet it points to — matched against the real LYRICS text, never inventing wording the POPULARITY line implies but LYRICS doesn't contain — over your own guess at what's memorable. No POPULARITY line just means none was found; pick as you do today.
 
 Return ONLY a JSON array, one object per input, same order:
 [{"v":"VIDEO_ID","language":"zh-TW"|"en"|"ja"|"ko","lyricContext":"couplet line with ___ then next line","blankSentence":"the blanked phrase","acceptableVariants":["variant1","variant2"]},...]
@@ -98,6 +107,9 @@ Rules:
       max_tokens: 4000,
       // Sonnet 5 thinks by default and hidden thinking can eat the whole budget, returning no text.
       thinking: { type: "disabled" },
+      // Deliberately NO tools param here — Approach C's core property. Whatever popularity
+      // grounding this call gets was fetched by a separate, dedicated call before this one
+      // (lib/lyrics-popularity.ts); the model never decides mid-generation whether to search.
       system: systemPrompt,
       messages: [{ role: "user", content: prompt }],
     }),
@@ -176,12 +188,18 @@ Rules:
  * Entries with empty blankSentence (low AI confidence) are excluded from the result.
  *
  * @param onBatchDone  Called after each AI batch resolves (progressive preview screen).
+ * @param popularitySummaries  Optional, pre-fetched (docs/designs/lyrics-question-search-grounding.md,
+ *   lib/lyrics-popularity.ts) — the caller owns fetching and DO-caching these (same convention
+ *   as the lyrics-sonnet:/lyrics: cache prefixes), since they cost real Anthropic calls and
+ *   shouldn't be silently re-fetched here on every resolve. A song missing from this map just
+ *   falls back to the existing ungrounded prompt for that song — never an error.
  */
 export async function resolveLyricsForTracks(
   tracks: TrackInput[],
   apiKey: string,
   onBatchDone?: (partial: Map<string, LyricsResult>) => void,
-  model: string = MODEL_BULK
+  model: string = MODEL_BULK,
+  popularitySummaries: Map<string, string> = new Map()
 ): Promise<Map<string, LyricsResult>> {
   const combined = new Map<string, LyricsResult>();
   if (!apiKey || tracks.length === 0) return combined;
@@ -200,7 +218,7 @@ export async function resolveLyricsForTracks(
   for (let i = 0; i < batches.length; i += MAX_CONCURRENT) {
     const window = batches.slice(i, i + MAX_CONCURRENT);
     const results = await Promise.allSettled(
-      window.map((b) => resolveLyricsBatch(b, apiKey, model, fetchedLyrics))
+      window.map((b) => resolveLyricsBatch(b, apiKey, model, fetchedLyrics, popularitySummaries))
     );
     for (const r of results) {
       if (r.status === "fulfilled") {

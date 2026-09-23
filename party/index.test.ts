@@ -61,11 +61,17 @@ vi.mock("../lib/ai-metadata", () => ({
 
 vi.mock("../lib/lyrics-resolver", () => ({
   resolveLyricsForTracks: vi.fn().mockResolvedValue(new Map()),
+  MODEL_GAME: "claude-sonnet-5",
+}));
+
+vi.mock("../lib/lyrics-popularity", () => ({
+  fetchPopularitySummaries: vi.fn().mockResolvedValue(new Map()),
 }));
 
 import { fetchPlaylistItems, fetchEmbeddableVideoIds } from "../lib/youtube";
 import { resolveTracksWithAI, proposeEdits, proposeLyricEdits } from "../lib/ai-metadata";
 import { resolveLyricsForTracks } from "../lib/lyrics-resolver";
+import { fetchPopularitySummaries } from "../lib/lyrics-popularity";
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -1608,6 +1614,58 @@ describe("Lyrics Mode: START_LYRICS_GAME", () => {
     await send(room, stranger, { type: "START_LYRICS_GAME", hostId: "bad-id", playlistUrl: "PLtest", config: { timerSeconds: 60, totalRounds: 1, fuzzyEnabled: false } });
     const lastMsg = lastSentTo(stranger);
     expect(lastMsg?.type).toBe("ERROR");
+  });
+
+  it("fetches and caches popularity summaries for songs needing a fresh Sonnet resolve (docs/designs/lyrics-question-search-grounding.md)", async () => {
+    process.env.ANTHROPIC_API_KEY = "test-key";
+    vi.mocked(fetchPlaylistItems).mockResolvedValue([fakeLyricsTrack()]);
+    vi.mocked(fetchEmbeddableVideoIds).mockResolvedValue(new Set(["vid1"]));
+    vi.mocked(resolveLyricsForTracks).mockResolvedValue(
+      new Map([["vid1", CACHED_LYRICS]])
+    );
+    vi.mocked(fetchPopularitySummaries).mockResolvedValue(
+      new Map([["vid1", "最有名的一句是..."]])
+    );
+
+    const mockRoom = makeRoom();
+    // lyrics: (Haiku preview) cached so the deck can build; lyrics-sonnet: and
+    // lyrics-popularity: both NOT cached, so both fresh-fetch paths fire.
+    (mockRoom.storage.get as ReturnType<typeof vi.fn>).mockImplementation((keys: unknown) =>
+      Promise.resolve(new Map(Array.isArray(keys)
+        ? keys.filter((k: string) => k.startsWith("lyrics:") && !k.startsWith("lyrics-sonnet:") && !k.startsWith("lyrics-popularity:"))
+            .map((k: string) => [k, CACHED_LYRICS])
+        : []))
+    );
+
+    const room = new HitsterRoom(mockRoom as any);
+    const hostConn = makeConn("host-conn");
+    await send(room, hostConn, {
+      type: "START_LYRICS_GAME", hostId: "host-uuid", playlistUrl: "PLtest",
+      config: { timerSeconds: 60, totalRounds: 1, fuzzyEnabled: false },
+    });
+
+    expect(vi.mocked(fetchPopularitySummaries)).toHaveBeenCalledTimes(1);
+    const [tracksArg] = vi.mocked(fetchPopularitySummaries).mock.calls[0];
+    expect(tracksArg.map((t) => t.videoId)).toContain("vid1");
+
+    // resolveLyricsForTracks (the Sonnet call) receives the fresh summary as its 5th arg.
+    const sonnetCall = vi.mocked(resolveLyricsForTracks).mock.calls.at(-1)!;
+    const summariesArg = sonnetCall[4] as Map<string, string>;
+    expect(summariesArg.get("vid1")).toBe("最有名的一句是...");
+
+    // Result gets cached under lyrics-popularity: for next time.
+    const putCalls = (mockRoom.storage.put as ReturnType<typeof vi.fn>).mock.calls;
+    const cachedPopularity = putCalls.find((c: any[]) => "lyrics-popularity:vid1" in (c[0] as object));
+    expect(cachedPopularity).toBeDefined();
+
+    delete process.env.ANTHROPIC_API_KEY;
+  });
+
+  it("skips fetching popularity when the sonnet cache already has everything", async () => {
+    process.env.ANTHROPIC_API_KEY = "test-key";
+    await setupLyricsGame(); // pre-caches lyrics: and lyrics-sonnet: — no uncached tracks
+    expect(vi.mocked(fetchPopularitySummaries)).not.toHaveBeenCalled();
+    delete process.env.ANTHROPIC_API_KEY;
   });
 
   it("returns error when no lyrics resolved and no cache", async () => {
