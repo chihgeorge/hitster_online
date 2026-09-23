@@ -81,6 +81,16 @@ export interface EditableSong {
   year: number | null;
 }
 
+/** One field-level change AI proposes in response to a natural-language edit instruction —
+ * see lib/ai-metadata.ts's proposeEdits(). Always shown to the host as a reviewable diff
+ * (rendered as a dirty PlaylistEditor row) before it's ever applied. */
+export interface SongEditDiff {
+  videoId: string;
+  field: "title" | "artist" | "year";
+  oldValue: string | number | null;
+  newValue: string | number | null;
+}
+
 export interface SavedPlaylist {
   id: string;
   name: string;
@@ -116,7 +126,8 @@ export type ClientMessage =
   | { type: "RESET_LYRICS_GAME"; hostId: string }
   | { type: "CONFIRM_LYRICS_PREVIEW"; hostId: string }
   | { type: "GET_LYRICS_AUDIO"; screenId: string }
-  | { type: "JOIN_SCREEN"; screenId: string };
+  | { type: "JOIN_SCREEN"; screenId: string }
+  | { type: "PROPOSE_EDITS"; hostId: string; instruction: string; songs: EditableSong[] };
 
 export type SongDiagnostic = {
   title: string;
@@ -150,7 +161,9 @@ export type ServerMessage =
   | { type: "PLAYLIST_LOAD_ERROR"; error: string }
   | { type: "PLAYLIST_SAVED"; playlistId: string }
   | { type: "TOO_LATE" }
-  | { type: "LYRICS_PREVIEW"; rounds: PublicLyricsRound[]; loading: boolean };
+  | { type: "LYRICS_PREVIEW"; rounds: PublicLyricsRound[]; loading: boolean }
+  | { type: "EDITS_PROPOSED"; diff: SongEditDiff[] }
+  | { type: "EDITS_PROPOSAL_FAILED"; error: string };
 
 // --- Placement evaluation (core game logic) ---
 

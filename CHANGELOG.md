@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.9.0.0] — 2026-09-22
+
+### Added
+- **AI chat-to-diff editing for the host's song table.** Instead of clicking into table cells, a host can now type a fix in plain language — "the 2nd song's year is wrong, it's 1970" — and Claude proposes the change as a reviewable dirty row, exactly like a manual edit, before it's ever applied. Matches the workaround hosts were already doing by hand (pasting the table into a separate chat model)
+
 ## [0.8.2.0] — 2026-09-22
 
 ### Fixed

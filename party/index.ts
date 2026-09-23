@@ -24,7 +24,7 @@ import {
   channelToArtist,
   extractYearFromTitle,
 } from "../lib/youtube";
-import { resolveTracksWithAI, type AITrackMeta } from "../lib/ai-metadata";
+import { resolveTracksWithAI, proposeEdits, type AITrackMeta } from "../lib/ai-metadata";
 import { resolveLyricsForTracks, MODEL_GAME, type LyricsResult } from "../lib/lyrics-resolver";
 import { isCorrect, computePoints } from "../lib/fuzzy";
 
@@ -263,6 +263,9 @@ export default class HitsterRoom implements Party.Server {
         break;
       case "LOAD_SAVED_PLAYLIST":
         this.handleLoadSavedPlaylist(sender, msg.hostId, msg.playlistId, msg.songs);
+        break;
+      case "PROPOSE_EDITS":
+        await this.handleProposeEdits(sender, msg.hostId, msg.instruction, msg.songs);
         break;
       case "START_GAME":
         await this.handleStartGame(sender, msg.hostId, msg.playlistUrl, msg.targetCardCount, msg.songs);
@@ -752,6 +755,42 @@ export default class HitsterRoom implements Party.Server {
       songCount: allSongs.length,
       songs: allSongs,
     });
+  }
+
+  /**
+   * Chat-to-diff editing (see docs/designs/ai-assisted-quiz-generation.md, Approach A):
+   * proposes field-level edits to the host's current song list from a natural-language
+   * instruction. Never mutates room state itself — the diff is sent only to the requesting
+   * connection, which renders it as a reviewable change (PlaylistEditor's existing dirty-row
+   * state) before the host explicitly saves it, same as a manually typed edit would be.
+   */
+  private async handleProposeEdits(
+    conn: Party.Connection,
+    hostId: string,
+    instruction: string,
+    songs: EditableSong[]
+  ) {
+    if (!this.authorizeHost(conn, hostId)) {
+      this.sendTo(conn, { type: "EDITS_PROPOSAL_FAILED", error: "unauthorized" });
+      return;
+    }
+    if (!Array.isArray(songs) || songs.length === 0 || typeof instruction !== "string" || !instruction.trim()) {
+      this.sendTo(conn, { type: "EDITS_PROPOSAL_FAILED", error: "invalid_request" });
+      return;
+    }
+
+    try {
+      const { anthropicKey } = this.resolveEnv();
+      if (!anthropicKey) {
+        this.sendTo(conn, { type: "EDITS_PROPOSAL_FAILED", error: "api_key_missing" });
+        return;
+      }
+      const diff = await proposeEdits(instruction, songs, anthropicKey);
+      this.sendTo(conn, { type: "EDITS_PROPOSED", diff });
+    } catch (err) {
+      console.error(`[handleProposeEdits] ${err instanceof Error ? err.message : "unknown_error"}`);
+      this.sendTo(conn, { type: "EDITS_PROPOSAL_FAILED", error: "propose_failed" });
+    }
   }
 
   private async handleStartGame(
