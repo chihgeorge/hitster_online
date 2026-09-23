@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { resolveTracksWithAI, proposeEdits } from "./ai-metadata";
-import type { EditableSong } from "./game";
+import { resolveTracksWithAI, proposeEdits, proposeLyricEdits } from "./ai-metadata";
+import type { EditableSong, EditableLyricRound } from "./game";
 
 // Mock fetch so tests don't hit the network — same pattern as lib/lyrics-fetcher.test.ts.
 // Regression: this file didn't exist before — ai-metadata.ts was only indirectly exercised
@@ -115,5 +115,67 @@ describe("proposeEdits", () => {
     mockFetch.mockResolvedValueOnce(anthropicResponse('```json\n[{"v":"v1","f":"year","n":2000}]\n```'));
     const diff = await proposeEdits("fix it", songs, "fake-key");
     expect(diff).toEqual([{ videoId: "v1", field: "year", oldValue: 1994, newValue: 2000 }]);
+  });
+});
+
+describe("proposeLyricEdits", () => {
+  const rounds: EditableLyricRound[] = [
+    { videoId: "v1", title: "愛你", artist: "Twice", lyricContext: "I want you 想要有 ___ 陪伴", blankSentence: "你的愛" },
+    { videoId: "v2", title: "Dynamite", artist: "BTS", lyricContext: "Cos I, I, I'm in the ___", blankSentence: "stars" },
+  ];
+
+  it("returns [] with no API key, no rounds, or a blank instruction", async () => {
+    expect(await proposeLyricEdits("fix it", rounds, "")).toEqual([]);
+    expect(await proposeLyricEdits("fix it", [], "key")).toEqual([]);
+    expect(await proposeLyricEdits("   ", rounds, "key")).toEqual([]);
+    expect(mockFetch).not.toHaveBeenCalled();
+  });
+
+  it("proposes a blankSentence fix, computing oldValue from the passed-in rounds — not the model's echo", async () => {
+    mockFetch.mockResolvedValueOnce(anthropicResponse(`[{"v":"v1","f":"blankSentence","n":"你的心"}]`));
+    const diff = await proposeLyricEdits("the first round's answer has a typo, it's 你的心", rounds, "fake-key");
+    expect(diff).toEqual([{ videoId: "v1", field: "blankSentence", oldValue: "你的愛", newValue: "你的心" }]);
+  });
+
+  it("proposes a lyricContext fix", async () => {
+    mockFetch.mockResolvedValueOnce(anthropicResponse(`[{"v":"v2","f":"lyricContext","n":"Cos I, I, I'm in the ___ tonight"}]`));
+    const diff = await proposeLyricEdits("add more context to the 2nd round", rounds, "fake-key");
+    expect(diff).toEqual([{ videoId: "v2", field: "lyricContext", oldValue: "Cos I, I, I'm in the ___", newValue: "Cos I, I, I'm in the ___ tonight" }]);
+  });
+
+  it("drops a no-op change (new value equals current value)", async () => {
+    mockFetch.mockResolvedValueOnce(anthropicResponse(`[{"v":"v1","f":"blankSentence","n":"你的愛"}]`));
+    const diff = await proposeLyricEdits("check the answer", rounds, "fake-key");
+    expect(diff).toEqual([]);
+  });
+
+  it("ignores a proposed change for a videoId not in the input list — never invents a round", async () => {
+    mockFetch.mockResolvedValueOnce(anthropicResponse(`[{"v":"not-in-list","f":"blankSentence","n":"x"}]`));
+    const diff = await proposeLyricEdits("change something", rounds, "fake-key");
+    expect(diff).toEqual([]);
+  });
+
+  it("returns [] when the instruction doesn't map to any round (model returns [])", async () => {
+    mockFetch.mockResolvedValueOnce(anthropicResponse(`[]`));
+    const diff = await proposeLyricEdits("what's the capital of France", rounds, "fake-key");
+    expect(diff).toEqual([]);
+  });
+
+  it("fails open to [] on a whole-call API error", async () => {
+    mockFetch.mockResolvedValueOnce(anthropicResponse("", false));
+    const diff = await proposeLyricEdits("fix it", rounds, "fake-key");
+    expect(diff).toEqual([]);
+  });
+
+  it("fails open to [] on a malformed (non-JSON) response", async () => {
+    mockFetch.mockResolvedValueOnce(anthropicResponse("not json at all"));
+    const diff = await proposeLyricEdits("fix it", rounds, "fake-key");
+    expect(diff).toEqual([]);
+  });
+
+  it("strips markdown code fences the model might add", async () => {
+    mockFetch.mockResolvedValueOnce(anthropicResponse('```json\n[{"v":"v1","f":"blankSentence","n":"新答案"}]\n```'));
+    const diff = await proposeLyricEdits("fix it", rounds, "fake-key");
+    expect(diff).toEqual([{ videoId: "v1", field: "blankSentence", oldValue: "你的愛", newValue: "新答案" }]);
   });
 });

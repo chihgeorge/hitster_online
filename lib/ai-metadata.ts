@@ -4,7 +4,7 @@
 // covers essentially all catalog music through mid-2025.
 // Falls back gracefully: returns an empty Map on any API or parse failure.
 
-import type { EditableSong, SongEditDiff } from "./game";
+import type { EditableSong, SongEditDiff, EditableLyricRound, LyricEditDiff } from "./game";
 
 export interface AITrackMeta {
   title: string;
@@ -240,6 +240,89 @@ export async function proposeEdits(
       if (!n || n === song[field]) continue;
       diffs.push({ videoId, field, oldValue: song[field], newValue: n });
     }
+  }
+  return diffs;
+}
+
+const PROPOSE_LYRIC_EDITS_SYSTEM_PROMPT = `You edit a Lyrics-mode music quiz's rounds based on a host's plain-language instruction.
+
+Each round shows a lyric snippet with one line blanked out (lyricContext, using ___ for the blank) and the blanked line itself (blankSentence, the correct answer players must type).
+
+Given the current rounds and an instruction, return ONLY a JSON array of field-level changes:
+[{"v":"VIDEO_ID","f":"lyricContext"|"blankSentence","n":"new value"},...]
+
+Rules:
+- v: the videoId of the round being changed — must match one from the input list exactly.
+- f: which field changes — "lyricContext" (the surrounding lines, with ___ marking the blank) or "blankSentence" (the actual blanked line).
+- n: the new value as a string.
+- lyricContext must still contain a "___" placeholder marking exactly where blankSentence fits.
+- Only include entries for fields that actually need to change per the instruction — never restate unchanged rounds.
+- If the instruction doesn't clearly map to any round in the list, return an empty array [].
+- Preserve CJK characters exactly.`;
+
+type RawLyricEditDiff = { v?: unknown; f?: unknown; n?: unknown };
+
+/**
+ * Proposes field-level edits to Lyrics-mode rounds from a host's natural-language instruction
+ * (e.g. "the 2nd round's answer has a typo, it should be 愛你"). Mirrors proposeEdits' contract:
+ * never applies anything itself, computes oldValue from the passed-in `rounds` (never trusts the
+ * model's echo), drops no-op changes, and fails open (returns []) on any error.
+ */
+export async function proposeLyricEdits(
+  instruction: string,
+  rounds: EditableLyricRound[],
+  apiKey: string
+): Promise<LyricEditDiff[]> {
+  if (!apiKey || rounds.length === 0 || !instruction.trim()) return [];
+
+  const roundList = rounds
+    .map((r) => `${r.videoId} | "${r.title}" | ${r.artist} | context: "${r.lyricContext}" | answer: "${r.blankSentence}"`)
+    .join("\n");
+
+  const res = await fetch(ANTHROPIC_API, {
+    method: "POST",
+    headers: {
+      "x-api-key": apiKey,
+      "anthropic-version": "2023-06-01",
+      "content-type": "application/json",
+    },
+    body: JSON.stringify({
+      model: MODEL,
+      max_tokens: 1500,
+      system: PROPOSE_LYRIC_EDITS_SYSTEM_PROMPT,
+      messages: [{ role: "user", content: `Rounds:\n${roundList}\n\nInstruction: ${instruction}` }],
+    }),
+  });
+
+  if (!res.ok) {
+    const body = await res.text().catch(() => "");
+    console.error(`[ai-metadata] proposeLyricEdits API error ${res.status}: ${body.slice(0, 300)}`);
+    return [];
+  }
+
+  const data = (await res.json()) as { content?: { type: string; text: string }[] };
+  const text = data.content?.find((b) => b.type === "text")?.text ?? "";
+
+  let parsed: RawLyricEditDiff[] = [];
+  try {
+    parsed = parseResponse(text) as RawLyricEditDiff[];
+  } catch (e) {
+    console.error(`[ai-metadata] proposeLyricEdits parse error: ${e}`);
+    return [];
+  }
+
+  const byId = new Map(rounds.map((r) => [r.videoId, r]));
+  const diffs: LyricEditDiff[] = [];
+  for (const item of parsed) {
+    const videoId = typeof item.v === "string" ? item.v : null;
+    const field = item.f === "lyricContext" || item.f === "blankSentence" ? item.f : null;
+    if (!videoId || !field) continue;
+    const round = byId.get(videoId);
+    if (!round) continue; // AI must reference a round actually in the list — never invent one
+
+    const n = typeof item.n === "string" ? item.n.trim() : "";
+    if (!n || n === round[field]) continue;
+    diffs.push({ videoId, field, oldValue: round[field], newValue: n });
   }
   return diffs;
 }

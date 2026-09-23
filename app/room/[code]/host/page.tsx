@@ -6,7 +6,7 @@ import usePartySocket from "partysocket/react";
 import PlaylistEditor from "@/components/PlaylistEditor";
 import { Qr } from "@/components/Qr";
 import { getOrCreatePersistedId } from "@/lib/device-id";
-import type { GameState, ServerMessage, ClientMessage, SongDiagnostic, EditableSong, PublicLyricsGameState, PublicLyricsRound, LyricsGameConfig, SongEditDiff } from "@/lib/game";
+import type { GameState, ServerMessage, ClientMessage, SongDiagnostic, EditableSong, PublicLyricsGameState, PublicLyricsRound, LyricsGameConfig, SongEditDiff, EditableLyricRound, LyricEditDiff } from "@/lib/game";
 
 const PARTYKIT_HOST = process.env.NEXT_PUBLIC_PARTYKIT_HOST || "localhost:1999";
 
@@ -62,6 +62,9 @@ export default function HostPage() {
   const [lyricsPreviewLoading, setLyricsPreviewLoading] = useState(false);
   const [lyricOverrides, setLyricOverrides] = useState<Record<string, { lyricContext?: string; blankSentence?: string }>>({});
   const [lyricsConfig, setLyricsConfig] = useState<LyricsGameConfig>({ timerSeconds: 60, totalRounds: 10, fuzzyEnabled: false });
+  const [lyricInstruction, setLyricInstruction] = useState("");
+  const [proposingLyricEdits, setProposingLyricEdits] = useState(false);
+  const [proposeLyricError, setProposeLyricError] = useState<string | null>(null);
   const hostIdRef = useRef<string>("");
   const loadedUrlRef = useRef<string>("");
   const readySongsRef = useRef<EditableSong[]>([]);
@@ -164,6 +167,19 @@ export default function HostPage() {
         setProposingEdits(false);
         setProposeError("無法處理，請再試一次 · Couldn't process that, try again");
       }
+      if (msg.type === "LYRIC_EDITS_PROPOSED") {
+        setProposingLyricEdits(false);
+        setProposeLyricError(msg.diff.length === 0 ? "AI 沒有找到對應的更改 · No matching changes found" : null);
+        // Applied directly to lyricOverrides — same dirty-row-review pattern as the timeline
+        // mode's PlaylistEditor, just inline here since the Lyrics table isn't its own component.
+        for (const d of msg.diff) {
+          setLyricOverrides((prev) => ({ ...prev, [d.videoId]: { ...prev[d.videoId], [d.field]: d.newValue ?? "" } }));
+        }
+      }
+      if (msg.type === "LYRIC_EDITS_PROPOSAL_FAILED") {
+        setProposingLyricEdits(false);
+        setProposeLyricError("無法處理，請再試一次 · Couldn't process that, try again");
+      }
     },
   });
 
@@ -175,6 +191,28 @@ export default function HostPage() {
     setProposingEdits(true);
     setProposeError(null);
     send({ type: "PROPOSE_EDITS", hostId: hostIdRef.current, instruction, songs: readySongsRef.current });
+  }
+
+  function handleProposeLyricEdits() {
+    const trimmed = lyricInstruction.trim();
+    if (!trimmed || proposingLyricEdits) return;
+    const previewMap = new Map(lyricsPreview.map((r) => [r.videoId, r]));
+    const rounds: EditableLyricRound[] = readySongs
+      .map((s) => {
+        const lr = previewMap.get(s.videoId);
+        const ov = lyricOverrides[s.videoId] ?? {};
+        const lyricContext = ov.lyricContext ?? lr?.lyricContext ?? "";
+        const blankSentence = ov.blankSentence ?? lr?.blankSentence ?? "";
+        return lyricContext || blankSentence
+          ? { videoId: s.videoId, title: s.title, artist: s.artist, lyricContext, blankSentence }
+          : null;
+      })
+      .filter((r): r is EditableLyricRound => r !== null);
+    if (rounds.length === 0) return;
+    setProposingLyricEdits(true);
+    setProposeLyricError(null);
+    send({ type: "PROPOSE_LYRIC_EDITS", hostId: hostIdRef.current, instruction: trimmed, rounds });
+    setLyricInstruction("");
   }
 
   function handleLoadPlaylist() {
@@ -598,6 +636,30 @@ export default function HostPage() {
                           ? `${lyricsPreview.length} / ${readySongs.length} songs have questions ready`
                           : `${readySongs.length} songs loaded`}
                   </p>
+                  {(lyricsState?.rounds?.length ?? 0) === 0 && lyricsPreview.length > 0 && (
+                    <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+                      <div style={{ display: "flex", gap: 8 }}>
+                        <input
+                          type="text"
+                          value={lyricInstruction}
+                          onChange={(e) => setLyricInstruction(e.target.value)}
+                          onKeyDown={(e) => { if (e.key === "Enter") handleProposeLyricEdits(); }}
+                          placeholder="例如：「第2首的答案打錯了，應該是愛你」 · e.g. round 2's answer has a typo"
+                          disabled={proposingLyricEdits}
+                          style={{ flex: 1, borderRadius: 8, padding: "6px 10px", fontSize: 12, outline: "none", background: "rgba(26,26,46,.04)", color: "var(--ink)", border: "1.5px solid rgba(255,107,53,.15)" }}
+                        />
+                        <button
+                          type="button"
+                          onClick={handleProposeLyricEdits}
+                          disabled={proposingLyricEdits || !lyricInstruction.trim()}
+                          style={{ flexShrink: 0, borderRadius: 8, background: "var(--orange)", padding: "6px 14px", fontSize: 12, fontWeight: 900, color: "white", border: "none", cursor: "pointer", opacity: proposingLyricEdits || !lyricInstruction.trim() ? 0.6 : 1 }}
+                        >
+                          {proposingLyricEdits ? "詢問中…" : "✨ Ask AI"}
+                        </button>
+                      </div>
+                      {proposeLyricError && <p style={{ fontSize: 10, color: "var(--red)" }}>{proposeLyricError}</p>}
+                    </div>
+                  )}
                 <div style={{ overflowX: "auto", borderRadius: 12, border: "1px solid rgba(255,107,53,.12)" }}>
                   <table style={{ width: "100%", fontSize: 12, borderCollapse: "collapse" }}>
                     <thead>
