@@ -31,6 +31,14 @@ export default function PlayPage() {
   const [lyricsTimerLeft, setLyricsTimerLeft] = useState<number | null>(null);
   const [selectedPosition, setSelectedPosition] = useState<number | null>(null);
   const [hasPlaced, setHasPlaced] = useState(false);
+  // Closes the same class of race T2 fixed for Lyrics mode's Start button: hasPlaced only
+  // flips true once the server's PLACEMENT_ACK arrives, so without a local flag a fast
+  // double-click/re-tap before that round trip completes could send a second PLACE at a
+  // different position, silently overwriting the first with no error shown (party/index.ts's
+  // handlePlace just overwrites this.state.placements[playerId] unconditionally). Set
+  // synchronously on click, before the send; reset on PLACEMENT_ACK, ERROR, TOO_LATE, or a
+  // fresh "guessing" phase.
+  const [pendingPlace, setPendingPlace] = useState(false);
   const [tooLate, setTooLate] = useState(false);
   const [showCodeWarning, setShowCodeWarning] = useState(false);
   const playerIdRef = useRef<string>("");
@@ -42,6 +50,7 @@ export default function PlayPage() {
   useEffect(() => {
     if (state?.phase === "guessing") {
       setHasPlaced(false);
+      setPendingPlace(false);
       setTooLate(false);
       setSelectedPosition(null);
     }
@@ -105,12 +114,16 @@ export default function PlayPage() {
           setLyricsState(null);
           break;
         case "PLACEMENT_ACK":
-          if (msg.playerId === playerIdRef.current) setHasPlaced(true);
+          if (msg.playerId === playerIdRef.current) { setHasPlaced(true); setPendingPlace(false); }
           break;
         case "TOO_LATE":
           setTooLate(true);
           setLyricsTooLate(true);
           setLyricsSubmitted(false);
+          setPendingPlace(false);
+          break;
+        case "ERROR":
+          setPendingPlace(false);
           break;
       }
     },
@@ -121,7 +134,8 @@ export default function PlayPage() {
   }
 
   function handlePlace() {
-    if (selectedPosition === null) return;
+    if (selectedPosition === null || pendingPlace) return;
+    setPendingPlace(true);
     send({ type: "PLACE", playerId: playerIdRef.current, position: selectedPosition });
   }
 
@@ -471,7 +485,7 @@ export default function PlayPage() {
         selectedPosition={selectedPosition}
         onSelectPosition={setSelectedPosition}
         onPlace={handlePlace}
-        hasPlaced={hasPlaced}
+        hasPlaced={hasPlaced || pendingPlace}
         tooLate={tooLate}
       />
     </main>

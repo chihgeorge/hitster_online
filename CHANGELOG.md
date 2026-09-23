@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.12.8.0] — 2026-09-23
+
+### Fixed
+- **Closed a double-submit race on timeline card placement** (found by ad-hoc audit, same class of bug as T2's Lyrics-mode fix): `handlePlace()` had no local pending flag — `hasPlaced` only flipped true on the server's `PLACEMENT_ACK`, so a fast double-click/re-tap before that round trip completed could send a second `PLACE` at a different position, silently overwriting the first with no error shown. Added a `pendingPlace` flag set synchronously on click, reset on `PLACEMENT_ACK`, `ERROR`, `TOO_LATE`, or a fresh "guessing" phase — also adds the play page's first `ERROR` message handler, which didn't exist before
+
 ## [0.12.7.0] — 2026-09-23
 
 ### Added
