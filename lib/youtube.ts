@@ -3,7 +3,7 @@
 
 import { isValidYear } from "./utils";
 
-export interface YouTubeTrack {
+interface YouTubeTrack {
   videoId: string;
   title: string;
   description: string;

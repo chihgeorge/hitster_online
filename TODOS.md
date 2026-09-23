@@ -125,6 +125,10 @@
   `gstack-cso` launcher not found — formal CSO audit was blocked. Run `cd ~/.claude/skills/gstack && ./setup` to install, then re-run `/cso` for an evidence-backed security report.  
   _Surfaced by /cso on 2026-09-16_
 
+- [ ] **P3** `npm audit` reports 10 advisories (1 critical, 5 high, 4 moderate) in transitive deps  
+  All trace to `ws`/`undici`, pulled in by `happy-dom` (test-only) and `partykit`'s bundled `miniflare` (local-dev simulator only) — not the deployed Worker bundle. `npm audit fix --force` wants to downgrade `partykit` to `0.0.0`, which is npm's resolver picking garbage, not a real fix. Revisit when `partykit` ships a release bumping `miniflare`.  
+  _Surfaced by ad-hoc audit, 2026-09-23_
+
 - [ ] **P3** Fix keyboard focus indicators on all text inputs  
   All `<input type="text">` elements use `outline: "none"` as inline style with no `:focus-visible` CSS fallback. JS `onFocus/onBlur` border-color change provides visual feedback but bypasses CSS. Fix: move `outline: none` to CSS class and add `:focus-visible { outline: 2px solid var(--orange); }`. Touches `app/page.tsx` and `app/room/[code]/host/page.tsx`.  
   _Surfaced by /design-review on 2026-09-16_

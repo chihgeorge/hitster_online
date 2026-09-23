@@ -59,7 +59,7 @@ export function parseResolveErrorCode(err: unknown): string {
 }
 
 export type TrackItem = { videoId: string; title: string; description: string; channelTitle: string };
-export type TrackMeta = { artist: string; descYear: number | null; titleYear: number | null };
+type TrackMeta = { artist: string; descYear: number | null; titleYear: number | null };
 
 export function parseTrackMetas(tracks: TrackItem[]): TrackMeta[] {
   return tracks.map((track) => {
@@ -136,7 +136,7 @@ export async function resolveAIWithCache(
   return new Map([...cachedAI, ...freshAI]);
 }
 
-export interface ResolvedPlaylist {
+interface ResolvedPlaylist {
   tracks: TrackItem[];
   metas: TrackMeta[];
   aiResults: Map<string, AITrackMeta>;

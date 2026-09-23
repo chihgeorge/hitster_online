@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.12.9.0] — 2026-09-23
+
+### Changed
+- **ponytail-audit cleanup** (no behavior change): extracted a shared `shuffle<T>()` (Fisher-Yates, `lib/utils.ts`) replacing 4 duplicated `.sort(() => Math.random() - 0.5)` inline shuffles in `party/index.ts`; `handleStartLyricsGame`'s inline `lyricOverrides` param type now imports `LyricOverride` from `lib/game.ts` instead of duplicating its shape; dropped `export` on 5 types never imported outside their own file (`ResolvedPlaylist`, `TrackMeta`, `UseItemDraft`, `YearSource`, `YouTubeTrack`)
+- **Tracked 10 npm advisories in TODOS.md** (1 critical, 5 high, 4 moderate) — all in transitive `ws`/`undici` deps via `happy-dom` (test-only) and `partykit`'s bundled `miniflare` (local-dev simulator only), not the deployed Worker. Not force-fixed — `npm audit fix --force` wants to downgrade `partykit` to `0.0.0`, a bad resolver pick, not a real fix
+
 ## [0.12.8.0] — 2026-09-23
 
 ### Fixed

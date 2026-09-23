@@ -39,7 +39,7 @@ export interface LyricsGameConfig {
 export type GamePhase = "lobby" | "guessing" | "reveal" | "ended";
 
 /** Where a song's release year came from (shown in the host's song data table). */
-export type YearSource = "description" | "title" | "ai" | "manual";
+type YearSource = "description" | "title" | "ai" | "manual";
 
 export interface Card {
   id: string;
