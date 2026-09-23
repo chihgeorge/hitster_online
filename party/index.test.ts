@@ -293,7 +293,7 @@ describe("PLACE handler", () => {
     // Placement recorded exactly once, ACK sent at least once
     expect(r.state.placements[P1]).toBe(0);
     const sentMessages = (conn.send as ReturnType<typeof vi.fn>).mock.calls.map(
-      ([raw]: [string]) => JSON.parse(raw),
+      (args: unknown[]) => JSON.parse(args[0] as string),
     );
     expect(sentMessages.some((m: { type: string }) => m.type === "PLACEMENT_ACK")).toBe(true);
   });
@@ -2085,7 +2085,7 @@ describe("Lyrics Mode: generateLyricsPreview broadcasts LYRICS_PREVIEW", () => {
     const mockRoom = makeRoom();
     (mockRoom.storage.get as ReturnType<typeof vi.fn>).mockImplementation((keys: unknown) =>
       Promise.resolve(Array.isArray(keys)
-        ? new Map(keys.filter((k: string) => k.startsWith("lyrics:")).map((k: string) => {
+        ? new Map(keys.filter((k: string) => k.startsWith("lyrics:")).map((k: string): [string, typeof LYRICS_V1 | null] => {
             const id = k.slice(7);
             return [k, id === "v1" ? LYRICS_V1 : id === "v2" ? LYRICS_V2 : null];
           }).filter(([, v]) => v !== null))

@@ -125,8 +125,12 @@
   `gstack-cso` launcher not found — formal CSO audit was blocked. Run `cd ~/.claude/skills/gstack && ./setup` to install, then re-run `/cso` for an evidence-backed security report.  
   _Surfaced by /cso on 2026-09-16_
 
-- [ ] **P3** `npm audit` reports 10 advisories (1 critical, 5 high, 4 moderate) in transitive deps  
-  All trace to `ws`/`undici`, pulled in by `happy-dom` (test-only) and `partykit`'s bundled `miniflare` (local-dev simulator only) — not the deployed Worker bundle. `npm audit fix --force` wants to downgrade `partykit` to `0.0.0`, which is npm's resolver picking garbage, not a real fix. Revisit when `partykit` ships a release bumping `miniflare`.  
+- [x] **P1** `next@16.2.4` had 7 CVEs incl. critical DoS + XSS + cache poisoning — actual production exposure  
+  First `npm audit` pass used `--omit=dev`, which hid this (it only showed transitive dev-tooling findings). Full `npm audit` (no flag) surfaced `next` itself as vulnerable — real user-facing risk, not dev-only. **Fixed:** upgraded to `16.3.6` (same major, out of the vulnerable range). Also discovered and fixed: `16.3.6`'s build-time typecheck is stricter than `16.2.4`'s and started failing on 2 pre-existing type errors in `party/index.test.ts` that `16.2.4` silently ignored — fixed those too, so the upgrade doesn't newly break `next build` / Vercel deploys.  
+  _Surfaced by ad-hoc audit, 2026-09-23_
+
+- [ ] **P3** `npm audit` reports 17 remaining advisories (2 critical, 5 high, 9 moderate, 1 low), all dev/build-tooling only  
+  Confirmed via `npm ls` per package — none trace to a production dependency: `eslint-config-next`'s tooling (brace-expansion, browserslist, baseline-browser-mapping), `eslint` itself (js-yaml), `vitest` (vite, fflate), and `partykit`'s own bundler/local-dev simulator (esbuild, undici via miniflare). `ws` was fixed via a package.json `overrides` pin to `8.21.0`. The rest aren't safely fixable without a major-version bump from an upstream package (`partykit`→miniflare, or `next build`/`eslint-config-next`'s own dep tree) — revisit in a batch when those ship updates.  
   _Surfaced by ad-hoc audit, 2026-09-23_
 
 - [ ] **P3** Fix keyboard focus indicators on all text inputs  

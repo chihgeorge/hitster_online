@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.12.10.0] — 2026-09-23
+
+### Fixed
+- **`next` upgraded 16.2.4 → 16.3.6, closing 7 CVEs including a critical DoS and 2 XSS advisories** — real production exposure, not dev-tooling. The prior vulnerability scan used `npm audit --omit=dev`, which hid this; a full `npm audit` surfaced it. Also fixed 2 pre-existing type errors in `party/index.test.ts` that `16.2.4`'s build typecheck silently ignored but `16.3.6`'s doesn't — without this, the upgrade would have started failing `next build` (and Vercel deploys) on unrelated test-file type errors
+- **`ws` pinned to 8.21.0 via a package.json `overrides` entry**, closing 2 more advisories (uninitialized memory disclosure, memory-exhaustion DoS) in the `happy-dom`/`partykit` dependency tree
+- Remaining 17 advisories confirmed dev/build-tooling only (`eslint-config-next`, `eslint`, `vitest`, `partykit`'s bundler) via `npm ls` per package — tracked in TODOS.md, not safely fixable without an upstream major-version bump
+
 ## [0.12.9.0] — 2026-09-23
 
 ### Changed
