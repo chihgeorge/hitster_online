@@ -109,6 +109,53 @@ describe("PlayPage: Lyrics Mode guessing", () => {
   });
 });
 
+describe("PlayPage: timeline placement double-submit guard", () => {
+  // Regression: handlePlace had no local pending flag — hasPlaced only flips true on the
+  // server's PLACEMENT_ACK, so a fast double-click before that round trip completed could
+  // send a second PLACE at a different position, silently overwriting the first with no
+  // error (party/index.ts's handlePlace unconditionally overwrites placements[playerId]).
+  const guessingState: GameState = {
+    ...lobbyState,
+    phase: "guessing",
+    activePlayerId: PLAYER,
+    currentSong: { id: "s1", videoId: "s1", title: "Song", artist: "Artist", year: 2000 },
+    players: { [PLAYER]: { name: "QA", cardCount: 1, timeline: [{ id: "c1", videoId: "c1", title: "Old", artist: "A", year: 1990 }], connected: true } },
+  };
+
+  function selectFirstDropZone() {
+    // DropZone renders a plain <button> showing "+" when unselected — no dedicated testid.
+    act(() => { screen.getAllByText("+")[0].click(); });
+  }
+
+  it("sends only one PLACE on a rapid double-click, before the server acks", () => {
+    render(<PlayPage />);
+    serverSends({ type: "STATE", state: guessingState });
+    selectFirstDropZone();
+    const placeBtn = screen.getByTestId("place-btn");
+    act(() => { placeBtn.click(); });
+    act(() => { placeBtn.click(); });
+    expect(sendSpy.mock.calls.filter((c) => String(c[0]).includes('"type":"PLACE"'))).toHaveLength(1);
+  });
+
+  it("re-enables placement once the server ack arrives, and can place again next round", () => {
+    render(<PlayPage />);
+    serverSends({ type: "STATE", state: guessingState });
+    selectFirstDropZone();
+    act(() => { screen.getByTestId("place-btn").click(); });
+    expect(sendSpy.mock.calls.filter((c) => String(c[0]).includes('"type":"PLACE"'))).toHaveLength(1);
+
+    serverSends({ type: "PLACEMENT_ACK", playerId: PLAYER });
+    // Round resolves and the next one starts — hasPlaced/pendingPlace both reset when phase
+    // re-enters "guessing" (the effect watches state?.phase, so it must actually transition
+    // away and back, not just stay "guessing" with different placements).
+    serverSends({ type: "STATE", state: { ...guessingState, phase: "reveal" } });
+    serverSends({ type: "STATE", state: { ...guessingState, placements: {} } });
+    selectFirstDropZone();
+    act(() => { screen.getByTestId("place-btn").click(); });
+    expect(sendSpy.mock.calls.filter((c) => String(c[0]).includes('"type":"PLACE"'))).toHaveLength(2);
+  });
+});
+
 describe("PlayPage: lobby wrong-code warning", () => {
   // Regression: TODOS.md "Joining a nonexistent room code shows 'waiting for host' forever" —
   // found by /qa on 2026-09-21. PartyKit can't distinguish a wrong code from "host hasn't
