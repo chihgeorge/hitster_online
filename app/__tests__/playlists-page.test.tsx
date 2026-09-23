@@ -43,6 +43,28 @@ describe("PlaylistsPage: library list", () => {
     render(<PlaylistsPage />);
     await waitFor(() => expect(screen.getByText(/Failed to load your library/)).toBeTruthy());
   });
+
+  it("migrates localStorage-only playlists (D2b) before the first library read", async () => {
+    localStorage.setItem("hitster_playlists", JSON.stringify([{ id: "old-1", name: "Old Mix", songCount: 4 }]));
+    mockFetch.mockImplementation((url: string, init?: RequestInit) => {
+      if (init?.method === "PUT") return Promise.resolve(jsonResponse({ ok: true, added: 1 }));
+      return Promise.resolve(jsonResponse({ entries: [{ id: "old-1", name: "Old Mix", songCount: 4 }] }));
+    });
+
+    render(<PlaylistsPage />);
+
+    await waitFor(() => {
+      const importCall = mockFetch.mock.calls.find(([, init]) => init?.method === "PUT");
+      expect(importCall).toBeDefined();
+    });
+    const [, importInit] = mockFetch.mock.calls.find(([, init]) => init?.method === "PUT")!;
+    expect(JSON.parse(importInit.body as string)).toEqual({
+      action: "IMPORT",
+      entries: [{ id: "old-1", name: "Old Mix", songCount: 4 }],
+    });
+    // The migrated entry appears on this very first load, not just after a reload.
+    await waitFor(() => expect(screen.getByText("Old Mix")).toBeTruthy());
+  });
 });
 
 describe("PlaylistsPage: create from URL", () => {
