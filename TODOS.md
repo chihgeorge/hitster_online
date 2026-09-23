@@ -151,10 +151,10 @@
   Persist minimal game state to `room.storage` or detect a fresh server and reset clients. Found by /qa on 2026-09-21.
 - [x] **P3** Unit test for the Lyrics "Time's up" state on the play page (needs a mocked partysocket harness)  
   Regression for ISSUE-001, deferred by /qa on 2026-09-21. **Completed:** v0.4.2.1 (2026-09-21), `app/__tests__/play-page.test.tsx`.
-- [ ] **P2** Server should stamp answer time itself instead of trusting the client `ts`  
-  `party/index.ts` handleSubmitLyricsAnswer compares a client-supplied `ts` to the deadline and `computePoints` uses it, so a player can answer late or claim max points by spoofing it. Found by /ship adversarial review on 2026-09-21.
-- [ ] **P2** Bind Lyrics answers to the sending connection  
-  Any player can answer as another player (ids are visible in broadcast state). Needs a conn.id to playerId map that survives REJOIN. Found by /ship adversarial review on 2026-09-21.
+- [x] **P2** Server should stamp answer time itself instead of trusting the client `ts`  
+  `party/index.ts` handleSubmitLyricsAnswer compares a client-supplied `ts` to the deadline and `computePoints` uses it, so a player can answer late or claim max points by spoofing it. Found by /ship adversarial review on 2026-09-21. **Completed:** v0.10.1.0 (2026-09-22), server now calls `Date.now()` itself; the client no longer sends `ts` at all.
+- [x] **P2** Bind Lyrics answers to the sending connection  
+  Any player can answer as another player (ids are visible in broadcast state). Needs a conn.id to playerId map that survives REJOIN. Found by /ship adversarial review on 2026-09-21. **Completed:** v0.10.1.0 (2026-09-22), `playerConnId` map set on JOIN/REJOIN, checked in `handleSubmitLyricsAnswer`.
 - [ ] **P3** `handleStartLyricsGame` has no re-entrancy guard  
   A second START_LYRICS_GAME (double click) can let a stale loader abort or overwrite the newer game. Reject START while a game is active and bail after each await if a sequence token changed. Found by /ship adversarial review on 2026-09-21.
 - [ ] **P3** Player shows "Submitted!" before the server acknowledges  

@@ -140,6 +140,11 @@ export default class HitsterRoom implements Party.Server {
   // ones that get the full preview-phase deck (see broadcastLyricsState and onConnect).
   // Cleaned up on disconnect (see onClose).
   private privilegedConns = new Set<Party.Connection>();
+  // playerId → the conn.id currently allowed to act as that player (set on JOIN/REJOIN).
+  // Fixes TODOS.md P2 "bind Lyrics answers to the sending connection" — without this, any
+  // connection could submit SUBMIT_LYRICS_ANSWER as any playerId (ids are visible in broadcast
+  // state). Not cleared in onClose: a REJOIN from a new connection simply overwrites the entry.
+  private playerConnId: Record<string, string> = {};
   // Every currently-open connection (added in onConnect, removed in onClose — markPrivileged also
   // adds, so a privileged connection is always a member even in tests that skip onConnect). Lets
   // broadcastLyricsState reach a not-yet-privileged /screen during preview with a redacted payload
@@ -302,7 +307,7 @@ export default class HitsterRoom implements Party.Server {
         this.handleStartLyricsRound(sender, msg.hostId);
         break;
       case "SUBMIT_LYRICS_ANSWER":
-        this.handleSubmitLyricsAnswer(sender, msg.playerId, msg.text, msg.ts);
+        this.handleSubmitLyricsAnswer(sender, msg.playerId, msg.text);
         break;
       case "SHOW_LYRICS_RESULTS":
         this.handleShowLyricsResults(sender, msg.hostId);
@@ -342,6 +347,7 @@ export default class HitsterRoom implements Party.Server {
       timeline: startingCard ? [startingCard] : [],
       connected: true,
     };
+    this.playerConnId[playerId] = conn.id;
 
     this.broadcastState();
   }
@@ -352,6 +358,7 @@ export default class HitsterRoom implements Party.Server {
     if (this.state.players[playerId]) {
       this.state.players[playerId].connected = true;
       this.state.players[playerId].name = name || this.state.players[playerId].name;
+      this.playerConnId[playerId] = conn.id;
     } else {
       // Unknown player — treat as new join
       this.handleJoin(conn, playerId, rawName);
@@ -1276,15 +1283,20 @@ export default class HitsterRoom implements Party.Server {
     this.broadcastLyricsState();
   }
 
-  private handleSubmitLyricsAnswer(conn: Party.Connection, playerId: string, text: string, ts: number) {
+  private handleSubmitLyricsAnswer(conn: Party.Connection, playerId: string, text: string) {
     if (!isValidPlayerId(playerId)) return;
-    // Untrusted client input: a non-numeric ts would slip past the deadline check and NaN the score.
-    if (typeof text !== "string" || typeof ts !== "number" || !Number.isFinite(ts)) return;
+    if (typeof text !== "string") return;
+    // Only the connection that JOINed/REJOINed as this playerId may answer for them — ids are
+    // visible to everyone in broadcast state, so without this any player could answer as another.
+    if (this.playerConnId[playerId] !== conn.id) return;
     const ls = this.lyricsState;
     if (!ls || ls.phase !== "guessing" || !ls.currentRound || ls.roundStart === null) return;
     if (!ls.players[playerId]) return;
     if (ls.answers[playerId]) return; // already answered
 
+    // Server stamps the time itself — a client-supplied ts was spoofable to answer late for free
+    // or inflate computePoints' speed bonus (TODOS.md P2).
+    const ts = Date.now();
     const deadline = ls.roundStart + ls.timerSeconds * 1000 + LYRICS_ANSWER_GRACE_MS;
     if (ts > deadline) {
       this.sendTo(conn, { type: "TOO_LATE" });

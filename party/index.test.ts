@@ -1445,7 +1445,7 @@ describe("Lyrics Mode: sanitizedLyricsState hides blankSentence", () => {
   it("reveals blankSentence during results phase", async () => {
     const { room, hostConn, p1Conn } = await setupLyricsGame();
     await send(room, hostConn, { type: "START_LYRICS_ROUND", hostId: "host-uuid" });
-    await send(room, p1Conn, { type: "SUBMIT_LYRICS_ANSWER", playerId: P1, text: "你好世界", ts: Date.now() });
+    await send(room, p1Conn, { type: "SUBMIT_LYRICS_ANSWER", playerId: P1, text: "你好世界" });
     await send(room, hostConn, { type: "SHOW_LYRICS_RESULTS", hostId: "host-uuid" });
 
     const msgs = (room.room.broadcast as ReturnType<typeof vi.fn>).mock.calls
@@ -1667,7 +1667,7 @@ describe("Lyrics Mode: SUBMIT_LYRICS_ANSWER", () => {
   it("stores answer and broadcasts", async () => {
     const { room, hostConn, p1Conn } = await setupLyricsGame();
     await send(room, hostConn, { type: "START_LYRICS_ROUND", hostId: "host-uuid" });
-    await send(room, p1Conn, { type: "SUBMIT_LYRICS_ANSWER", playerId: P1, text: "你好世界", ts: Date.now() });
+    await send(room, p1Conn, { type: "SUBMIT_LYRICS_ANSWER", playerId: P1, text: "你好世界" });
     const msg = lastBroadcast(room);
     expect(msg?.state?.answers[P1]?.text).toBe("你好世界");
   });
@@ -1675,9 +1675,8 @@ describe("Lyrics Mode: SUBMIT_LYRICS_ANSWER", () => {
   it("ignores duplicate submission", async () => {
     const { room, hostConn, p1Conn } = await setupLyricsGame();
     await send(room, hostConn, { type: "START_LYRICS_ROUND", hostId: "host-uuid" });
-    const ts = Date.now();
-    await send(room, p1Conn, { type: "SUBMIT_LYRICS_ANSWER", playerId: P1, text: "first", ts });
-    await send(room, p1Conn, { type: "SUBMIT_LYRICS_ANSWER", playerId: P1, text: "second", ts: ts + 100 });
+    await send(room, p1Conn, { type: "SUBMIT_LYRICS_ANSWER", playerId: P1, text: "first" });
+    await send(room, p1Conn, { type: "SUBMIT_LYRICS_ANSWER", playerId: P1, text: "second" });
     const msg = lastBroadcast(room);
     expect(msg?.state?.answers[P1]?.text).toBe("first");
   });
@@ -1685,7 +1684,7 @@ describe("Lyrics Mode: SUBMIT_LYRICS_ANSWER", () => {
   it("rejects submission outside guessing phase", async () => {
     const { room, p1Conn } = await setupLyricsGame();
     // Still in playing phase
-    await send(room, p1Conn, { type: "SUBMIT_LYRICS_ANSWER", playerId: P1, text: "anything", ts: Date.now() });
+    await send(room, p1Conn, { type: "SUBMIT_LYRICS_ANSWER", playerId: P1, text: "anything" });
     // No broadcast change for answers
     const msg = lastBroadcast(room);
     expect(msg?.state?.answers?.[P1]).toBeUndefined();
@@ -1694,8 +1693,13 @@ describe("Lyrics Mode: SUBMIT_LYRICS_ANSWER", () => {
   it("sends TOO_LATE for answer after deadline", async () => {
     const { room, hostConn, p1Conn } = await setupLyricsGame();
     await send(room, hostConn, { type: "START_LYRICS_ROUND", hostId: "host-uuid" });
-    const WAY_LATE = Date.now() + 200_000;
-    await send(room, p1Conn, { type: "SUBMIT_LYRICS_ANSWER", playerId: P1, text: "late", ts: WAY_LATE });
+    vi.useFakeTimers();
+    try {
+      vi.setSystemTime(Date.now() + 200_000);
+      await send(room, p1Conn, { type: "SUBMIT_LYRICS_ANSWER", playerId: P1, text: "late" });
+    } finally {
+      vi.useRealTimers();
+    }
     const last = lastSentTo(p1Conn);
     expect(last?.type).toBe("TOO_LATE");
   });
@@ -1704,9 +1708,20 @@ describe("Lyrics Mode: SUBMIT_LYRICS_ANSWER", () => {
     const { room, hostConn } = await setupLyricsGame();
     await send(room, hostConn, { type: "START_LYRICS_ROUND", hostId: "host-uuid" });
     const stranger = makeConn("stranger");
-    await send(room, stranger, { type: "SUBMIT_LYRICS_ANSWER", playerId: STRANGER, text: "hi", ts: Date.now() });
+    await send(room, stranger, { type: "SUBMIT_LYRICS_ANSWER", playerId: STRANGER, text: "hi" });
     const msg = lastBroadcast(room);
     expect(msg?.state?.answers?.[STRANGER]).toBeUndefined();
+  });
+
+  it("ignores an answer sent by a connection that isn't the joined player (identity spoofing)", async () => {
+    const { room, hostConn, p1Conn } = await setupLyricsGame();
+    await send(room, hostConn, { type: "START_LYRICS_ROUND", hostId: "host-uuid" });
+    const impostor = makeConn("impostor-conn");
+    await send(room, impostor, { type: "SUBMIT_LYRICS_ANSWER", playerId: P1, text: "not really Alice" });
+    expect(room.lyricsState?.answers[P1]).toBeUndefined();
+    // The real P1 connection can still answer afterward.
+    await send(room, p1Conn, { type: "SUBMIT_LYRICS_ANSWER", playerId: P1, text: "actually Alice" });
+    expect(lastBroadcast(room)?.state?.answers[P1]?.text).toBe("actually Alice");
   });
 });
 
@@ -1715,7 +1730,7 @@ describe("Lyrics Mode: SHOW_LYRICS_RESULTS", () => {
     const setup = await setupLyricsGame();
     const { room, hostConn, p1Conn } = setup;
     await send(room, hostConn, { type: "START_LYRICS_ROUND", hostId: "host-uuid" });
-    await send(room, p1Conn, { type: "SUBMIT_LYRICS_ANSWER", playerId: P1, text: "你好世界", ts: Date.now() });
+    await send(room, p1Conn, { type: "SUBMIT_LYRICS_ANSWER", playerId: P1, text: "你好世界" });
     await send(room, hostConn, { type: "SHOW_LYRICS_RESULTS", hostId: "host-uuid" });
     return setup;
   }
@@ -1736,7 +1751,7 @@ describe("Lyrics Mode: SHOW_LYRICS_RESULTS", () => {
   it("marks wrong answer as incorrect with 0 points", async () => {
     const { room, hostConn, p1Conn } = await setupLyricsGame();
     await send(room, hostConn, { type: "START_LYRICS_ROUND", hostId: "host-uuid" });
-    await send(room, p1Conn, { type: "SUBMIT_LYRICS_ANSWER", playerId: P1, text: "wrong answer", ts: Date.now() });
+    await send(room, p1Conn, { type: "SUBMIT_LYRICS_ANSWER", playerId: P1, text: "wrong answer" });
     await send(room, hostConn, { type: "SHOW_LYRICS_RESULTS", hostId: "host-uuid" });
     const state = lastBroadcast(room)?.state;
     expect(state?.answers[P1]?.correct).toBe(false);
@@ -1970,7 +1985,13 @@ describe("Lyrics Mode: answer deadline boundary and reset side effects", () => {
 
   it("accepts an answer inside the 500ms grace window past the timer", async () => {
     const { room, p1Conn, deadline } = await startGuessing();
-    await send(room, p1Conn, { type: "SUBMIT_LYRICS_ANSWER", playerId: P1, text: "grace", ts: deadline + 400 });
+    vi.useFakeTimers();
+    try {
+      vi.setSystemTime(deadline + 400);
+      await send(room, p1Conn, { type: "SUBMIT_LYRICS_ANSWER", playerId: P1, text: "grace" });
+    } finally {
+      vi.useRealTimers();
+    }
     expect(lastBroadcast(room)?.state?.answers[P1]?.text).toBe("grace");
   });
 
@@ -1978,7 +1999,13 @@ describe("Lyrics Mode: answer deadline boundary and reset side effects", () => {
     const { room, p1Conn, deadline } = await startGuessing();
     const broadcast = room.room.broadcast as ReturnType<typeof vi.fn>;
     broadcast.mockClear();
-    await send(room, p1Conn, { type: "SUBMIT_LYRICS_ANSWER", playerId: P1, text: "late", ts: deadline + 501 });
+    vi.useFakeTimers();
+    try {
+      vi.setSystemTime(deadline + 501);
+      await send(room, p1Conn, { type: "SUBMIT_LYRICS_ANSWER", playerId: P1, text: "late" });
+    } finally {
+      vi.useRealTimers();
+    }
     expect(lastSentTo(p1Conn)?.type).toBe("TOO_LATE");
     expect(broadcast).not.toHaveBeenCalled();
   });
@@ -2026,23 +2053,28 @@ describe("Lyrics Mode: adversarial-review hardening", () => {
     expect(types).toContain("LYRICS_STATE");
   });
 
-  // Regression: a non-numeric ts passed `ts > deadline` (false) and NaN-poisoned the player's score
+  // Regression (fixed): ts used to be client-supplied, so a non-numeric value passed `ts >
+  // deadline` (false) and NaN-poisoned the score. Server now stamps ts itself (TODOS.md P2), so
+  // a client-supplied ts — of any shape — must simply be ignored, never trusted for timing/scoring.
   it.each([
     ["missing ts", undefined],
     ["string ts", "0"],
     ["NaN ts", NaN],
-    ["Infinity ts", Infinity],
-  ])("ignores an answer with %s", async (_label, badTs) => {
+    ["a spoofed early ts (claiming max speed bonus)", 0],
+  ])("ignores a client-supplied ts (%s) and stamps its own", async (_label, spoofedTs) => {
     const { room, hostConn, p1Conn } = await setupLyricsGame();
     await send(room, hostConn, { type: "START_LYRICS_ROUND", hostId: "host-uuid" });
-    await send(room, p1Conn, { type: "SUBMIT_LYRICS_ANSWER", playerId: P1, text: "x", ts: badTs });
-    expect(room.lyricsState?.answers[P1]).toBeUndefined();
+    await send(room, p1Conn, { type: "SUBMIT_LYRICS_ANSWER", playerId: P1, text: "x", ts: spoofedTs } as any);
+    const stored = room.lyricsState?.answers[P1];
+    expect(stored).toBeDefined();
+    expect(stored!.ts).toBeGreaterThan(0);
+    expect(stored!.ts).not.toBe(spoofedTs);
   });
 
   it("ignores an answer whose text is not a string instead of throwing", async () => {
     const { room, hostConn, p1Conn } = await setupLyricsGame();
     await send(room, hostConn, { type: "START_LYRICS_ROUND", hostId: "host-uuid" });
-    await send(room, p1Conn, { type: "SUBMIT_LYRICS_ANSWER", playerId: P1, text: { a: 1 }, ts: Date.now() });
+    await send(room, p1Conn, { type: "SUBMIT_LYRICS_ANSWER", playerId: P1, text: { a: 1 } } as any);
     expect(room.lyricsState?.answers[P1]).toBeUndefined();
   });
 });

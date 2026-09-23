@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.10.1.0] — 2026-09-22
+
+### Fixed
+- **Lyrics-mode answers are now server-authoritative.** Two spoofable trust gaps closed: the server now stamps each answer's submit time itself instead of trusting the client's `ts` (previously a player could claim max speed-bonus points or answer past the deadline for free by editing the outgoing message), and an answer is now only accepted from the WebSocket connection that actually JOINed/REJOINed as that `playerId` (previously any connection could submit an answer as any player, since player ids are visible in broadcast state)
+
 ## [0.10.0.0] — 2026-09-22
 
 ### Added
