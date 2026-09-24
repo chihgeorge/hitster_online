@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.13.5.0] — 2026-09-23
+
+### Fixed
+- **Lyrics mode leaked every player's raw answer to all clients during guessing** (TODOS.md P2, found by `/plan-eng-review` on `docs/designs/guess-mode-song-artist.md`): `broadcastLyricsState()` sent the full `answers` map — including raw submitted text — to every connection on each `SUBMIT_LYRICS_ANSWER`, so a player who answered later (or just watched the websocket) could read everyone else's guesses before submitting their own. `sanitizedLyricsState()` now redacts answer text specifically during the `guessing` phase (keys and the correct/points placeholders stay, since the client never reads answer text before results); zero client changes needed since no page reads answer text before reveal
+
+### Changed
+- **`lib/fuzzy.ts`'s `isCorrect`/`computePoints` widened to be genuinely reusable** beyond Lyrics mode (prep for a future Guess Mode, `docs/designs/guess-mode-song-artist.md`): `isCorrect` now takes a target string + variants array directly instead of a `LyricsRound` object; `computePoints` gained an optional `maxPoints` parameter (default 500, preserving every existing caller's behavior exactly). No behavior change for Lyrics mode
+
 ## [0.13.4.0] — 2026-09-23
 
 ### Fixed

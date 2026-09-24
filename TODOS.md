@@ -33,6 +33,10 @@
 
 ## P2 — Ship before public launch
 
+- [x] **P2** Lyrics mode leaks every player's raw answer to all clients during guessing  
+  What: `party/index.ts`'s `broadcastLyricsState()` sends the full `LyricsGameState` — including `answers` with every player's raw submitted text — to ALL clients (not just privileged ones) on every `SUBMIT_LYRICS_ANSWER`, because `sanitizedLyricsState()` spreads `...ls` and never redacts `answers`. Why: a player who submits last (or just watches the websocket) can read everyone else's guesses before answering, undermining the "answer independently, then reveal" mechanic the whole timed-round format depends on. Context: `party/index.ts:939-982` (`sanitizedLyricsState`/`broadcastLyricsState`), `party/index.ts:1256-1278` (`handleSubmitLyricsAnswer`). Found by `/plan-eng-review` on `docs/designs/guess-mode-song-artist.md`, 2026-09-23.  
+  **Completed:** `sanitizedLyricsState()` now replaces every answer's `text` with `""` while `phase === "guessing"` — keys (for the host's "N/M answered" count) and the `correct`/`points` placeholders stay, since the client never reads answer text before results (verified: host page only reads `Object.keys(answers).length`; play page's own-answer display is gated on `phase === "results"`; screen page's `.answers[id]` read only fires post-reveal). Zero client changes needed. Regression test in `party/index.test.ts` ("never broadcasts any player's raw answer text during guessing...") sends two real answers and asserts every `guessing`-phase broadcast redacts both, then confirms results-phase reveal still shows the real text.
+
 - [x] **P2** Full-round E2E test (host + player completing a game round)  
   Completed: `e2e/two-player-game.spec.ts` covers 3-round turn-based game with Alice + Bob, testing guessing, spectating, reveal, and win condition.
 

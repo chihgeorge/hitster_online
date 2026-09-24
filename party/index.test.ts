@@ -1969,12 +1969,16 @@ describe("Lyrics Mode: START_LYRICS_ROUND", () => {
 });
 
 describe("Lyrics Mode: SUBMIT_LYRICS_ANSWER", () => {
-  it("stores answer and broadcasts", async () => {
+  it("stores answer and broadcasts (redacted — see answer-leak fix tests below)", async () => {
     const { room, hostConn, p1Conn } = await setupLyricsGame();
     await send(room, hostConn, { type: "START_LYRICS_ROUND", hostId: "host-uuid" });
     await send(room, p1Conn, { type: "SUBMIT_LYRICS_ANSWER", playerId: P1, text: "你好世界" });
+    // Server-side storage has the real text...
+    expect(room.lyricsState?.answers[P1]?.text).toBe("你好世界");
+    // ...but the broadcast during guessing never carries it (answer-leak fix).
     const msg = lastBroadcast(room);
-    expect(msg?.state?.answers[P1]?.text).toBe("你好世界");
+    expect(msg?.state?.answers[P1]?.text).toBe("");
+    expect(msg?.state?.answers[P1]).toBeDefined(); // presence (for the "N/M answered" count) still broadcasts
   });
 
   it("ignores duplicate submission", async () => {
@@ -1982,8 +1986,7 @@ describe("Lyrics Mode: SUBMIT_LYRICS_ANSWER", () => {
     await send(room, hostConn, { type: "START_LYRICS_ROUND", hostId: "host-uuid" });
     await send(room, p1Conn, { type: "SUBMIT_LYRICS_ANSWER", playerId: P1, text: "first" });
     await send(room, p1Conn, { type: "SUBMIT_LYRICS_ANSWER", playerId: P1, text: "second" });
-    const msg = lastBroadcast(room);
-    expect(msg?.state?.answers[P1]?.text).toBe("first");
+    expect(room.lyricsState?.answers[P1]?.text).toBe("first");
   });
 
   it("rejects submission outside guessing phase", async () => {
@@ -2026,7 +2029,61 @@ describe("Lyrics Mode: SUBMIT_LYRICS_ANSWER", () => {
     expect(room.lyricsState?.answers[P1]).toBeUndefined();
     // The real P1 connection can still answer afterward.
     await send(room, p1Conn, { type: "SUBMIT_LYRICS_ANSWER", playerId: P1, text: "actually Alice" });
-    expect(lastBroadcast(room)?.state?.answers[P1]?.text).toBe("actually Alice");
+    expect(room.lyricsState?.answers[P1]?.text).toBe("actually Alice");
+  });
+
+  // Regression for the answer-leak fix (TODOS.md P2, docs/designs/guess-mode-song-artist.md
+  // eng review): broadcastLyricsState used to spread the full answers map — including raw
+  // text — to every connection during guessing, so a player who answered later could read
+  // everyone else's guesses off the wire before submitting their own.
+  it("never broadcasts any player's raw answer text during guessing, even with multiple answers in flight", async () => {
+    // Not setupLyricsGame() — ls.players is snapshotted at START_LYRICS_GAME time, so both
+    // players must JOIN (the Timeline-mode player list) before the lyrics game starts.
+    vi.mocked(fetchPlaylistItems).mockResolvedValue([fakeLyricsTrack()]);
+    vi.mocked(fetchEmbeddableVideoIds).mockResolvedValue(new Set(["vid1"]));
+    const mockRoom = makeRoom();
+    (mockRoom.storage.get as ReturnType<typeof vi.fn>).mockImplementation((keys: unknown) =>
+      Promise.resolve(new Map(Array.isArray(keys)
+        ? keys.filter((k: string) => k.startsWith("lyrics:") || k.startsWith("lyrics-sonnet:"))
+            .map((k: string) => [k, CACHED_LYRICS])
+        : []))
+    );
+    const room = new HitsterRoom(mockRoom as any);
+    const hostConn = makeConn("host-conn");
+    const p1Conn = makeConn("p1-conn");
+    const p2Conn = makeConn("p2-conn");
+    await send(room, p1Conn, { type: "JOIN", playerId: P1, name: "Alice" });
+    await send(room, p2Conn, { type: "JOIN", playerId: P2, name: "Bob" });
+    await send(room, hostConn, {
+      type: "START_LYRICS_GAME", hostId: "host-uuid", playlistUrl: "PLtest",
+      config: { timerSeconds: 60, totalRounds: 1, fuzzyEnabled: false },
+    });
+    await send(room, hostConn, { type: "CONFIRM_LYRICS_PREVIEW", hostId: "host-uuid" });
+    await send(room, hostConn, { type: "START_LYRICS_ROUND", hostId: "host-uuid" });
+
+    await send(room, p1Conn, { type: "SUBMIT_LYRICS_ANSWER", playerId: P1, text: "Alice secret guess" });
+    await send(room, p2Conn, { type: "SUBMIT_LYRICS_ANSWER", playerId: P2, text: "Bob secret guess" });
+
+    // Every LYRICS_STATE broadcast sent during this whole sequence — not just the last one —
+    // must never carry either player's raw text while still in guessing phase.
+    const guessingBroadcasts = (room.room.broadcast as ReturnType<typeof vi.fn>).mock.calls
+      .map((c) => JSON.parse(c[0] as string))
+      .filter((m) => m.type === "LYRICS_STATE" && m.state.phase === "guessing");
+    expect(guessingBroadcasts.length).toBeGreaterThan(0);
+    for (const msg of guessingBroadcasts) {
+      for (const pid of [P1, P2]) {
+        if (msg.state.answers[pid]) expect(msg.state.answers[pid].text).toBe("");
+      }
+    }
+    // The server's own private state still has the real text (needed for scoring at reveal).
+    expect(room.lyricsState?.answers[P1]?.text).toBe("Alice secret guess");
+    expect(room.lyricsState?.answers[P2]?.text).toBe("Bob secret guess");
+
+    // Once revealed, the real text is broadcast — the fix only withholds it during guessing.
+    await send(room, hostConn, { type: "SHOW_LYRICS_RESULTS", hostId: "host-uuid" });
+    const resultsMsg = lastBroadcast(room);
+    expect(resultsMsg?.state?.answers[P1]?.text).toBe("Alice secret guess");
+    expect(resultsMsg?.state?.answers[P2]?.text).toBe("Bob secret guess");
   });
 });
 
@@ -2319,7 +2376,7 @@ describe("Lyrics Mode: answer deadline boundary and reset side effects", () => {
     } finally {
       vi.useRealTimers();
     }
-    expect(lastBroadcast(room)?.state?.answers[P1]?.text).toBe("grace");
+    expect(room.lyricsState?.answers[P1]?.text).toBe("grace");
   });
 
   it("sends TOO_LATE and stores nothing just past the grace window", async () => {
