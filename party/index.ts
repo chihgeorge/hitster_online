@@ -14,6 +14,10 @@ import {
   type LyricsRound,
   type PublicLyricsGameState,
   type PublicLyricsRound,
+  type GuessGameState,
+  type GuessGameConfig,
+  type GuessRound,
+  type PublicGuessGameState,
   type EditableLyricRound,
   type GameMode,
   type LyricOverride,
@@ -23,6 +27,7 @@ import { proposeEdits, proposeLyricEdits, type AITrackMeta } from "../lib/ai-met
 import { resolveLyricsForTracks, MODEL_GAME, type LyricsResult } from "../lib/lyrics-resolver";
 import { fetchPopularitySummaries } from "../lib/lyrics-popularity";
 import * as timedRound from "./timed-round";
+import { scoreGuess } from "../lib/guess-scoring";
 import { isCorrect, computePoints } from "../lib/fuzzy";
 import {
   resolvePlaylistFromUrl,
@@ -85,6 +90,8 @@ export default class HitsterRoom implements Party.Server {
   private lyricsDeck: LyricsRound[] = [];
   private pendingPlaylist: PendingPlaylist | null = null;
   private lyricsPreviewMap: Map<string, LyricsResult> = new Map();
+  guessState: GuessGameState | null = null;
+  private guessConfig: GuessGameConfig = { timerSeconds: LYRICS_DEFAULT_TIMER, totalRounds: LYRICS_DEFAULT_ROUNDS, fuzzyEnabled: false };
   private abortLoad = false;
   private loadSeq = 0;
   // hostId and screenId (state.hostId / this.screenId below) both claim through the same
@@ -203,6 +210,8 @@ export default class HitsterRoom implements Party.Server {
     // A reconnecting client keeps its old lyricsState; with no game running, tell it to drop it
     // (sent before STATE so STATE stays the first-class snapshot).
     if (!ls) this.sendTo(conn, { type: "LYRICS_ABORTED" });
+    const gs = this.sanitizedGuessState();
+    if (!gs) this.sendTo(conn, { type: "GUESS_ABORTED" });
     this.sendTo(conn, { type: "STATE", state: this.sanitizedState() });
     if (ls) {
       // Preview-phase ls.rounds carries the full deck with answers revealed (see
@@ -212,6 +221,7 @@ export default class HitsterRoom implements Party.Server {
       const forConn = this.privilegedConns.has(conn) ? ls : { ...ls, rounds: [] };
       this.sendTo(conn, { type: "LYRICS_STATE", state: forConn });
     }
+    if (gs) this.sendTo(conn, { type: "GUESS_STATE", state: gs });
   }
 
   async onMessage(message: string, sender: Party.Connection) {
@@ -286,6 +296,34 @@ export default class HitsterRoom implements Party.Server {
         break;
       case "RESET_LYRICS_GAME":
         this.handleResetLyricsGame(sender, msg.hostId);
+        break;
+      // ── Guess Mode ───────────────────────────────────────────────────────
+      case "START_GUESS_GAME":
+        this.handleStartGuessGame(sender, msg.hostId, msg.config, msg.songs);
+        break;
+      case "START_GUESS_ROUND":
+        this.handleStartGuessRound(sender, msg.hostId);
+        break;
+      case "SUBMIT_GUESS":
+        this.handleSubmitGuess(sender, msg.playerId, msg.title, msg.artist);
+        break;
+      case "SHOW_GUESS_RESULTS":
+        this.handleShowGuessResults(sender, msg.hostId);
+        break;
+      case "NEXT_GUESS_ROUND":
+        this.handleNextGuessRound(sender, msg.hostId);
+        break;
+      case "RESET_GUESS_GAME":
+        this.handleResetGuessGame(sender, msg.hostId);
+        break;
+      case "GET_GUESS_AUDIO":
+        if (this.authorizeScreen(sender, msg.screenId)) {
+          this.sendTo(sender, {
+            type: "GUESS_AUDIO",
+            videoId: this.guessState?.currentRound?.videoId ?? null,
+            roundIndex: this.guessState?.currentRoundIndex ?? 0,
+          });
+        }
         break;
     }
   }
@@ -1015,7 +1053,7 @@ export default class HitsterRoom implements Party.Server {
     // call: whichever invocation runs first sets it, and every later one sees it non-null and
     // bails, all before either does any real async work. Cleared only by abortLyricsStart()
     // (an error, or a host-confirmed RESET_LYRICS_GAME once the game has ended).
-    if (this.lyricsState !== null) {
+    if (this.lyricsState !== null || this.guessState !== null) {
       this.sendTo(conn, { type: "ERROR", error: "wrong_phase" });
       return;
     }
@@ -1316,6 +1354,156 @@ export default class HitsterRoom implements Party.Server {
     this.lyricsDeck = [];
     // Clients keep their own lyricsState; tell them it is gone so players leave the winner screen.
     this.abortLyricsStart();
+    this.broadcastState();
+  }
+
+  // ── Guess Mode ──────────────────────────────────────────────────────────────
+  // Same round lifecycle as Lyrics mode via ./timed-round; no AI in the path — the deck is the
+  // loaded playlist's own titles/artists. No preview phase either: there's nothing generated to
+  // review, so the game goes straight to "playing".
+
+  private sanitizedGuessState(): PublicGuessGameState | null {
+    const gs = this.guessState;
+    if (!gs) return null;
+    const { rounds: _deck, currentRound: round, ...rest } = gs;
+    const revealed = gs.phase === "results" || gs.phase === "ended";
+    return {
+      ...rest,
+      currentRound: round
+        ? { hasArtist: round.artist !== "", title: revealed ? round.title : null, artist: revealed ? round.artist : null }
+        : null,
+      answers: timedRound.publicAnswers(gs, (a) => ({ ...a, title: "", artist: "" })),
+    };
+  }
+
+  private broadcastGuessState() {
+    const state = this.sanitizedGuessState();
+    if (state) this.broadcast({ type: "GUESS_STATE", state });
+  }
+
+  private handleStartGuessGame(conn: Party.Connection, hostId: string, config: GuessGameConfig, songOverrides?: EditableSong[]) {
+    if (this.state.phase !== "lobby") {
+      this.sendTo(conn, { type: "ERROR", error: "wrong_phase" });
+      return;
+    }
+    if (!this.claimOrValidateHost(conn, hostId)) {
+      this.sendTo(conn, { type: "ERROR", error: "unauthorized" });
+      return;
+    }
+    // One timed-round game per room; also the double-click guard (see handleStartLyricsGame).
+    if (this.guessState !== null || this.lyricsState !== null) {
+      this.sendTo(conn, { type: "ERROR", error: "wrong_phase" });
+      return;
+    }
+    const songs = this.pendingPlaylist?.allSongs ?? [];
+    if (songs.length === 0) {
+      this.sendTo(conn, { type: "ERROR", error: "not_enough_songs" });
+      return;
+    }
+    this.guessConfig = {
+      timerSeconds: Math.max(10, Math.min(config?.timerSeconds ?? LYRICS_DEFAULT_TIMER, 300)),
+      totalRounds: Math.max(1, Math.min(config?.totalRounds ?? LYRICS_DEFAULT_ROUNDS, 30)),
+      fuzzyEnabled: config?.fuzzyEnabled === true,
+    };
+    const overrides = new Map((Array.isArray(songOverrides) ? songOverrides : []).map((s) => [s.videoId, s]));
+    const deck: GuessRound[] = shuffle(songs.map((s) => {
+      const ov = overrides.get(s.videoId);
+      return {
+        videoId: s.videoId,
+        title: sanitizeText(ov?.title || s.title, 200) || s.title,
+        artist: sanitizeText(ov?.artist ?? s.artist ?? "", 100),
+      };
+    }).filter((r) => r.title !== "")).slice(0, this.guessConfig.totalRounds);
+    if (deck.length === 0) {
+      this.sendTo(conn, { type: "ERROR", error: "not_enough_songs" });
+      return;
+    }
+    const players: GuessGameState["players"] = {};
+    for (const [pid, p] of Object.entries(this.state.players)) {
+      players[pid] = { name: p.name, score: 0, connected: p.connected };
+    }
+    this.guessState = {
+      mode: "guess",
+      phase: "preview",
+      players,
+      rounds: deck,
+      currentRound: null,
+      roundStart: null,
+      timerSeconds: this.guessConfig.timerSeconds,
+      answers: {},
+      totalRounds: deck.length,
+      currentRoundIndex: 0,
+      consecutiveSkips: 0,
+    };
+    timedRound.confirmPreview(this.guessState, deck);
+    this.broadcastGuessState();
+  }
+
+  private handleStartGuessRound(conn: Party.Connection, hostId: string) {
+    if (!this.authorizeHost(conn, hostId) || !this.guessState) {
+      this.sendTo(conn, { type: "ERROR", error: "unauthorized" });
+      return;
+    }
+    if (!timedRound.startRound(this.guessState, Date.now())) {
+      this.sendTo(conn, { type: "ERROR", error: "wrong_phase" });
+      return;
+    }
+    this.broadcastGuessState();
+  }
+
+  private handleSubmitGuess(conn: Party.Connection, playerId: string, title: string, artist: string) {
+    if (!isValidPlayerId(playerId)) return;
+    if (typeof title !== "string" || typeof artist !== "string") return;
+    if (this.playerConnId[playerId] !== conn.id) return; // see handleSubmitLyricsAnswer
+    if (!this.guessState) return;
+    const result = timedRound.acceptAnswer(this.guessState, playerId, Date.now(), LYRICS_ANSWER_GRACE_MS, (ts) => ({
+      title: sanitizeText(title, 200), artist: sanitizeText(artist, 200), ts,
+      titleCorrect: false, artistCorrect: false, titlePoints: 0, artistPoints: 0, bonusPoints: 0, points: 0,
+    }));
+    if (result === "too_late") this.sendTo(conn, { type: "TOO_LATE" });
+    if (result === "ok") this.broadcastGuessState();
+  }
+
+  private handleShowGuessResults(conn: Party.Connection, hostId: string) {
+    if (!this.authorizeHost(conn, hostId) || !this.guessState) {
+      this.sendTo(conn, { type: "ERROR", error: "unauthorized" });
+      return;
+    }
+    const { timerSeconds } = this.guessState;
+    const scored = timedRound.showResults(this.guessState, (round, ans, roundStart) => {
+      const score = scoreGuess(ans, round, roundStart, timerSeconds, this.guessConfig.fuzzyEnabled);
+      return { answer: { ...ans, ...score }, points: score.points };
+    });
+    if (!scored) {
+      this.sendTo(conn, { type: "ERROR", error: "wrong_phase" });
+      return;
+    }
+    this.broadcastGuessState();
+  }
+
+  private handleNextGuessRound(conn: Party.Connection, hostId: string) {
+    if (!this.authorizeHost(conn, hostId) || !this.guessState) {
+      this.sendTo(conn, { type: "ERROR", error: "unauthorized" });
+      return;
+    }
+    if (!timedRound.nextRound(this.guessState, this.guessState.rounds)) {
+      this.sendTo(conn, { type: "ERROR", error: "wrong_phase" });
+      return;
+    }
+    this.broadcastGuessState();
+  }
+
+  private handleResetGuessGame(conn: Party.Connection, hostId: string) {
+    if (!this.authorizeHost(conn, hostId)) {
+      this.sendTo(conn, { type: "ERROR", error: "unauthorized" });
+      return;
+    }
+    if (!this.guessState || this.guessState.phase !== "ended") {
+      this.sendTo(conn, { type: "ERROR", error: "wrong_phase" });
+      return;
+    }
+    this.guessState = null;
+    this.broadcast({ type: "GUESS_ABORTED" });
     this.broadcastState();
   }
 

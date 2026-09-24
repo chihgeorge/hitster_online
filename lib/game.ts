@@ -1,8 +1,10 @@
 // Shared game state types used by both the PartyKit server and Next.js client.
 
+import type { GuessScore } from "./guess-scoring";
+
 // ── Lyrics Mode types ────────────────────────────────────────────────────────
 
-export type GameMode = "timeline" | "lyrics";
+export type GameMode = "timeline" | "lyrics" | "guess";
 
 export interface LyricsRound {
   videoId: string;
@@ -33,6 +35,49 @@ export interface LyricsGameConfig {
   totalRounds: number;
   fuzzyEnabled: boolean;
 }
+
+// ── Guess Mode (docs/designs/guess-mode-song-artist.md): name the song and/or artist ──
+
+export type GuessGameConfig = LyricsGameConfig;
+
+export interface GuessRound {
+  videoId: string;
+  title: string;
+  artist: string; // "" when the track has no artist metadata → title-only round
+}
+
+export interface GuessAnswer extends GuessScore {
+  title: string;
+  artist: string;
+  ts: number;
+}
+
+export interface GuessGameState {
+  mode: "guess";
+  phase: LyricsGameState["phase"];
+  players: Record<string, { name: string; score: number; connected: boolean }>;
+  rounds: GuessRound[]; // server-only deck; never broadcast
+  currentRound: GuessRound | null;
+  roundStart: number | null;
+  timerSeconds: number;
+  answers: Record<string, GuessAnswer>;
+  totalRounds: number;
+  currentRoundIndex: number;
+  consecutiveSkips: number;
+}
+
+// Public round: no video id ever (the screen fetches it via GET_GUESS_AUDIO), and title/artist
+// stay null until results. hasArtist is explicit so clients hide the artist input on a title-only
+// round without inferring it from answer data (design finding 4).
+export interface PublicGuessRound {
+  hasArtist: boolean;
+  title: string | null;
+  artist: string | null;
+}
+
+export type PublicGuessGameState = Omit<GuessGameState, "currentRound" | "rounds"> & {
+  currentRound: PublicGuessRound | null;
+};
 
 
 
@@ -160,6 +205,15 @@ export type ClientMessage =
   | { type: "RESET_LYRICS_GAME"; hostId: string }
   | { type: "CONFIRM_LYRICS_PREVIEW"; hostId: string }
   | { type: "GET_LYRICS_AUDIO"; screenId: string }
+  // Guess Mode: deck comes from the playlist already loaded via LOAD_PLAYLIST; songs carries the
+  // host's title/artist edits, same as START_GAME.
+  | { type: "START_GUESS_GAME"; hostId: string; config: GuessGameConfig; songs?: EditableSong[] }
+  | { type: "START_GUESS_ROUND"; hostId: string }
+  | { type: "SUBMIT_GUESS"; playerId: string; title: string; artist: string }
+  | { type: "SHOW_GUESS_RESULTS"; hostId: string }
+  | { type: "NEXT_GUESS_ROUND"; hostId: string }
+  | { type: "RESET_GUESS_GAME"; hostId: string }
+  | { type: "GET_GUESS_AUDIO"; screenId: string }
   | { type: "JOIN_SCREEN"; screenId: string }
   | { type: "PROPOSE_EDITS"; hostId: string; instruction: string; songs: EditableSong[] }
   | { type: "PROPOSE_LYRIC_EDITS"; hostId: string; instruction: string; rounds: EditableLyricRound[] };
@@ -189,6 +243,9 @@ export type ServerMessage =
   // Sent only to the connection that authenticated as the room's screen (see GET_LYRICS_AUDIO):
   // players never receive the current round's video id.
   | { type: "LYRICS_AUDIO"; videoId: string | null; roundIndex: number }
+  | { type: "GUESS_STATE"; state: PublicGuessGameState }
+  | { type: "GUESS_ABORTED" }
+  | { type: "GUESS_AUDIO"; videoId: string | null; roundIndex: number }
   | { type: "PLACEMENT_ACK"; playerId: string }
   | { type: "ERROR"; error: string }
   | { type: "DIAGNOSTIC"; songs: SongDiagnostic[]; skippedEmbeddingCount?: number }

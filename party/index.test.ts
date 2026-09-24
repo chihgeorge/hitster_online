@@ -2627,3 +2627,154 @@ describe("LOAD_PLAYLIST error mapping after removing spotify_error", () => {
     expect(lastSentTo(conn)).toMatchObject({ type: "PLAYLIST_LOAD_ERROR", error: code });
   });
 });
+
+// ─── Guess Mode (docs/designs/guess-mode-song-artist.md) ─────────────────────
+
+async function setupGuessGame(config: object = { timerSeconds: 60, totalRounds: 2, fuzzyEnabled: false }, songs?: object[]) {
+  const room = new HitsterRoom(makeRoom() as any);
+  const hostConn = makeConn("host-conn");
+  const p1Conn = makeConn("p1-conn");
+  const p2Conn = makeConn("p2-conn");
+  await send(room, p1Conn, { type: "JOIN", playerId: P1, name: "Alice" });
+  await send(room, p2Conn, { type: "JOIN", playerId: P2, name: "Bob" });
+  await send(room, hostConn, { type: "LOAD_PLAYLIST", hostId: "host-uuid", playlistUrl: "hitster://cpop-test", gameMode: "guess" });
+  await send(room, hostConn, { type: "START_GUESS_GAME", hostId: "host-uuid", config, songs });
+  return { room, hostConn, p1Conn, p2Conn };
+}
+
+describe("Guess Mode: lifecycle", () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it("starts straight in playing with no AI calls, and never broadcasts the deck or the answer", async () => {
+    const { room } = await setupGuessGame();
+    expect(resolveLyricsForTracks).not.toHaveBeenCalled();
+    expect(room.guessState?.phase).toBe("playing");
+    const msg = lastBroadcast(room);
+    expect(msg?.type).toBe("GUESS_STATE");
+    expect(msg.state.rounds).toBeUndefined();
+    expect(msg.state.currentRound).toEqual({ hasArtist: true, title: null, artist: null });
+    expect(JSON.stringify(msg)).not.toContain(room.guessState!.currentRound!.videoId);
+  });
+
+  it("full round: guess → results scores title/artist/bonus, reveals the answer, then advances and ends", async () => {
+    const { room, hostConn, p1Conn, p2Conn } = await setupGuessGame();
+    const round = room.guessState!.currentRound!;
+    await send(room, hostConn, { type: "START_GUESS_ROUND", hostId: "host-uuid" });
+    await send(room, p1Conn, { type: "SUBMIT_GUESS", playerId: P1, title: round.title, artist: round.artist });
+    await send(room, p2Conn, { type: "SUBMIT_GUESS", playerId: P2, title: round.title, artist: "wrong" });
+
+    // Guessing-phase broadcast: who answered is visible, what they answered is not.
+    const during = lastBroadcast(room);
+    expect(Object.keys(during.state.answers).sort()).toEqual([P1, P2].sort());
+    expect(JSON.stringify(during.state.answers)).not.toContain(round.title);
+
+    await send(room, hostConn, { type: "SHOW_GUESS_RESULTS", hostId: "host-uuid" });
+    const res = lastBroadcast(room).state;
+    expect(res.phase).toBe("results");
+    expect(res.currentRound).toEqual({ hasArtist: true, title: round.title, artist: round.artist });
+    expect(res.answers[P1]).toMatchObject({ titleCorrect: true, artistCorrect: true, title: round.title });
+    expect(res.answers[P1].bonusPoints).toBeGreaterThan(0);
+    expect(res.answers[P2]).toMatchObject({ titleCorrect: true, artistCorrect: false, artistPoints: 0, bonusPoints: 0 });
+    expect(res.players[P1].score).toBe(res.answers[P1].points);
+    expect(res.players[P1].score).toBeGreaterThan(res.players[P2].score);
+
+    await send(room, hostConn, { type: "NEXT_GUESS_ROUND", hostId: "host-uuid" });
+    expect(room.guessState).toMatchObject({ phase: "playing", currentRoundIndex: 1, answers: {} });
+    await send(room, hostConn, { type: "START_GUESS_ROUND", hostId: "host-uuid" });
+    await send(room, hostConn, { type: "SHOW_GUESS_RESULTS", hostId: "host-uuid" });
+    await send(room, hostConn, { type: "NEXT_GUESS_ROUND", hostId: "host-uuid" });
+    expect(room.guessState?.phase).toBe("ended");
+
+    await send(room, hostConn, { type: "RESET_GUESS_GAME", hostId: "host-uuid" });
+    expect(room.guessState).toBeNull();
+    const all = allSentMessages(room);
+    expect(all.some((m) => m.type === "GUESS_ABORTED")).toBe(true);
+  });
+
+  it("a track with no artist metadata is a title-only round (hasArtist: false)", async () => {
+    const songs = [{ videoId: "KqjgLbKZ1h0", title: "那些年", artist: "", year: 2012 }];
+    const { room } = await setupGuessGame({ timerSeconds: 60, totalRounds: 30, fuzzyEnabled: false }, songs);
+    const noArtist = room.guessState!.rounds.find((r) => r.videoId === "KqjgLbKZ1h0");
+    expect(noArtist?.artist).toBe("");
+    // Walk rounds until the title-only one is current, then check the public flag.
+    const hostConn = makeConn("host-conn");
+    while (room.guessState!.currentRound!.videoId !== "KqjgLbKZ1h0") {
+      await send(room, hostConn, { type: "START_GUESS_ROUND", hostId: "host-uuid" });
+      await send(room, hostConn, { type: "SHOW_GUESS_RESULTS", hostId: "host-uuid" });
+      await send(room, hostConn, { type: "NEXT_GUESS_ROUND", hostId: "host-uuid" });
+    }
+    await send(room, hostConn, { type: "START_GUESS_ROUND", hostId: "host-uuid" });
+    expect(lastBroadcast(room).state.currentRound.hasArtist).toBe(false);
+  });
+
+  it("applies the host's title edits to the deck", async () => {
+    const songs = [{ videoId: "KqjgLbKZ1h0", title: "Those Years", artist: "胡夏", year: 2012 }];
+    const { room } = await setupGuessGame({ timerSeconds: 60, totalRounds: 30, fuzzyEnabled: false }, songs);
+    expect(room.guessState!.rounds.find((r) => r.videoId === "KqjgLbKZ1h0")?.title).toBe("Those Years");
+  });
+});
+
+describe("Guess Mode: guards", () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it("rejects a second START_GUESS_GAME, and a Lyrics start while Guess runs", async () => {
+    const { room, hostConn } = await setupGuessGame();
+    const deck = room.guessState!.rounds;
+    await send(room, hostConn, { type: "START_GUESS_GAME", hostId: "host-uuid", config: {} });
+    expect(lastSentTo(hostConn)).toMatchObject({ type: "ERROR", error: "wrong_phase" });
+    expect(room.guessState!.rounds).toBe(deck);
+    await send(room, hostConn, { type: "START_LYRICS_GAME", hostId: "host-uuid", playlistUrl: "hitster://cpop-test", config: {} });
+    expect(lastSentTo(hostConn)).toMatchObject({ type: "ERROR", error: "wrong_phase" });
+    expect(room.lyricsState).toBeNull();
+  });
+
+  it("errors with not_enough_songs when no playlist is loaded", async () => {
+    const room = new HitsterRoom(makeRoom() as any);
+    const hostConn = makeConn("host-conn");
+    await send(room, hostConn, { type: "START_GUESS_GAME", hostId: "host-uuid", config: {} });
+    expect(lastSentTo(hostConn)).toMatchObject({ type: "ERROR", error: "not_enough_songs" });
+    expect(room.guessState).toBeNull();
+  });
+
+  it("drops malformed, spoofed, duplicate and late guesses", async () => {
+    const { room, hostConn, p1Conn } = await setupGuessGame();
+    await send(room, hostConn, { type: "START_GUESS_ROUND", hostId: "host-uuid" });
+    await send(room, p1Conn, { type: "SUBMIT_GUESS", playerId: P1, title: 42, artist: "x" });
+    expect(room.guessState!.answers[P1]).toBeUndefined();
+    await send(room, makeConn("impostor"), { type: "SUBMIT_GUESS", playerId: P1, title: "a", artist: "b" });
+    expect(room.guessState!.answers[P1]).toBeUndefined();
+    await send(room, p1Conn, { type: "SUBMIT_GUESS", playerId: P1, title: "first", artist: "" });
+    await send(room, p1Conn, { type: "SUBMIT_GUESS", playerId: P1, title: "second", artist: "" });
+    expect(room.guessState!.answers[P1].title).toBe("first");
+
+    const p2Conn = makeConn("p2-conn");
+    await send(room, p2Conn, { type: "REJOIN", playerId: P2, name: "Bob" });
+    vi.useFakeTimers();
+    try {
+      vi.setSystemTime(Date.now() + 200_000);
+      await send(room, p2Conn, { type: "SUBMIT_GUESS", playerId: P2, title: "late", artist: "" });
+    } finally {
+      vi.useRealTimers();
+    }
+    expect(lastSentTo(p2Conn)?.type).toBe("TOO_LATE");
+  });
+
+  it("GET_GUESS_AUDIO gives the video id to the screen only", async () => {
+    const { room, p1Conn } = await setupGuessGame();
+    const screen = makeConn("screen-conn");
+    await send(room, screen, { type: "GET_GUESS_AUDIO", screenId: "screen-uuid" });
+    expect(lastSentTo(screen)).toEqual({ type: "GUESS_AUDIO", videoId: room.guessState!.currentRound!.videoId, roundIndex: 0 });
+    await send(room, p1Conn, { type: "GET_GUESS_AUDIO", screenId: "not-the-screen" });
+    expect(lastSentTo(p1Conn)).toMatchObject({ type: "ERROR", error: "unauthorized" });
+  });
+
+  it("onConnect sends GUESS_STATE mid-game and STATE stays ahead of it", async () => {
+    const { room } = await setupGuessGame();
+    const late = makeConn("late");
+    room.onConnect(late);
+    const types = (late.send as ReturnType<typeof vi.fn>).mock.calls.map((c: unknown[]) => JSON.parse(c[0] as string).type);
+    expect(types).toContain("GUESS_STATE");
+    expect(types).not.toContain("GUESS_ABORTED");
+    expect(types.indexOf("STATE")).toBeLessThan(types.indexOf("GUESS_STATE"));
+  });
+});
