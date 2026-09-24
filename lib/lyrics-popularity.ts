@@ -12,6 +12,8 @@
 // Storage-agnostic like lyrics-resolver.ts's resolveLyricsForTracks — the caller
 // (party/index.ts) owns DO caching, same lyrics-sonnet:/lyrics: prefix convention.
 
+import { mapWithConcurrency } from "./utils";
+
 const ANTHROPIC_API = "https://api.anthropic.com/v1/messages";
 const MODEL = "claude-haiku-4-5-20251001";
 const MAX_CONCURRENT = 4;
@@ -40,13 +42,11 @@ export async function fetchPopularitySummaries(
   const result = new Map<string, string>();
   if (!apiKey || tracks.length === 0) return result;
 
-  for (let i = 0; i < tracks.length; i += MAX_CONCURRENT) {
-    const window = tracks.slice(i, i + MAX_CONCURRENT);
-    const settled = await Promise.allSettled(window.map((t) => fetchOne(t, apiKey)));
-    settled.forEach((r, idx) => {
+  await mapWithConcurrency(tracks, MAX_CONCURRENT, (t) => fetchOne(t, apiKey), (results, window) => {
+    results.forEach((r, idx) => {
       if (r.status === "fulfilled" && r.value) result.set(window[idx].videoId, r.value);
     });
-  }
+  });
 
   return result;
 }

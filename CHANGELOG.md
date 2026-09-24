@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.13.1.1] — 2026-09-23
+
+### Changed
+- **ponytail-audit cleanup, round 2** (no behavior change): extracted `mapWithConcurrency` (`lib/utils.ts`) — the "window of `Promise.allSettled`" concurrency limiter was hand-rolled independently in `ai-metadata.ts`, `lyrics-resolver.ts`, and `lyrics-popularity.ts`; all three now call the one shared helper. Extracted `components/focus-editor-styles.ts` — the `navBtn`/field-box style objects were byte-identical between `SongItemEditor.tsx` and `LyricRoundItemEditor.tsx`; both now import the shared constants (the two components themselves stay separate — different data models and data flow, only the CSS was actually duplicated)
+- **Marked T8 complete in TODOS.md** — it was still listed as open P2, but T3+T4 of `docs/designs/full-page-focus-editor.md` (v0.12.4.0/v0.12.5.0) already shipped exactly what it described
+
 ## [0.13.1.0] — 2026-09-23
 
 ### Fixed

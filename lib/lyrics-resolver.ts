@@ -9,6 +9,7 @@
 
 import type { LyricsRound } from "./game";
 import { fetchLyricsBatch } from "./lyrics-fetcher";
+import { mapWithConcurrency } from "./utils";
 
 export type LyricsResult = Omit<LyricsRound, "videoId">;
 
@@ -215,18 +216,14 @@ export async function resolveLyricsForTracks(
     batches.push(tracks.slice(i, i + BATCH_SIZE));
   }
 
-  for (let i = 0; i < batches.length; i += MAX_CONCURRENT) {
-    const window = batches.slice(i, i + MAX_CONCURRENT);
-    const results = await Promise.allSettled(
-      window.map((b) => resolveLyricsBatch(b, apiKey, model, fetchedLyrics, popularitySummaries))
-    );
+  await mapWithConcurrency(batches, MAX_CONCURRENT, (b) => resolveLyricsBatch(b, apiKey, model, fetchedLyrics, popularitySummaries), (results) => {
     for (const r of results) {
       if (r.status === "fulfilled") {
         r.value.forEach((meta, id) => combined.set(id, meta));
         onBatchDone?.(combined);
       }
     }
-  }
+  });
 
   return combined;
 }

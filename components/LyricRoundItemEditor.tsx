@@ -18,6 +18,7 @@ import { useState } from "react";
 import type { Dispatch, SetStateAction } from "react";
 import type { EditableSong, EditableLyricRound, PublicLyricsRound } from "@/lib/game";
 import { useItemDraft } from "@/lib/use-item-draft";
+import { focusFieldBox, focusNavBtn } from "./focus-editor-styles";
 
 type Overrides = Record<string, { lyricContext?: string; blankSentence?: string }>;
 
@@ -75,19 +76,9 @@ export default function LyricRoundItemEditor({
     discard(round.videoId);
   }
 
-  const fieldBox: React.CSSProperties = {
-    background: "var(--surface2)", border: "2px solid rgba(255,107,53,.2)", borderRadius: 14,
-    padding: "12px 16px", outline: "none", fontFamily: "var(--font-zh)", color: "var(--ink)",
-    textAlign: "center", width: "100%",
-  };
-  const navBtn: React.CSSProperties = {
-    background: "rgba(26,26,46,.06)", border: "none", borderRadius: 12, padding: "10px 18px",
-    fontSize: 13, fontWeight: 700, color: "var(--ink)", cursor: "pointer",
-  };
-
   return (
     <div className="fixed inset-0 z-50 flex flex-col items-center justify-center gap-6 px-6" style={{ background: "var(--bg)" }}>
-      <button type="button" onClick={onClose} style={{ position: "absolute", top: 20, right: 20, ...navBtn }}>
+      <button type="button" onClick={onClose} style={{ position: "absolute", top: 20, right: 20, ...focusNavBtn }}>
         ✕ 關閉 · Close
       </button>
       <p style={{ fontSize: 12, color: "var(--text3)" }}>{index + 1} / {rounds.length}</p>
@@ -108,10 +99,10 @@ export default function LyricRoundItemEditor({
         )}
         <textarea rows={3} value={draft.lyricContext} placeholder={lyricsPreviewLoading ? "…" : "Question"}
           onChange={(e) => setField("lyricContext", e.target.value)}
-          style={{ ...fieldBox, fontSize: 15, resize: "vertical" }} />
+          style={{ ...focusFieldBox, fontSize: 15, resize: "vertical" }} />
         <input type="text" value={draft.blankSentence} placeholder={lyricsPreviewLoading ? "…" : "Answer"}
           onChange={(e) => setField("blankSentence", e.target.value)}
-          style={{ ...fieldBox, fontSize: 16, fontWeight: 900, color: "var(--orange)" }} />
+          style={{ ...focusFieldBox, fontSize: 16, fontWeight: 900, color: "var(--orange)" }} />
       </div>
 
       <div style={{ display: "flex", flexDirection: "column", gap: 6, width: "100%", maxWidth: 420 }}>
@@ -131,7 +122,7 @@ export default function LyricRoundItemEditor({
 
       <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
         <button type="button" onClick={() => setIndex((i) => i - 1)} disabled={index === 0}
-          style={{ ...navBtn, opacity: index === 0 ? 0.4 : 1, cursor: index === 0 ? "not-allowed" : "pointer" }}>
+          style={{ ...focusNavBtn, opacity: index === 0 ? 0.4 : 1, cursor: index === 0 ? "not-allowed" : "pointer" }}>
           ← 上一首 · Prev
         </button>
         {dirty && (
@@ -141,7 +132,7 @@ export default function LyricRoundItemEditor({
           </button>
         )}
         <button type="button" onClick={() => setIndex((i) => i + 1)} disabled={index === rounds.length - 1}
-          style={{ ...navBtn, opacity: index === rounds.length - 1 ? 0.4 : 1, cursor: index === rounds.length - 1 ? "not-allowed" : "pointer" }}>
+          style={{ ...focusNavBtn, opacity: index === rounds.length - 1 ? 0.4 : 1, cursor: index === rounds.length - 1 ? "not-allowed" : "pointer" }}>
           下一首 · Next →
         </button>
       </div>

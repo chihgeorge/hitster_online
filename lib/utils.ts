@@ -28,3 +28,27 @@ export function shuffle<T>(items: readonly T[]): T[] {
   }
   return arr;
 }
+
+/**
+ * Runs `fn` over `items` with at most `limit` in flight at once — the "window of
+ * Promise.allSettled" concurrency limiter that was hand-rolled independently in
+ * ai-metadata.ts, lyrics-resolver.ts, and lyrics-popularity.ts (ponytail-audit finding).
+ * `onWindow`, when given, fires after each window settles with just that window's results —
+ * needed by callers with progressive/streaming UI updates (onBatchDone-style callbacks) that
+ * a single "wait for everything, then return" shape can't support.
+ */
+export async function mapWithConcurrency<T, R>(
+  items: readonly T[],
+  limit: number,
+  fn: (item: T) => Promise<R>,
+  onWindow?: (results: PromiseSettledResult<R>[], window: readonly T[]) => void
+): Promise<PromiseSettledResult<R>[]> {
+  const all: PromiseSettledResult<R>[] = [];
+  for (let i = 0; i < items.length; i += limit) {
+    const window = items.slice(i, i + limit);
+    const results = await Promise.allSettled(window.map(fn));
+    onWindow?.(results, window);
+    all.push(...results);
+  }
+  return all;
+}
