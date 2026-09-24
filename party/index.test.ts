@@ -296,12 +296,43 @@ describe("PLACE handler", () => {
       send(r, conn, { type: "PLACE", playerId: P1, position: 0 }),
     ]);
 
-    // Placement recorded exactly once, ACK sent at least once
+    // Placement recorded correctly, and BOTH messages get their own ACK — handlePlace has no
+    // idempotency guard against a duplicate/retried PLACE, so each call runs and acks in full.
+    // Documents the actual behavior for TODOS.md's "concurrent-placement integration test" item.
     expect(r.state.placements[P1]).toBe(0);
     const sentMessages = (conn.send as ReturnType<typeof vi.fn>).mock.calls.map(
       (args: unknown[]) => JSON.parse(args[0] as string),
     );
-    expect(sentMessages.some((m: { type: string }) => m.type === "PLACEMENT_ACK")).toBe(true);
+    const acks = sentMessages.filter((m: { type: string }) => m.type === "PLACEMENT_ACK");
+    expect(acks).toHaveLength(2);
+  });
+
+  it("last of two concurrent PLACE messages at different positions wins (handlePlace is synchronous, no interleaving)", async () => {
+    const r = new HitsterRoom(makeRoom() as any);
+    r.state.players[P1] = { name: "Alice", cardCount: 0, timeline: [{ id: "c1", videoId: "c1", title: "Old", artist: "A", year: 1990 }], connected: true };
+    r.state.phase = "guessing";
+    r.state.activePlayerId = P1;
+    r.state.currentSong = { id: "v1", videoId: "v1", title: "Song", artist: "Artist", year: 1985 };
+
+    const conn = makeConn("conn-1");
+
+    // Two different positions "in flight" at once — e.g. a stale retry racing a fresh click.
+    await Promise.all([
+      send(r, conn, { type: "PLACE", playerId: P1, position: 0 }),
+      send(r, conn, { type: "PLACE", playerId: P1, position: 1 }),
+    ]);
+
+    // handlePlace does no async work internally, so the Durable Object's single-threaded
+    // model guarantees the second call fully completes after the first — last message wins,
+    // deterministically, not a genuine race. Matches what the client's pendingPlace guard
+    // (app/room/[code]/play/page.tsx, v0.12.8.0) already assumes: the server is the source of
+    // truth for whichever PLACE actually lands last.
+    expect(r.state.placements[P1]).toBe(1);
+    const sentMessages = (conn.send as ReturnType<typeof vi.fn>).mock.calls.map(
+      (args: unknown[]) => JSON.parse(args[0] as string),
+    );
+    const acks = sentMessages.filter((m: { type: string }) => m.type === "PLACEMENT_ACK");
+    expect(acks).toHaveLength(2);
   });
 
   it("rejects PLACE from a non-active player (spectator)", async () => {
