@@ -98,6 +98,7 @@ function HomePageContent() {
         </p>
         <input
           type="text"
+          data-testid="join-name-input"
           placeholder="你的名字"
           value={playerName}
           onChange={(e) => { setPlayerName(e.target.value); setError(""); }}
@@ -114,6 +115,7 @@ function HomePageContent() {
           <div style={{ display: "flex", gap: 10 }}>
             <input
               type="text"
+              data-testid="join-code-input"
               placeholder="房間代碼"
               value={joinCode}
               onChange={(e) => { setJoinCode(e.target.value.toUpperCase()); setError(""); }}
@@ -126,7 +128,7 @@ function HomePageContent() {
               onFocus={(e) => (e.target.style.borderColor = "var(--orange)")}
               onBlur={(e) => (e.target.style.borderColor = "rgba(255,107,53,.2)")}
             />
-            <button type="submit" style={{
+            <button type="submit" data-testid="join-room-btn" style={{
               background: "var(--orange)", color: "white", border: "none", borderRadius: 14,
               padding: "13px 20px", fontSize: 15, fontWeight: 900, cursor: "pointer",
               fontFamily: "var(--font-zh)", whiteSpace: "nowrap",
@@ -149,7 +151,7 @@ function HomePageContent() {
             >
               更改代碼
             </button>
-            <button type="submit" style={{
+            <button type="submit" data-testid="join-room-btn" style={{
               background: "var(--orange)", color: "white", border: "none", borderRadius: 14,
               padding: "13px 20px", fontSize: 15, fontWeight: 900, cursor: "pointer",
               fontFamily: "var(--font-zh)", whiteSpace: "nowrap",

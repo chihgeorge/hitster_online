@@ -900,6 +900,48 @@ describe("REVEAL edge cases", () => {
   });
 });
 
+// Regression (TODOS.md P2): the host-editor year override reaches START_GAME's `songs` param
+// (only on the LOAD_PLAYLIST-cached path — the fallback path ignores overrides entirely, see
+// handleStartGame), but nothing verified it actually lands in the dealt deck AND changes
+// placement scoring, not just the value shown back in the editor UI.
+describe("START_GAME song year override reaches placement evaluation", () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it("uses the host-edited year, not the originally-fetched year, both in the dealt deck and in scoring", async () => {
+    // v1 fetched at 1970, overridden to 2020. v2 fetched (and left un-overridden) at 2010.
+    // Original order: v1(1970) < v2(2010). Overridden order: v1(2020) > v2(2010) — the
+    // override flips their relative order, so whichever placement follows only lines up with
+    // the override, not the original fetch.
+    vi.mocked(fetchPlaylistItems).mockResolvedValue([fakeTrack("v1", 1970), fakeTrack("v2", 2010)]);
+
+    const room = new HitsterRoom(makeRoom() as any);
+    const conn = makeConn();
+    await send(room, conn, { type: "LOAD_PLAYLIST", hostId: "host-uuid", playlistUrl: "PLtest" });
+    await send(room, conn, { type: "JOIN", playerId: P1, name: "Alice" });
+    await send(room, conn, {
+      type: "START_GAME",
+      hostId: "host-uuid",
+      playlistUrl: "PLtest",
+      songs: [{ videoId: "v1", title: "Song v1", artist: "TestArtist", year: 2020 }],
+    });
+
+    // The dealt deck reflects the override, wherever the card landed (starting card or round card).
+    const startCard = room.state.players[P1].timeline[0];
+    const roundCard = room.state.currentSong!;
+    const v1Card = startCard.videoId === "v1" ? startCard : roundCard;
+    expect(v1Card.year).toBe(2020); // not 1970 — the fetched year was overridden before scoring
+
+    // Place the round card at position 0 ("before the starting card"). Correct iff
+    // roundCard.year <= startCard.year using the OVERRIDDEN years — compute the expectation
+    // from the actual dealt state so this holds regardless of which card became which.
+    const expectedCorrect = roundCard.year <= startCard.year;
+    await send(room, conn, { type: "PLACE", playerId: P1, position: 0 });
+    await send(room, conn, { type: "REVEAL", hostId: "host-uuid" });
+
+    expect(room.state.players[P1].cardCount).toBe(expectedCorrect ? 2 : 1);
+  });
+});
+
 // ─── START_GAME boundary conditions ──────────────────────────────────────────
 
 describe("START_GAME targetCardCount clamping", () => {

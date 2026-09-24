@@ -45,20 +45,24 @@
   **Completed:** `SavedPlaylist`/`LibraryEntry` gained an optional `sourceUrl`; `party/playlist.ts`'s POST stores and propagates it to the library index; `handleSavePlaylist` (host page) checks `savedPlaylists` for a matching `sourceUrl` right after a fresh `handleLoadPlaylist` and skips the POST entirely, reusing the existing entry's id. Only fires right after loading a fresh URL (not after loading a previously-saved playlist), matching this TODO's stated scope. Regression test in `app/__tests__/host-page.test.tsx`.  
   _Deferred from plan: georgechih-feat-custom-playlist-eng-review-test-plan-20260828-221211.md_
 
-- [ ] **P2** E2E: full round-trip save → reload → select saved playlist → start game  
+- [x] **P2** E2E: full round-trip save → reload → select saved playlist → start game  
   API and save-panel UI tests exist, but no browser test completes the full flow of: reload page → select saved playlist from panel → verify game starts with those songs.  
+  **Completed:** `e2e/playlist.spec.ts`'s round-trip test now joins a real player and clicks Start Game after loading the saved playlist, asserting `reveal-btn` appears — proves the reload → load-saved path produces an actually-playable deck, not just an enabled button.  
   _Deferred from plan: georgechih-feat-custom-playlist-eng-review-test-plan-20260828-221211.md_
 
-- [ ] **P2** E2E: edit year on one song → verify updated year used in placement evaluation  
+- [x] **P2** E2E: edit year on one song → verify updated year used in placement evaluation  
   The override path exists (`party/index.ts` applies song overrides from playlist party), but no automated test verifies the year change propagates to correct/incorrect placement scoring.  
+  **Completed:** as a fast integration test, not a browser E2E — `party/index.test.ts`'s "START_GAME song year override reaches placement evaluation" sends a host-edited year via `START_GAME`'s `songs` param and verifies it lands in the dealt deck AND flips the placement's correct/incorrect outcome vs. the originally-fetched year. A real browser round trip couldn't test this at all: the `hitster://test`/`hitster://cpop-test` seeds `handleStartGame` uses in every existing e2e spec ignore `songOverrides` entirely (only the LOAD_PLAYLIST-cached real-playlist path applies them), and a real playlist's deck is shuffled server-side, so a browser test would have no deterministic round to assert on.  
   _Deferred from plan: georgechih-feat-custom-playlist-eng-review-test-plan-20260828-221211.md_
 
-- [ ] **P2** E2E: two-player game using saved playlist (not hitster://test seed)  
+- [x] **P2** E2E: two-player game using saved playlist (not hitster://test seed)  
   `e2e/two-player-game.spec.ts` still uses the `hitster://test` seed. Add a variant that loads a saved playlist and runs a full 2-player round to confirm the full pipeline end-to-end.  
+  **Completed:** already existed and fully passes — `e2e/two-player-game.spec.ts`'s "Two-player game using saved playlist" describe block creates a real saved playlist via the HTTP API, loads it by ID on the host page, and runs a full 4-round 2-player game confirming placements, spectating, and non-forced win-target behavior all work against a real saved playlist. Just a stale checkbox; no new work needed beyond fixing its selectors (see the selector-hardening item below).  
   _Deferred from plan: georgechih-feat-custom-playlist-eng-review-test-plan-20260828-221211.md_
 
-- [ ] **P2** E2E selector hardening — add `data-testid` to key interactive elements  
+- [x] **P2** E2E selector hardening — add `data-testid` to key interactive elements  
   Several e2e selectors match on translated button text (e.g., `getByRole("button", { name: /Load/i })` matches "載入 Load" today but would silently break if text becomes Chinese-only). Add `data-testid="load-playlist-btn"`, `data-testid="start-game-btn"`, `data-testid="reveal-btn"`, `data-testid="place-btn"` etc. to interactive elements in host/play pages, and update e2e tests to use them.  
+  **Completed:** added `join-name-input`/`join-code-input`/`join-room-btn` (homepage), `save-playlist-toggle-btn`/`save-playlist-name-input`/`save-playlist-submit-btn`/`edit-songs-toggle-btn`/`load-by-id-input`/`load-by-id-btn`/`load-saved-playlist-btn`/`delete-saved-playlist-btn` (host page). All 4 e2e spec files updated to use testids instead of CJK button text/placeholder matches wherever one now exists.  
   _Surfaced by /review on 2026-09-16_
 
 - [x] **P2** Invalid room code silently creates orphaned waiting room  
