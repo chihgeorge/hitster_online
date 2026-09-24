@@ -109,3 +109,15 @@ describe("computePoints", () => {
     expect(pts).toBe(Math.round(30 * Math.floor(250 / 60)));
   });
 });
+
+describe("isCorrect: HTML-escaped answers (sanitizeText output)", () => {
+  it("grades an escaped apostrophe answer against a raw target as correct", () => {
+    expect(isCorrect("don&#39;t stop believing", "Don't stop believing", [], false)).toBe(true);
+    expect(isCorrect("dont stop believing", "Don't stop believing", [], false)).toBe(true);
+    expect(isCorrect("rock &amp; roll", "rock & roll", [], false)).toBe(true);
+  });
+
+  it("still rejects a different answer", () => {
+    expect(isCorrect("don&#39;t stop dreaming", "Don't stop believing", [], false)).toBe(false);
+  });
+});

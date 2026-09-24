@@ -22,12 +22,12 @@ import {
   type GameMode,
   type LyricOverride,
 } from "../lib/game";
-import { isValidYear, sanitizeText, shuffle } from "../lib/utils";
+import { isValidYear, sanitizeText, decodeEntities, shuffle } from "../lib/utils";
 import { proposeEdits, proposeLyricEdits, type AITrackMeta } from "../lib/ai-metadata";
 import { resolveLyricsForTracks, MODEL_GAME, type LyricsResult } from "../lib/lyrics-resolver";
 import { fetchPopularitySummaries } from "../lib/lyrics-popularity";
 import * as timedRound from "./timed-round";
-import { scoreGuess, decodeEntities, normGuess } from "../lib/guess-scoring";
+import { scoreGuess, normGuess } from "../lib/guess-scoring";
 import { isCorrect, computePoints } from "../lib/fuzzy";
 import {
   resolvePlaylistFromUrl,

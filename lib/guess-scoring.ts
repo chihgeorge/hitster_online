@@ -4,6 +4,7 @@
 
 import { distance as levenshtein } from "fastest-levenshtein";
 import { isCJKText } from "./fuzzy";
+import { decodeEntities } from "./utils";
 
 /** Max points per part, before speed scaling. Tune after playtesting (design Open Question 2). */
 export const GUESS_POINTS = { title: 250, artist: 250, bonus: 100 } as const;
@@ -17,21 +18,12 @@ export interface GuessScore {
   points: number; // sum of the three
 }
 
-const HTML_ENTITIES: Record<string, string> = { "&amp;": "&", "&lt;": "<", "&gt;": ">", "&quot;": '"', "&#39;": "'" };
-
 /**
  * Guess-mode normalizer. Lyrics' isCorrect doesn't fit raw playlist metadata (review 2026-09-24):
  * titles arrive HTML-escaped (sometimes twice, via saved playlists) so "Don't" never matched,
  * non-Latin/non-CJK scripts normalized to "" and matched anything, and mixed "五月天 Mayday" kept
  * its case. Here: undo escaping, NFKC, lowercase, keep only letters (with their combining marks) and digits, any script.
  */
-/** Undoes sanitizeText's HTML escaping, repeatedly (saved playlists can arrive escaped twice). */
-export function decodeEntities(s: string): string {
-  let t = s;
-  for (let prev = ""; prev !== t; ) { prev = t; t = t.replace(/&(amp|lt|gt|quot|#39);/g, (e) => HTML_ENTITIES[e]); }
-  return t;
-}
-
 export function normGuess(s: string): string {
   return decodeEntities(s).normalize("NFKC").toLowerCase().replace(/[^\p{L}\p{M}\p{N}]/gu, "");
 }

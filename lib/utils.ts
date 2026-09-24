@@ -18,6 +18,18 @@ export function sanitizeText(s: string, maxLength = 100): string {
     .slice(0, maxLength);
 }
 
+const HTML_UNESCAPE = Object.fromEntries(Object.entries(HTML_ESCAPE).map(([c, e]) => [e, c]));
+
+/**
+ * Inverse of sanitizeText's escaping, applied until stable (saved playlists can arrive escaped
+ * twice). Graders must compare decoded text: normLatin would turn "&#39;" into "39".
+ */
+export function decodeEntities(s: string): string {
+  let t = s;
+  for (let prev = ""; prev !== t; ) { prev = t; t = t.replace(/&(amp|lt|gt|quot|#39);/g, (e) => HTML_UNESCAPE[e]); }
+  return t;
+}
+
 /** Fisher-Yates shuffle, returns a new array. Was duplicated inline as
  * `.sort(() => Math.random() - 0.5)` in 4 places in party/index.ts (ponytail-audit finding). */
 export function shuffle<T>(items: readonly T[]): T[] {

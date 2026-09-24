@@ -2951,3 +2951,16 @@ describe("playlist bookkeeping (review re-verify 2026-09-24)", () => {
     expect(got).toContainEqual(preview);
   });
 });
+
+describe("Lyrics Mode: apostrophe answers grade correctly (sanitizeText escaping)", () => {
+  it("scores a player's exact apostrophe answer as correct", async () => {
+    const { room, hostConn, p1Conn } = await setupLyricsGame();
+    room.lyricsState!.currentRound!.blankSentence = "Don't stop believing";
+    await send(room, hostConn, { type: "START_LYRICS_ROUND", hostId: "host-uuid" });
+    await send(room, p1Conn, { type: "SUBMIT_LYRICS_ANSWER", playerId: P1, text: "Don't stop believing" });
+    expect(room.lyricsState!.answers[P1].text).toBe("Don&#39;t stop believing"); // stored escaped
+    await send(room, hostConn, { type: "SHOW_LYRICS_RESULTS", hostId: "host-uuid" });
+    expect(room.lyricsState!.answers[P1].correct).toBe(true);
+    expect(room.lyricsState!.players[P1].score).toBeGreaterThan(0);
+  });
+});
