@@ -742,7 +742,7 @@ export default function HostPage() {
             </div>
           )}
 
-          {/* Lyrics config (lyrics mode only, hidden once preview is ready) */}
+          {/* Timed-round config (Lyrics + Guess; hidden once a Lyrics game exists) */}
           {loadStatus !== "loading" && gameMode !== "timeline" && !lyricsState && (
             <div style={{ display: "flex", flexDirection: "column", gap: 10, background: "var(--surface2)", borderRadius: 14, padding: 14, border: "2px solid rgba(255,107,53,.15)" }}>
               <p style={{ fontSize: 12, fontWeight: 700, color: "var(--text2)", marginBottom: 2 }}>{gameMode === "lyrics" ? "歌詞模式設定" : "猜歌模式設定"}</p>
@@ -757,7 +757,7 @@ export default function HostPage() {
                 <label style={{ fontSize: 12, fontWeight: 700, color: "var(--text2)" }}>
                   回合數：<span style={{ color: "var(--orange)", fontWeight: 900 }}>{lyricsConfig.totalRounds}</span>
                 </label>
-                <input type="range" min={3} max={20} value={lyricsConfig.totalRounds}
+                <input type="range" data-testid="rounds-range" min={3} max={20} value={lyricsConfig.totalRounds}
                   onChange={(e) => setLyricsConfig((c) => ({ ...c, totalRounds: Number(e.target.value) }))} className="w-full" />
               </div>
               <label style={{ display: "flex", alignItems: "center", gap: 10, cursor: "pointer" }}>

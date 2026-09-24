@@ -4,7 +4,7 @@
 // and/or artist. One file for all three surfaces — phone (GuessPlay), TV (GuessScreen), host
 // controls (GuessHostControls) — so each page only wires state in. Mirrors Lyrics mode's screens.
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Vinyl from "@/components/Vinyl";
 import { isAudioPhase } from "@/components/LyricsPlayer";
 import { decodeEntities } from "@/lib/utils";
@@ -36,7 +36,8 @@ export function useCountdown(state: PublicGuessGameState | null): number | null 
     const tick = () => setLeft(Math.max(0, Math.ceil((deadline - Date.now()) / 1000)));
     const id = setInterval(tick, 200);
     queueMicrotask(tick);
-    return () => clearInterval(id);
+    // Drop the old value on the way out, or the next round's first render shows last round's 0.
+    return () => { clearInterval(id); setLeft(null); };
   }, [active, roundStart, timerSeconds]);
   return active ? left : null;
 }
@@ -46,6 +47,12 @@ const show = (s: string | null | undefined) => decodeEntities(s ?? "");
 
 const ranked = (state: PublicGuessGameState) =>
   Object.entries(state.players).sort(([, a], [, b]) => b.score - a.score);
+
+/** Sole or tied top scorer with at least one point — the only player whose score shows in gold. */
+export const isLeader = (state: { players: Record<string, { score: number }> }, playerId: string) => {
+  const me = state.players[playerId]?.score ?? 0;
+  return me > 0 && Object.values(state.players).every((p) => p.score <= me);
+};
 
 const roundLabel = (state: PublicGuessGameState) => `第 ${state.currentRoundIndex + 1} / ${state.totalRounds} 回合`;
 
@@ -72,9 +79,11 @@ export function GuessPlay({ state, playerId, playerName, tooLate, onSubmit }: Pl
   const myAnswer = state.answers[playerId] ?? null;
   const hasArtist = state.currentRound?.hasArtist ?? true;
 
+  // New round, or a new game that restarts at round 0 (e.g. after a quit while this phone was offline).
+  const roundKey = `${state.currentRoundIndex}:${state.phase === "playing"}`;
   useEffect(() => {
     setTitle(""); setArtist(""); setSent(false);
-  }, [state.currentRoundIndex]);
+  }, [roundKey]);
 
   const main = (children: React.ReactNode, center = false) => (
     <main className={`flex min-h-screen flex-col items-center ${center ? "justify-center" : ""} gap-6 px-5 py-12`} style={{ background: "var(--bg)" }}>
@@ -83,7 +92,8 @@ export function GuessPlay({ state, playerId, playerName, tooLate, onSubmit }: Pl
   );
   const score = (
     <div style={{ background: "var(--ink)", borderRadius: 12, padding: "6px 14px", textAlign: "center" }}>
-      <p style={{ fontFamily: "var(--font-mono)", color: "var(--gold)", fontWeight: 700, fontSize: 20, lineHeight: 1 }}>{me?.score ?? 0}</p>
+      {/* DESIGN.md: gold means "current leader", nothing else */}
+      <p style={{ fontFamily: "var(--font-mono)", color: isLeader(state, playerId) ? "var(--gold)" : "var(--orange)", fontWeight: 700, fontSize: 20, lineHeight: 1 }}>{me?.score ?? 0}</p>
       <p style={{ fontSize: 9, color: "var(--text2)", textTransform: "uppercase", letterSpacing: ".08em" }}>pts</p>
     </div>
   );
@@ -110,7 +120,7 @@ export function GuessPlay({ state, playerId, playerName, tooLate, onSubmit }: Pl
       setSent(true);
       onSubmit(title.trim(), hasArtist ? artist.trim() : "");
     };
-    const input: React.CSSProperties = { background: "white", border: "2px solid rgba(255,107,53,.3)", borderRadius: 14, padding: "14px 16px", fontSize: 18, color: "var(--ink)", outline: "none", fontFamily: "var(--font-zh)", width: "100%", boxSizing: "border-box" };
+    const input: React.CSSProperties = { background: "white", border: "2px solid rgba(255,107,53,.3)", borderRadius: 14, padding: "14px 16px", fontSize: 18, color: "var(--ink)", fontFamily: "var(--font-zh)", width: "100%", boxSizing: "border-box" };
     return main(<>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", width: "100%", maxWidth: 400 }}>
         <p style={{ fontWeight: 700, color: "var(--ink)", fontSize: 15 }}>{playerName}</p>
@@ -339,7 +349,7 @@ export function QuitGameButton({ onQuit }: { onQuit: () => void }) {
   return (
     <button type="button" data-testid="quit-game-btn"
       onClick={() => { if (window.confirm("結束這場遊戲？所有分數都會清除。 · End this game? Scores will be cleared.")) onQuit(); }}
-      style={{ background: "none", border: "none", color: "var(--text3)", fontSize: 12, textDecoration: "underline", cursor: "pointer", alignSelf: "center", fontFamily: "var(--font-zh)" }}>
+      style={{ background: "none", border: "none", color: "var(--text3)", fontSize: 12, textDecoration: "underline", cursor: "pointer", alignSelf: "center", fontFamily: "var(--font-zh)", minHeight: 44, padding: "0 16px" }}>
       結束遊戲 · Quit game
     </button>
   );
@@ -355,6 +365,19 @@ interface HostProps {
 }
 
 export function GuessHostControls({ state, panel, onStartRound, onShowResults, onNext, onReset }: HostProps) {
+  // Play / Show Results / Next all render as the same button in the same spot, so a double-tap
+  // could skip the reveal. Ignore taps while one is in flight for this phase, and for a moment
+  // after the phase changes (the second tap of a double-tap lands on the NEW button).
+  const stateKey = `${state.phase}:${state.currentRoundIndex}`;
+  const [tappedKey, setTappedKey] = useState<string | null>(null);
+  const shownAt = useRef(0);
+  useEffect(() => { shownAt.current = Date.now(); }, [stateKey]);
+  const busy = tappedKey === stateKey;
+  const once = (fn: () => void) => () => {
+    if (busy || Date.now() - shownAt.current < 400) return;
+    setTappedKey(stateKey);
+    fn();
+  };
   const label: React.CSSProperties = { fontSize: 11, color: "var(--text3)", textTransform: "uppercase", letterSpacing: ".1em" };
   const primary: React.CSSProperties = { background: "var(--orange)", color: "white", border: "none", borderRadius: 14, padding: "15px", fontSize: 16, fontWeight: 900, cursor: "pointer", fontFamily: "var(--font-zh)", boxShadow: "0 4px 16px rgba(255,107,53,.3)" };
 
@@ -372,15 +395,15 @@ export function GuessHostControls({ state, panel, onStartRound, onShowResults, o
     <div style={{ ...panel, display: "flex", flexDirection: "column", gap: 14 }}>
       {state.phase === "playing" && (<>
         <p style={label}>{roundLabel(state)} · 猜歌模式</p>
-        <button data-testid="guess-start-round-btn" onClick={onStartRound} style={primary}>▶ 播放！Play</button>
+        <button data-testid="guess-start-round-btn" onClick={once(onStartRound)} disabled={busy} style={primary}>▶ 播放！Play</button>
       </>)}
       {state.phase === "guessing" && (<>
         <p style={label}>{roundLabel(state)} · 猜歌中 — 已作答 {Object.keys(state.answers).length} / {Object.keys(state.players).length}</p>
-        <button data-testid="guess-show-results-btn" onClick={onShowResults} style={{ ...primary, background: "var(--ink)", boxShadow: "none", fontSize: 15 }}>🔍 揭曉答案 · Show Results</button>
+        <button data-testid="guess-show-results-btn" onClick={once(onShowResults)} disabled={busy} style={{ ...primary, background: "var(--ink)", boxShadow: "none", fontSize: 15 }}>🔍 揭曉答案 · Show Results</button>
       </>)}
       {state.phase === "results" && r && (<>
         <p style={label}>{roundLabel(state)} · 答案：{show(r.title)}{r.hasArtist ? ` — ${show(r.artist)}` : ""}</p>
-        <button data-testid="guess-next-btn" onClick={onNext} style={{ ...primary, fontSize: 15 }}>
+        <button data-testid="guess-next-btn" onClick={once(onNext)} disabled={busy} style={{ ...primary, fontSize: 15 }}>
           {state.currentRoundIndex + 1 >= state.totalRounds ? "🏆 查看排名 · See Rankings" : "▶ 下一回合 · Next Round"}
         </button>
       </>)}

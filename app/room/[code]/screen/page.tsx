@@ -60,6 +60,10 @@ export default function ScreenPage() {
       if (msg.type === "GUESS_AUDIO") setGuessAudio({ videoId: msg.videoId, roundIndex: msg.roundIndex });
     },
     onOpen() {
+      // A reconnect can land in a different game at the same round index (host quit + restarted
+      // while we were offline): cached audio replies are only valid for this connection's games.
+      setLyricsAudio(null);
+      setGuessAudio(null);
       // Claim the screen credential immediately (mode-independent) so Timeline mode's video id
       // starts flowing without needing a Lyrics-only GET_LYRICS_AUDIO — see handleJoinScreen.
       socket.send(JSON.stringify({ type: "JOIN_SCREEN", screenId: getOrCreatePersistedId("hitster_screen_id") }));

@@ -6,7 +6,7 @@ import Link from "next/link";
 import usePartySocket from "partysocket/react";
 import Timeline from "@/components/Timeline";
 import Vinyl from "@/components/Vinyl";
-import { GuessPlay } from "@/components/GuessMode";
+import { GuessPlay, isLeader } from "@/components/GuessMode";
 import type { GameState, ServerMessage, ClientMessage, Player, PublicLyricsGameState, PublicGuessGameState } from "@/lib/game";
 
 function getOrCreatePlayerId(): string {
@@ -230,7 +230,7 @@ export default function PlayPage() {
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", width: "100%", maxWidth: 400 }}>
           <p style={{ fontWeight: 700, color: "var(--ink)", fontSize: 15 }}>{playerName}</p>
           <div style={{ background: "var(--ink)", borderRadius: 12, padding: "6px 14px", textAlign: "center" }}>
-            <p style={{ fontFamily: "var(--font-mono)", color: "var(--gold)", fontWeight: 700, fontSize: 20, lineHeight: 1 }}>
+            <p style={{ fontFamily: "var(--font-mono)", color: isLeader(lyricsState, playerIdRef.current) ? "var(--gold)" : "var(--orange)", fontWeight: 700, fontSize: 20, lineHeight: 1 }}>
               {myLyricsPlayer?.score ?? 0}
             </p>
             <p style={{ fontSize: 9, color: "var(--text2)", textTransform: "uppercase", letterSpacing: ".08em" }}>pts</p>
@@ -274,7 +274,7 @@ export default function PlayPage() {
               value={lyricsAnswer}
               onChange={(e) => setLyricsAnswer(e.target.value)}
               onKeyDown={(e) => { if (e.key === "Enter") handleSubmitLyricsAnswer(); }}
-              style={{ background: "white", border: "2px solid rgba(255,107,53,.3)", borderRadius: 14, padding: "14px 16px", fontSize: 18, color: "var(--ink)", outline: "none", fontFamily: "var(--font-zh)", width: "100%", boxSizing: "border-box" }}
+              style={{ background: "white", border: "2px solid rgba(255,107,53,.3)", borderRadius: 14, padding: "14px 16px", fontSize: 18, color: "var(--ink)", fontFamily: "var(--font-zh)", width: "100%", boxSizing: "border-box" }}
             />
             <button onClick={handleSubmitLyricsAnswer} disabled={!lyricsAnswer.trim()}
               style={{ background: !lyricsAnswer.trim() ? "rgba(255,107,53,.35)" : "var(--orange)", color: "white", border: "none", borderRadius: 14, padding: "14px", fontSize: 16, fontWeight: 900, cursor: !lyricsAnswer.trim() ? "not-allowed" : "pointer", fontFamily: "var(--font-zh)", boxShadow: lyricsAnswer.trim() ? "0 4px 16px rgba(255,107,53,.3)" : "none" }}>

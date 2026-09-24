@@ -306,3 +306,36 @@ describe("ScreenPage: audio request (needsLyricsAudio retry)", () => {
     expect(secondId).toBe(firstId); // localStorage-backed, not regenerated per mount
   });
 });
+
+// Guess mode audio wiring (/ship review D3): the TV must ask for each round's song exactly once,
+// and forget cached replies when it reconnects (a new game can reuse the same round index).
+describe("ScreenPage: Guess Mode audio", () => {
+  const guess = (over: object = {}) => ({
+    mode: "guess", phase: "playing", players: {}, currentRound: { hasArtist: true, title: null, artist: null },
+    roundStart: null, timerSeconds: 60, answers: {}, totalRounds: 3, currentRoundIndex: 0, consecutiveSkips: 0, ...over,
+  });
+  const audioRequests = () => sendSpy.mock.calls.map((c) => JSON.parse(c[0] as string)).filter((m) => m.type === "GET_GUESS_AUDIO").length;
+
+  it("requests GET_GUESS_AUDIO per round and plays it only once the round starts", () => {
+    render(<ScreenPage />);
+    act(() => { socketOpts.onMessage({ data: JSON.stringify({ type: "GUESS_STATE", state: guess() }) } as MessageEvent); });
+    expect(audioRequests()).toBe(1);
+    act(() => { socketOpts.onMessage({ data: JSON.stringify({ type: "GUESS_AUDIO", videoId: "abcdefghijk", roundIndex: 0 }) } as MessageEvent); });
+    expect(audioRequests()).toBe(1);
+    expect(screen.getByTestId("lyrics-player").dataset.playing).toBe("false");
+    act(() => { socketOpts.onMessage({ data: JSON.stringify({ type: "GUESS_STATE", state: guess({ phase: "guessing", roundStart: Date.now() }) }) } as MessageEvent); });
+    expect(screen.getByTestId("lyrics-player").dataset.playing).toBe("true");
+    act(() => { socketOpts.onMessage({ data: JSON.stringify({ type: "GUESS_STATE", state: guess({ currentRoundIndex: 1 }) }) } as MessageEvent); });
+    expect(audioRequests()).toBe(2);
+  });
+
+  it("drops cached audio on reconnect so a restarted game re-requests round 0", () => {
+    render(<ScreenPage />);
+    act(() => { socketOpts.onMessage({ data: JSON.stringify({ type: "GUESS_STATE", state: guess() }) } as MessageEvent); });
+    act(() => { socketOpts.onMessage({ data: JSON.stringify({ type: "GUESS_AUDIO", videoId: "oldgameid01", roundIndex: 0 }) } as MessageEvent); });
+    const before = audioRequests();
+    act(() => { socketOpts.onOpen?.(); });
+    act(() => { socketOpts.onMessage({ data: JSON.stringify({ type: "GUESS_STATE", state: guess() }) } as MessageEvent); });
+    expect(audioRequests()).toBeGreaterThan(before); // re-asks instead of replaying the old game's song
+  });
+});

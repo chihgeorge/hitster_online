@@ -46,7 +46,7 @@ test.describe("Guess Mode", () => {
       await url.pressSequentially("hitster://cpop-test");
       await host.locator("[data-testid='load-playlist-btn']").click();
       await expect(host.getByText(/已載入/)).toBeVisible({ timeout: 5_000 });
-      await host.locator('input[type="range"]').nth(1).fill("3");
+      await host.locator("[data-testid='rounds-range']").fill("3");
       await expect(host.getByText("回合數：3")).toBeVisible();
       await host.locator("[data-testid='start-game-btn']").click();
 

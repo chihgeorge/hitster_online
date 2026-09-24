@@ -198,3 +198,37 @@ describe("PlayPage: LYRICS_ABORTED", () => {
     expect(screen.getByText(/等待主持人開始遊戲/)).toBeTruthy();
   });
 });
+
+// Guess mode page wiring (/ship review D3): a TOO_LATE must not lock the player out of later rounds.
+describe("PlayPage: Guess Mode TOO_LATE resets on the next round", () => {
+  const guess = (over: object = {}) => ({
+    mode: "guess", phase: "guessing", players: { [PLAYER]: { name: "QA", score: 0, connected: true } },
+    currentRound: { hasArtist: true, title: null, artist: null }, roundStart: Date.now(), timerSeconds: 60,
+    answers: {}, totalRounds: 3, currentRoundIndex: 0, consecutiveSkips: 0, ...over,
+  });
+  it("shows time's up after TOO_LATE, then the inputs again next round", () => {
+    render(<PlayPage />);
+    serverSends({ type: "GUESS_STATE", state: guess() });
+    expect(screen.getByTestId("guess-title-input")).toBeTruthy();
+    serverSends({ type: "TOO_LATE" });
+    expect(screen.getByText(/時間到/)).toBeTruthy();
+    serverSends({ type: "GUESS_STATE", state: guess({ phase: "playing", currentRoundIndex: 1, roundStart: null }) });
+    serverSends({ type: "GUESS_STATE", state: guess({ currentRoundIndex: 1, roundStart: Date.now() }) });
+    expect(screen.getByTestId("guess-title-input")).toBeTruthy();
+  });
+  it("sends SUBMIT_GUESS with both fields", () => {
+    render(<PlayPage />);
+    serverSends({ type: "GUESS_STATE", state: guess() });
+    act(() => { (screen.getByTestId("guess-title-input") as HTMLInputElement).focus(); });
+    const set = (id: string, v: string) => act(() => {
+      const el = screen.getByTestId(id) as HTMLInputElement;
+      const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!;
+      setter.call(el, v); el.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    set("guess-title-input", "晴天");
+    set("guess-artist-input", "周杰倫");
+    act(() => { screen.getByTestId("guess-submit-btn").click(); });
+    const sent = sendSpy.mock.calls.map((c) => JSON.parse(c[0] as string));
+    expect(sent).toContainEqual({ type: "SUBMIT_GUESS", playerId: PLAYER, title: "晴天", artist: "周杰倫" });
+  });
+});

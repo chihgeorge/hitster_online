@@ -136,6 +136,18 @@
 - [ ] **P3** Host keeps the lobby vinyl background during Lyrics/Guess play (DESIGN.md)  
   `.bg-vinyl-pattern` is keyed on `state.phase === "lobby"`, which stays "lobby" through Lyrics/Guess games; DESIGN.md keeps the pattern out of active gameplay. Key it on "no timed game in play" too. _Found by /qa ISSUE-003, 2026-09-24._
 
+- [ ] **P3** Countdowns use the device clock, not server time  
+  Phones and the TV compute time left as `roundStart + timerSeconds*1000 - Date.now()`; `roundStart` is server time. A phone clock that's far off shows the wrong time (inputs hidden early, or TOO_LATE after "time left"). Fix: send `serverNow` with GUESS_STATE/LYRICS_STATE and apply the offset. _Deferred from /ship review (red team), 2026-09-24._
+
+- [ ] **P3** "Submitted!" is optimistic in Guess mode  
+  The phone shows ✓ before the server confirms; a silently-dropped submit (second tab took over the player id, player not in the game) still looks sent. Derive "submitted" from the redacted answer key arriving, show "sending…" until then. _Deferred from /ship review (red team), 2026-09-24._
+
+- [ ] **P3** TV results list can overflow with 9+ players  
+  `GuessScreen` (and Lyrics) results use `overflowY: auto` inside the fixed 960×540 Stage — a TV can't scroll. Verify with ~10 players; then tighten rows, two columns, or top-N + "+N more". _Deferred from /ship design review, 2026-09-24._
+
+- [ ] **P3** Share timed-round UI helpers between Lyrics and Guess  
+  `useCountdown`, `Standings`, `guessAudioProps`, and the TV score row in `components/GuessMode.tsx` duplicate inline Lyrics code in the play/screen pages (~50 lines). Widen them to structural types and use them for Lyrics too (touches live Lyrics UI — do it with tests). _Advisory from /ship review, 2026-09-24._
+
 - [ ] **P3** Guess grading tuning after playtest  
   Fuzzy distance 2 on 5-char Latin targets is lenient ("hello"~"help"). Answers accepted in the 500ms grace window always score 0 (inherited from Lyrics). Tune with real games. _From /review adversarial pass, 2026-09-24._
 
