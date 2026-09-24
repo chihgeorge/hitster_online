@@ -17,7 +17,7 @@ const PARTYKIT_HOST = process.env.NEXT_PUBLIC_PARTYKIT_HOST || "localhost:1999";
 // in localStorage directly — empty on a new device. Now backed by party/library.ts, the same
 // source app/playlists/page.tsx uses, so a playlist created there shows up here too (and vice
 // versa) instead of two permanently-diverged lists.
-type SavedPlaylistMeta = { id: string; name: string; songCount: number };
+type SavedPlaylistMeta = { id: string; name: string; songCount: number; sourceUrl?: string };
 
 function libraryUrl(hostId: string): string {
   const protocol = PARTYKIT_HOST.startsWith("localhost") ? "http" : "https";
@@ -326,6 +326,21 @@ export default function HostPage() {
       return;
     }
     setSaveError("");
+
+    // Cross-session dedup (TODOS.md): the same YouTube playlist URL, freshly loaded, may
+    // already be saved from an earlier session — skip the save and just point at that one.
+    // loadedUrlRef only holds a real URL right after handleLoadPlaylist (handleLoadSavedPlaylist
+    // overwrites it with the saved playlist's id instead), so this only fires in that case.
+    const sourceUrl = loadedUrlRef.current;
+    const dupe = sourceUrl ? savedPlaylists.find((p) => p.sourceUrl === sourceUrl) : undefined;
+    if (dupe) {
+      setSavedId(dupe.id);
+      setShowSavePanel(false);
+      setSavePlaylistName("");
+      setShowEditor(true);
+      return;
+    }
+
     setSaving(true);
     setError("");
     try {
@@ -338,6 +353,7 @@ export default function HostPage() {
           ownerHostId: hostIdRef.current,
           name,
           songs: readySongs,
+          ...(sourceUrl ? { sourceUrl } : {}),
         }),
       });
       if (!res.ok) {

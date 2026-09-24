@@ -40,8 +40,9 @@
   **Completed:** `party/index.test.ts`'s "PLACE handler" describe block covers this — one test confirms `placements[playerId]` and exactly 2 `PLACEMENT_ACK`s for two concurrent same-position PLACEs (strengthened from an earlier shallow version that only checked "at least one" ACK), a second new test confirms last-write-wins for two concurrent PLACEs at *different* positions, documenting that `handlePlace`'s fully-synchronous body means the Durable Object's single-threaded model makes this deterministic, not a real race. Matches what the client's `pendingPlace` guard (v0.12.8.0) already assumes.  
   _Deferred from plan: foamy-crafting-bonbon.md_
 
-- [ ] **P2** Cross-session playlist dedup by source URL  
+- [x] **P2** Cross-session playlist dedup by source URL  
   Within-session: Save button replaced by "Saved ✓" after first save. Cross-session (page reload + same URL): no dedup by source URL — the same YouTube playlist can be saved multiple times across sessions. Fix: store source URL in playlist metadata and skip save if already present.  
+  **Completed:** `SavedPlaylist`/`LibraryEntry` gained an optional `sourceUrl`; `party/playlist.ts`'s POST stores and propagates it to the library index; `handleSavePlaylist` (host page) checks `savedPlaylists` for a matching `sourceUrl` right after a fresh `handleLoadPlaylist` and skips the POST entirely, reusing the existing entry's id. Only fires right after loading a fresh URL (not after loading a previously-saved playlist), matching this TODO's stated scope. Regression test in `app/__tests__/host-page.test.tsx`.  
   _Deferred from plan: georgechih-feat-custom-playlist-eng-review-test-plan-20260828-221211.md_
 
 - [ ] **P2** E2E: full round-trip save → reload → select saved playlist → start game  

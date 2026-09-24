@@ -41,6 +41,10 @@ export interface LibraryEntry {
   id: string;
   name: string;
   songCount: number;
+  /** Mirrors SavedPlaylist.sourceUrl (lib/game.ts) — carried in the index too so the host
+   * page can dedup-check against the library list it already has, without fetching every
+   * individual playlist. Optional, same reasons as there. */
+  sourceUrl?: string;
 }
 
 function validEntry(raw: unknown): raw is LibraryEntry {
@@ -49,7 +53,8 @@ function validEntry(raw: unknown): raw is LibraryEntry {
   return (
     typeof e.id === "string" && e.id.trim().length > 0 &&
     typeof e.name === "string" && e.name.trim().length > 0 &&
-    typeof e.songCount === "number" && Number.isInteger(e.songCount) && e.songCount >= 0
+    typeof e.songCount === "number" && Number.isInteger(e.songCount) && e.songCount >= 0 &&
+    (e.sourceUrl === undefined || typeof e.sourceUrl === "string")
   );
 }
 
@@ -87,7 +92,12 @@ export default class LibraryParty implements Party.Server {
         if (!entries[entry.id] && Object.keys(entries).length >= MAX_ENTRIES) {
           return err(`Library is full (max ${MAX_ENTRIES} playlists)`, 400);
         }
-        entries[entry.id] = { id: entry.id, name: sanitizeText(entry.name, MAX_NAME_LEN), songCount: entry.songCount };
+        entries[entry.id] = {
+          id: entry.id,
+          name: sanitizeText(entry.name, MAX_NAME_LEN),
+          songCount: entry.songCount,
+          ...(entry.sourceUrl ? { sourceUrl: entry.sourceUrl } : {}),
+        };
         await this.room.storage.put("entries", entries);
         return json({ ok: true });
       }

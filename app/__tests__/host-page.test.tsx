@@ -185,3 +185,42 @@ describe("HostPage: Ask AI includes songs with no existing lyrics data (regressi
     expect(videoIds).toContain("v1");
   });
 });
+
+// Regression (TODOS.md P2): saving the same YouTube playlist URL again in a later session
+// used to always create a brand-new library entry — the same playlist duplicated endlessly.
+describe("HostPage: cross-session playlist dedup by source URL", () => {
+  const sourceUrl = "https://www.youtube.com/playlist?list=PLdupe";
+
+  it("skips the save POST and reuses the existing entry when sourceUrl already matches a saved playlist", async () => {
+    const fetchMock = vi.fn().mockImplementation((url: string, init?: RequestInit) => {
+      if (String(url).includes("/parties/library/") && (!init || init.method === undefined)) {
+        return Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve({ entries: [{ id: "existing-id", name: "Old Save", songCount: 2, sourceUrl }] }),
+        });
+      }
+      return Promise.resolve({ ok: true, json: () => Promise.resolve({ entries: [] }) });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<HostPage />);
+    serverSends({ type: "STATE", state: lobbyStateEmpty });
+    fireEvent.change(screen.getByPlaceholderText(/youtube.com\/playlist/), { target: { value: sourceUrl } });
+    fireEvent.click(screen.getByText("載入 Load"));
+    serverSends({
+      type: "PLAYLIST_READY", songCount: 2,
+      songs: [{ videoId: "v1", title: "Song A", artist: "Artist A", year: 2000 }, { videoId: "v2", title: "Song B", artist: "Artist B", year: 2001 }],
+    });
+
+    await waitFor(() => expect(screen.getByText("儲存播放清單")).toBeTruthy());
+    fetchMock.mockClear();
+
+    fireEvent.click(screen.getByText("儲存播放清單"));
+    fireEvent.change(screen.getByPlaceholderText("播放清單名稱"), { target: { value: "Same playlist again" } });
+    fireEvent.click(screen.getByText("儲存 (2)"));
+
+    // No POST to /parties/playlist/... — the dedup check short-circuited before any network call.
+    expect(fetchMock).not.toHaveBeenCalledWith(expect.stringContaining("/parties/playlist/"), expect.anything());
+    await waitFor(() => expect(screen.getByTitle("existing-id")).toBeTruthy());
+  });
+});

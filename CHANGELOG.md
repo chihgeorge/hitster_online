@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.13.2.0] — 2026-09-23
+
+### Added
+- **Cross-session playlist dedup by source URL** (TODOS.md P2): saving the same YouTube playlist twice across sessions used to always create a new library entry. `SavedPlaylist`/`LibraryEntry` now carry an optional `sourceUrl`, set by `party/playlist.ts`'s POST handler and mirrored into the library index; the host page's save button checks the already-loaded library list for a matching `sourceUrl` right after a fresh playlist load and reuses that entry instead of saving again. Only applies right after loading a fresh URL — reloading a previously-saved playlist and re-saving still creates a new entry, matching the TODO's stated scope
+
 ## [0.13.1.2] — 2026-09-23
 
 ### Changed

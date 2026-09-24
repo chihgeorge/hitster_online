@@ -101,6 +101,11 @@ export interface SavedPlaylist {
   songs: EditableSong[];
   createdAt: number;
   updatedAt: number;
+  /** The YouTube playlist URL this was created from, when known — used for cross-session
+   * dedup (TODOS.md: the same playlist could otherwise be saved repeatedly across sessions).
+   * Optional: playlists saved before this field existed, or created without a source URL
+   * (e.g. a fully manual playlist), simply never match on dedup. */
+  sourceUrl?: string;
 }
 
 export interface LyricOverride {
