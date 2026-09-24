@@ -168,8 +168,9 @@
   `party/index.ts` handleSubmitLyricsAnswer compares a client-supplied `ts` to the deadline and `computePoints` uses it, so a player can answer late or claim max points by spoofing it. Found by /ship adversarial review on 2026-09-21. **Completed:** v0.10.1.0 (2026-09-22), server now calls `Date.now()` itself; the client no longer sends `ts` at all.
 - [x] **P2** Bind Lyrics answers to the sending connection  
   Any player can answer as another player (ids are visible in broadcast state). Needs a conn.id to playerId map that survives REJOIN. Found by /ship adversarial review on 2026-09-21. **Completed:** v0.10.1.0 (2026-09-22), `playerConnId` map set on JOIN/REJOIN, checked in `handleSubmitLyricsAnswer`.
-- [ ] **P3** `handleStartLyricsGame` has no re-entrancy guard  
-  A second START_LYRICS_GAME (double click) can let a stale loader abort or overwrite the newer game. Reject START while a game is active and bail after each await if a sequence token changed. Found by /ship adversarial review on 2026-09-21.
+- [x] **P3** `handleStartLyricsGame` has no re-entrancy guard  
+  A second START_LYRICS_GAME (double click) can let a stale loader abort or overwrite the newer game. Reject START while a game is active and bail after each await if a sequence token changed. Found by /ship adversarial review on 2026-09-21.  
+  **Completed:** added `if (this.lyricsState !== null) return error` right after the existing phase/host checks in `handleStartLyricsGame` — `this.lyricsState` is set synchronously before any `await`, so this single guard is atomic against a concurrent second call (no sequence token needed; JS run-to-completion means the second call can't observe a stale `null` once the first has started). Regression test in `party/index.test.ts` fires two START_LYRICS_GAME calls without awaiting the first, confirmed it fails without the guard and passes with it.
 - [ ] **P3** Player shows "Submitted!" before the server acknowledges  
   Server silently drops answers for unknown/late-joining players. Send an ack or derive submitted from `lyricsState.answers[playerId]`. Also tag SUBMIT/TOO_LATE with the round index. Found by /ship adversarial review on 2026-09-21.
 - [ ] **P3** Client countdown uses the device clock against the server's `roundStart`  

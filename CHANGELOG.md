@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.13.4.0] — 2026-09-23
+
+### Fixed
+- **`handleStartLyricsGame` re-entrancy guard** (TODOS.md P3, /ship adversarial review 2026-09-21): a second `START_LYRICS_GAME` sent while the first was still mid-flight (double click, client retry) used to pass the `state.phase === "lobby"` check — Lyrics mode never touches `state.phase` — and race the first call, letting whichever resolved last silently overwrite the other's deck. Fixed with a single `this.lyricsState !== null` guard right after the existing checks; since `lyricsState` is set synchronously before any `await`, this is atomic against a concurrent second call with no sequence token needed
+
 ## [0.13.3.0] — 2026-09-23
 
 ### Added
