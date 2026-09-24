@@ -15,7 +15,21 @@ export function sanitizeText(s: string, maxLength = 100): string {
   return s
     .replace(/[&<>"']/g, (c) => HTML_ESCAPE[c] ?? c)
     .trim()
-    .slice(0, maxLength);
+    .slice(0, maxLength)
+    // Escaping happens before the cut, so the cut can land inside an entity ("&am"): drop it.
+    .replace(/&[#a-z0-9]*$/i, "");
+}
+
+const HTML_UNESCAPE = Object.fromEntries(Object.entries(HTML_ESCAPE).map(([c, e]) => [e, c]));
+
+/**
+ * Inverse of sanitizeText's escaping, applied until stable (saved playlists can arrive escaped
+ * twice). Graders must compare decoded text: normLatin would turn "&#39;" into "39".
+ */
+export function decodeEntities(s: string): string {
+  let t = s;
+  for (let prev = ""; prev !== t; ) { prev = t; t = t.replace(/&(amp|lt|gt|quot|#39);/g, (e) => HTML_UNESCAPE[e]); }
+  return t;
 }
 
 /** Fisher-Yates shuffle, returns a new array. Was duplicated inline as

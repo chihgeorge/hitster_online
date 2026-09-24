@@ -2,6 +2,7 @@
 // fuzzyEnabled is OFF by default — host opt-in only (寬鬆模式).
 
 import { distance as levenshtein } from "fastest-levenshtein";
+import { decodeEntities } from "./utils";
 
 export function normCJK(s: string): string {
   return s.trim().replace(/[\s　]/g, "").replace(/[，。！？、…～「」『』【】〔〕]/g, "");
@@ -29,7 +30,9 @@ export function isCorrect(
   fuzzyEnabled: boolean
 ): boolean {
   const isCJK = isCJKText(target);
-  const norm = isCJK ? normCJK : normLatin;
+  // Answers are stored through sanitizeText (' → &#39;), targets usually aren't: decode both, or
+  // normLatin turns "don&#39;t" into "don39t" and an exact apostrophe answer grades wrong.
+  const norm = (s: string) => (isCJK ? normCJK : normLatin)(decodeEntities(s));
 
   const normTarget = norm(target);
   const answer = norm(playerAnswer);

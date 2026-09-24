@@ -224,3 +224,23 @@ describe("HostPage: cross-session playlist dedup by source URL", () => {
     await waitFor(() => expect(screen.getByTitle("existing-id")).toBeTruthy());
   });
 });
+
+// Guess mode start lifecycle (/ship review D3): a rejected start must not leave Start disabled.
+describe("HostPage: Guess Mode start", () => {
+  it("sends START_GUESS_GAME with the songs, disables Start until the reply, and re-enables on ERROR", () => {
+    render(<HostPage />);
+    serverSends({ type: "STATE", state: lobbyStateEmpty });
+    fireEvent.click(screen.getByText("🎧 猜歌模式"));
+    fireEvent.change(screen.getByPlaceholderText(/youtube.com\/playlist/), { target: { value: "hitster://cpop-test" } });
+    fireEvent.click(screen.getByText("載入 Load"));
+    serverSends({ type: "PLAYLIST_READY", songCount: 2, songs: [{ videoId: "v1", title: "Song A", artist: "A", year: 2000 }, { videoId: "v2", title: "Song B", artist: "B", year: 2001 }] });
+    serverSends({ type: "STATE", state: lobbyStateWithPlayer });
+    clickStartGame();
+    const sent = sendSpy.mock.calls.map((c) => JSON.parse(c[0] as string));
+    const start = sent.find((m) => m.type === "START_GUESS_GAME");
+    expect(start?.songs).toHaveLength(2);
+    expect((screen.getByTestId("start-game-btn") as HTMLButtonElement).disabled).toBe(true);
+    serverSends({ type: "ERROR", error: "not_enough_songs" });
+    expect((screen.getByTestId("start-game-btn") as HTMLButtonElement).disabled).toBe(false);
+  });
+});

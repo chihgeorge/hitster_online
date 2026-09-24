@@ -6,7 +6,8 @@ import Link from "next/link";
 import usePartySocket from "partysocket/react";
 import Timeline from "@/components/Timeline";
 import Vinyl from "@/components/Vinyl";
-import type { GameState, ServerMessage, ClientMessage, Player, PublicLyricsGameState } from "@/lib/game";
+import { GuessPlay, isLeader } from "@/components/GuessMode";
+import type { GameState, ServerMessage, ClientMessage, Player, PublicLyricsGameState, PublicGuessGameState } from "@/lib/game";
 
 function getOrCreatePlayerId(): string {
   const key = "hitster_player_id";
@@ -29,6 +30,11 @@ export default function PlayPage() {
   const [lyricsSubmitted, setLyricsSubmitted] = useState(false);
   const [lyricsTooLate, setLyricsTooLate] = useState(false);
   const [lyricsTimerLeft, setLyricsTimerLeft] = useState<number | null>(null);
+  const [guessState, setGuessState] = useState<PublicGuessGameState | null>(null);
+  // Round index a TOO_LATE arrived in — the flag only applies to that round, so a phone that
+  // reconnects straight into the next round's guessing isn't locked out.
+  const [guessTooLateRound, setGuessTooLateRound] = useState<number | null>(null);
+  const guessRoundRef = useRef<number | null>(null);
   const [selectedPosition, setSelectedPosition] = useState<number | null>(null);
   const [hasPlaced, setHasPlaced] = useState(false);
   // Closes the same class of race T2 fixed for Lyrics mode's Start button: hasPlaced only
@@ -113,6 +119,16 @@ export default function PlayPage() {
         case "LYRICS_ABORTED":
           setLyricsState(null);
           break;
+        case "GUESS_STATE":
+          guessRoundRef.current = msg.state.currentRoundIndex;
+          setGuessState(msg.state);
+          break;
+        case "GUESS_ABORTED":
+          // The game is gone: a TOO_LATE from it must not carry into the next game's same round.
+          guessRoundRef.current = null;
+          setGuessTooLateRound(null);
+          setGuessState(null);
+          break;
         case "PLACEMENT_ACK":
           if (msg.playerId === playerIdRef.current) { setHasPlaced(true); setPendingPlace(false); }
           break;
@@ -120,6 +136,7 @@ export default function PlayPage() {
           setTooLate(true);
           setLyricsTooLate(true);
           setLyricsSubmitted(false);
+          setGuessTooLateRound(guessRoundRef.current);
           setPendingPlace(false);
           break;
         case "ERROR":
@@ -153,6 +170,18 @@ export default function PlayPage() {
 
   const myLyricsPlayer = lyricsState?.players[playerIdRef.current] ?? null;
   const myLyricsAnswer = lyricsState?.answers[playerIdRef.current] ?? null;
+
+  if (guessState) {
+    return (
+      <GuessPlay
+        state={guessState}
+        playerId={playerIdRef.current}
+        playerName={playerName}
+        tooLate={guessTooLateRound !== null && guessTooLateRound === guessState.currentRoundIndex}
+        onSubmit={(title, artist) => send({ type: "SUBMIT_GUESS", playerId: playerIdRef.current, title, artist })}
+      />
+    );
+  }
 
   /* ── Lyrics Mode: loading ── */
   if (lyricsState?.phase === "loading") {
@@ -203,7 +232,7 @@ export default function PlayPage() {
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", width: "100%", maxWidth: 400 }}>
           <p style={{ fontWeight: 700, color: "var(--ink)", fontSize: 15 }}>{playerName}</p>
           <div style={{ background: "var(--ink)", borderRadius: 12, padding: "6px 14px", textAlign: "center" }}>
-            <p style={{ fontFamily: "var(--font-mono)", color: "var(--gold)", fontWeight: 700, fontSize: 20, lineHeight: 1 }}>
+            <p style={{ fontFamily: "var(--font-mono)", color: isLeader(lyricsState, playerIdRef.current) ? "var(--gold)" : "var(--orange)", fontWeight: 700, fontSize: 20, lineHeight: 1 }}>
               {myLyricsPlayer?.score ?? 0}
             </p>
             <p style={{ fontSize: 9, color: "var(--text2)", textTransform: "uppercase", letterSpacing: ".08em" }}>pts</p>
@@ -247,7 +276,7 @@ export default function PlayPage() {
               value={lyricsAnswer}
               onChange={(e) => setLyricsAnswer(e.target.value)}
               onKeyDown={(e) => { if (e.key === "Enter") handleSubmitLyricsAnswer(); }}
-              style={{ background: "white", border: "2px solid rgba(255,107,53,.3)", borderRadius: 14, padding: "14px 16px", fontSize: 18, color: "var(--ink)", outline: "none", fontFamily: "var(--font-zh)", width: "100%", boxSizing: "border-box" }}
+              style={{ background: "white", border: "2px solid rgba(255,107,53,.3)", borderRadius: 14, padding: "14px 16px", fontSize: 18, color: "var(--ink)", fontFamily: "var(--font-zh)", width: "100%", boxSizing: "border-box" }}
             />
             <button onClick={handleSubmitLyricsAnswer} disabled={!lyricsAnswer.trim()}
               style={{ background: !lyricsAnswer.trim() ? "rgba(255,107,53,.35)" : "var(--orange)", color: "white", border: "none", borderRadius: 14, padding: "14px", fontSize: 16, fontWeight: 900, cursor: !lyricsAnswer.trim() ? "not-allowed" : "pointer", fontFamily: "var(--font-zh)", boxShadow: lyricsAnswer.trim() ? "0 4px 16px rgba(255,107,53,.3)" : "none" }}>
