@@ -131,7 +131,7 @@
   Server now accepts `RESET_LYRICS_GAME` / `RESET_GUESS_GAME` in any phase (the lobby guard would otherwise lock an abandoned room), but the host page only shows reset at `ended`. Add a confirm-first quit button during play (T5/T6). _From /review D6, 2026-09-24._
 
 - [ ] **P3** Guess grading tuning after playtest  
-  `normGuess` strips combining marks (`\p{M}`), so Thai/Devanagari/Arabic words differing only by vowel marks grade equal; fuzzy distance 2 on 5-char Latin targets is lenient ("hello"~"help"). Answers accepted in the 500ms grace window always score 0 (inherited from Lyrics). Tune with real games. _From /review adversarial pass, 2026-09-24._
+  Fuzzy distance 2 on 5-char Latin targets is lenient ("hello"~"help"). Answers accepted in the 500ms grace window always score 0 (inherited from Lyrics). Tune with real games. _From /review adversarial pass, 2026-09-24._
 
 - [ ] **P3** `consecutiveSkips` is a dead field in the timed-round state  
   Carried in `TimedRoundState` (lib/game.ts) and reset in `timedRound.showResults`, but nothing increments or reads it. Delete it (wire-visible on LYRICS_STATE, no client reads it) unless a skip-round feature is planned. _Found by /review on feat/guess-mode-engine, 2026-09-24._

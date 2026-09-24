@@ -93,6 +93,9 @@ export default class HitsterRoom implements Party.Server {
   // True while the newest LOAD_PLAYLIST is still resolving (pendingPlaylist may hold partial,
   // not-yet-AI-cleaned titles). Guess mode refuses to start then: its answers ARE those titles.
   private playlistLoading = false;
+  // Latest LYRICS_PREVIEW, replayed to a host that re-proves itself after a reconnect (it isn't
+  // privileged again until its next host message, so it would miss previews sent meanwhile).
+  private lastLyricsPreview: ServerMessage | null = null;
   private loadSeq = 0;
   // hostId and screenId (state.hostId / this.screenId below) both claim through the same
   // first-non-empty-value-wins model — see claimOrValidateFirstClaim. Neither depends on
@@ -201,6 +204,7 @@ export default class HitsterRoom implements Party.Server {
    * host is privileged before any preview runs (LOAD_PLAYLIST claims it).
    */
   private sendPrivileged(msg: ServerMessage) {
+    if (msg.type === "LYRICS_PREVIEW") this.lastLyricsPreview = msg;
     for (const conn of this.privilegedConns) this.sendTo(conn, msg);
   }
 
@@ -479,8 +483,16 @@ export default class HitsterRoom implements Party.Server {
   }
 
   private markPrivileged(conn: Party.Connection) {
+    const isNew = !this.privilegedConns.has(conn);
     this.privilegedConns.add(conn);
     this.allConns.add(conn);
+    if (isNew && this.lastLyricsPreview) this.sendTo(conn, this.lastLyricsPreview);
+  }
+
+  /** New playlist generation: any in-flight load's `mySeq !== loadSeq` checks drop its writes. */
+  private startPlaylistLoad(): number {
+    this.lastLyricsPreview = null;
+    return ++this.loadSeq;
   }
 
   /**
@@ -515,6 +527,8 @@ export default class HitsterRoom implements Party.Server {
             artist: "Test Artist", year: 1960 + i * 3,
           }));
       const seedCards: Card[] = testSongs.map((song, i) => ({ id: `seed-${i}`, ...song }));
+      this.startPlaylistLoad(); // cancels any in-flight real load so it can't overwrite this
+      this.playlistLoading = false;
       this.pendingPlaylist = { playlistId, songs: seedCards, allSongs: testSongs, diagnostics: [] };
       this.sendTo(conn, { type: "PLAYLIST_READY", songCount: testSongs.length, songs: testSongs });
       return;
@@ -527,7 +541,7 @@ export default class HitsterRoom implements Party.Server {
 
     // Reset abort flag and clear any previous cached result.
     this.abortLoad = false;
-    const mySeq = ++this.loadSeq;
+    const mySeq = this.startPlaylistLoad();
     this.pendingPlaylist = null;
     this.playlistLoading = true;
 
@@ -557,6 +571,10 @@ export default class HitsterRoom implements Party.Server {
 
       // Abort checkpoint after AI pass.
       if (this.abortLoad || mySeq !== this.loadSeq) {
+        if (this.abortLoad && mySeq === this.loadSeq) {
+          // "Use what's loaded": the deck must be exactly what the host was just shown.
+          this.pendingPlaylist = { playlistId, songs: result.songs, allSongs: result.allSongs, diagnostics: result.diagnostics };
+        }
         if (this.abortLoad) {
           this.sendTo(conn, result.allSongs.length >= 2
             ? { type: "PLAYLIST_READY", songCount: result.allSongs.length, songs: result.allSongs }
@@ -721,6 +739,8 @@ export default class HitsterRoom implements Party.Server {
       return;
     }
 
+    this.startPlaylistLoad(); // cancels any in-flight real load so it can't overwrite this
+    this.playlistLoading = false;
     this.pendingPlaylist = {
       playlistId,
       songs: cards,
@@ -1142,6 +1162,7 @@ export default class HitsterRoom implements Party.Server {
         };
       });
 
+      if (this.lyricsState !== game) return;
       // Check DO lyrics cache
       const lyricsCacheRaw = await storageBatchGet<LyricsResult>(this.room.storage,
         enrichedTracks.map((t) => `lyrics:${t.videoId}`)
@@ -1179,6 +1200,7 @@ export default class HitsterRoom implements Party.Server {
       // Anthropic call. Only fetched for songs actually getting a fresh Sonnet resolve — the
       // deck's already-cached rounds don't need it re-fetched. Best-effort: a fetch failure for
       // any song just means that song falls back to resolveLyricsBatch's ungrounded prompt.
+      if (this.lyricsState !== game) return;
       let popularitySummaries = new Map<string, string>();
       if (anthropicKey && sonnetUncached.length > 0) {
         const popularityCacheRaw = await storageBatchGet<string>(this.room.storage,
@@ -1198,6 +1220,7 @@ export default class HitsterRoom implements Party.Server {
         }
       }
 
+      if (this.lyricsState !== game) return;
       const sonnetFresh = anthropicKey && sonnetUncached.length > 0
         ? await resolveLyricsForTracks(sonnetUncached, anthropicKey, undefined, MODEL_GAME, popularitySummaries)
         : new Map<string, LyricsResult>();

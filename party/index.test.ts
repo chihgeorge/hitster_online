@@ -2917,3 +2917,37 @@ describe("Guess Mode: unwinnable metadata", () => {
     expect(room.guessState!.rounds.find((r) => r.videoId === "vsBf_0gDxSM")?.artist).toBe("");
   });
 });
+
+describe("playlist bookkeeping (review re-verify 2026-09-24)", () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it("a saved-playlist load cancels an in-flight load, so the stale result can't replace the deck", async () => {
+    let release!: (v: unknown) => void;
+    vi.mocked(fetchPlaylistItems).mockReturnValueOnce(new Promise((r) => { release = r; }) as any);
+    const room = new HitsterRoom(makeRoom() as any);
+    const hostConn = makeConn("host-conn");
+    const stale = send(room, hostConn, { type: "LOAD_PLAYLIST", hostId: "host-uuid", playlistUrl: "PLtest" });
+    const saved = [
+      { videoId: "s1", title: "Saved A", artist: "X", year: 1985 },
+      { videoId: "s2", title: "Saved B", artist: "Y", year: 1990 },
+    ];
+    await send(room, hostConn, { type: "LOAD_SAVED_PLAYLIST", hostId: "host-uuid", playlistId: "saved-1", songs: saved });
+    release([fakeTrack("v1", 2001), fakeTrack("v2", 2002)]);
+    await stale;
+    await send(room, hostConn, { type: "START_GUESS_GAME", hostId: "host-uuid", config: {} });
+    expect(room.guessState?.rounds.map((r) => r.videoId).sort()).toEqual(["s1", "s2"]);
+  });
+
+  it("replays the latest LYRICS_PREVIEW to a host connection that re-proves itself", async () => {
+    const room = new HitsterRoom(makeRoom() as any);
+    const hostConn = makeConn("host-conn");
+    await send(room, hostConn, { type: "LOAD_PLAYLIST", hostId: "host-uuid", playlistUrl: "hitster://test" });
+    const preview = { type: "LYRICS_PREVIEW", rounds: [], loading: false } as const;
+    (room as any).sendPrivileged(preview);
+    const reconnected = makeConn("host-conn-2");
+    room.onConnect(reconnected);
+    await send(room, reconnected, { type: "ABORT_LOAD", hostId: "host-uuid" }); // any host message re-proves it
+    const got = (reconnected.send as ReturnType<typeof vi.fn>).mock.calls.map((c: unknown[]) => JSON.parse(c[0] as string));
+    expect(got).toContainEqual(preview);
+  });
+});

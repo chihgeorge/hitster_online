@@ -23,7 +23,7 @@ const HTML_ENTITIES: Record<string, string> = { "&amp;": "&", "&lt;": "<", "&gt;
  * Guess-mode normalizer. Lyrics' isCorrect doesn't fit raw playlist metadata (review 2026-09-24):
  * titles arrive HTML-escaped (sometimes twice, via saved playlists) so "Don't" never matched,
  * non-Latin/non-CJK scripts normalized to "" and matched anything, and mixed "五月天 Mayday" kept
- * its case. Here: undo escaping, NFKC, lowercase, keep only letters/digits in any script.
+ * its case. Here: undo escaping, NFKC, lowercase, keep only letters (with their combining marks) and digits, any script.
  */
 /** Undoes sanitizeText's HTML escaping, repeatedly (saved playlists can arrive escaped twice). */
 export function decodeEntities(s: string): string {
@@ -33,7 +33,7 @@ export function decodeEntities(s: string): string {
 }
 
 export function normGuess(s: string): string {
-  return decodeEntities(s).normalize("NFKC").toLowerCase().replace(/[^\p{L}\p{N}]/gu, "");
+  return decodeEntities(s).normalize("NFKC").toLowerCase().replace(/[^\p{L}\p{M}\p{N}]/gu, "");
 }
 
 /**
