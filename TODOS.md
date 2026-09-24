@@ -152,6 +152,18 @@ Also tracked earlier as "Player shows "Submitted!" before the server acknowledge
 **Priority:** P3
 **Depends on:** None
 
+### A phone offline across a Guess reset can stay "too late" in the new game
+
+**What:** A phone's TOO_LATE flag can carry into a new Guess game if the phone missed `GUESS_ABORTED`.
+
+**Why:** That player is locked out of one round with no way to answer.
+
+**Context:** `app/room/[code]/play/page.tsx` clears `guessTooLateRound` only on `GUESS_ABORTED`. A phone disconnected while the host resets and starts a new game never gets it: on reconnect `sendSnapshot` sends `GUESS_ABORTED` only when no game exists, so it gets just the new `GUESS_STATE`. If that game is on the same round index, the stale flag matches. Fix: also clear it on `GUESS_STATE` when `phase` is `"playing"`, or key it on round start time instead of index. _Found by /land-and-deploy inline review, 2026-09-24._
+
+**Effort:** S
+**Priority:** P3
+**Depends on:** None
+
 ## Lyrics Mode
 
 ### E2E: verify lrclib → Claude pipeline with a real player in the room
