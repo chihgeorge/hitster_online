@@ -22,6 +22,7 @@ import { isValidYear, sanitizeText, shuffle } from "../lib/utils";
 import { proposeEdits, proposeLyricEdits, type AITrackMeta } from "../lib/ai-metadata";
 import { resolveLyricsForTracks, MODEL_GAME, type LyricsResult } from "../lib/lyrics-resolver";
 import { fetchPopularitySummaries } from "../lib/lyrics-popularity";
+import * as timedRound from "./timed-round";
 import { isCorrect, computePoints } from "../lib/fuzzy";
 import {
   resolvePlaylistFromUrl,
@@ -966,9 +967,7 @@ export default class HitsterRoom implements Party.Server {
     // them. Full text is safe to reveal at every other phase — results is exactly when the
     // client first actually reads answer text (host/play/screen pages all gate their .answers
     // reads on phase !== "guessing").
-    const publicAnswers = ls.phase === "guessing"
-      ? Object.fromEntries(Object.entries(ls.answers).map(([pid, a]) => [pid, { ...a, text: "" }]))
-      : ls.answers;
+    const publicAnswers = timedRound.publicAnswers(ls, (a) => ({ ...a, text: "" }));
     return { ...ls, currentRound: publicRound, rounds: publicRounds, answers: publicAnswers };
   }
 
@@ -1240,13 +1239,10 @@ export default class HitsterRoom implements Party.Server {
       this.sendTo(conn, { type: "ERROR", error: "unauthorized" });
       return;
     }
-    if (this.lyricsState.phase !== "preview") {
+    if (!timedRound.confirmPreview(this.lyricsState, this.lyricsDeck)) {
       this.sendTo(conn, { type: "ERROR", error: "wrong_phase" });
       return;
     }
-    this.lyricsState.phase = "playing";
-    this.lyricsState.currentRound = this.lyricsDeck[0] ?? null;
-    this.lyricsState.answers = {};
     this.broadcastLyricsState();
   }
 
@@ -1255,13 +1251,10 @@ export default class HitsterRoom implements Party.Server {
       this.sendTo(conn, { type: "ERROR", error: "unauthorized" });
       return;
     }
-    if (this.lyricsState.phase !== "playing") {
+    if (!timedRound.startRound(this.lyricsState, Date.now())) {
       this.sendTo(conn, { type: "ERROR", error: "wrong_phase" });
       return;
     }
-    this.lyricsState.phase = "guessing";
-    this.lyricsState.roundStart = Date.now();
-    this.lyricsState.answers = {};
     this.broadcastLyricsState();
   }
 
@@ -1271,23 +1264,14 @@ export default class HitsterRoom implements Party.Server {
     // Only the connection that JOINed/REJOINed as this playerId may answer for them — ids are
     // visible to everyone in broadcast state, so without this any player could answer as another.
     if (this.playerConnId[playerId] !== conn.id) return;
-    const ls = this.lyricsState;
-    if (!ls || ls.phase !== "guessing" || !ls.currentRound || ls.roundStart === null) return;
-    if (!ls.players[playerId]) return;
-    if (ls.answers[playerId]) return; // already answered
+    if (!this.lyricsState) return;
 
     // Server stamps the time itself — a client-supplied ts was spoofable to answer late for free
-    // or inflate computePoints' speed bonus (TODOS.md P2).
-    const ts = Date.now();
-    const deadline = ls.roundStart + ls.timerSeconds * 1000 + LYRICS_ANSWER_GRACE_MS;
-    if (ts > deadline) {
-      this.sendTo(conn, { type: "TOO_LATE" });
-      return;
-    }
-
-    // Store answer — correctness computed at SHOW_LYRICS_RESULTS time
-    ls.answers[playerId] = { text: sanitizeText(text, 200), ts, correct: false, points: 0 };
-    this.broadcastLyricsState();
+    // or inflate computePoints' speed bonus (TODOS.md P2). Correctness computed at SHOW_LYRICS_RESULTS.
+    const result = timedRound.acceptAnswer(this.lyricsState, playerId, Date.now(), LYRICS_ANSWER_GRACE_MS,
+      (ts) => ({ text: sanitizeText(text, 200), ts, correct: false, points: 0 }));
+    if (result === "too_late") this.sendTo(conn, { type: "TOO_LATE" });
+    if (result === "ok") this.broadcastLyricsState();
   }
 
   private handleShowLyricsResults(conn: Party.Connection, hostId: string) {
@@ -1295,25 +1279,16 @@ export default class HitsterRoom implements Party.Server {
       this.sendTo(conn, { type: "ERROR", error: "unauthorized" });
       return;
     }
-    if (this.lyricsState.phase !== "guessing") {
+    const { timerSeconds } = this.lyricsState;
+    const scored = timedRound.showResults(this.lyricsState, (round, ans, roundStart) => {
+      const correct = isCorrect(ans.text, round.blankSentence, round.acceptableVariants, this.lyricsConfig.fuzzyEnabled);
+      const points = correct ? computePoints(roundStart, ans.ts, timerSeconds) : 0;
+      return { answer: { ...ans, correct, points }, points };
+    });
+    if (!scored) {
       this.sendTo(conn, { type: "ERROR", error: "wrong_phase" });
       return;
     }
-    const ls = this.lyricsState;
-    const round = ls.currentRound!;
-
-    // Evaluate all submitted answers
-    for (const [pid, ans] of Object.entries(ls.answers)) {
-      const correct = isCorrect(ans.text, round.blankSentence, round.acceptableVariants, this.lyricsConfig.fuzzyEnabled);
-      const points = correct ? computePoints(ls.roundStart!, ans.ts, ls.timerSeconds) : 0;
-      ls.answers[pid] = { ...ans, correct, points };
-      if (correct && ls.players[pid]) {
-        ls.players[pid].score += points;
-      }
-    }
-
-    ls.phase = "results";
-    ls.consecutiveSkips = 0;
     this.broadcastLyricsState();
   }
 
@@ -1322,21 +1297,9 @@ export default class HitsterRoom implements Party.Server {
       this.sendTo(conn, { type: "ERROR", error: "unauthorized" });
       return;
     }
-    if (this.lyricsState.phase !== "results") {
+    if (!timedRound.nextRound(this.lyricsState, this.lyricsDeck)) {
       this.sendTo(conn, { type: "ERROR", error: "wrong_phase" });
       return;
-    }
-    const ls = this.lyricsState;
-    ls.currentRoundIndex += 1;
-
-    if (ls.currentRoundIndex >= this.lyricsDeck.length) {
-      ls.phase = "ended";
-      ls.currentRound = null;
-    } else {
-      ls.phase = "playing";
-      ls.currentRound = this.lyricsDeck[ls.currentRoundIndex];
-      ls.roundStart = null;
-      ls.answers = {};
     }
     this.broadcastLyricsState();
   }
