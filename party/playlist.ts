@@ -69,7 +69,7 @@ export default class PlaylistParty implements Party.Server {
    * Task for the self-heal path (a library read missing an entry the client expects
    * triggers a reconcile), not built in this PR.
    */
-  private async syncLibrary(action: "UPSERT" | "REMOVE", ownerHostId: string, entry: { id: string; name: string; songCount: number } | { id: string }) {
+  private async syncLibrary(action: "UPSERT" | "REMOVE", ownerHostId: string, entry: { id: string; name: string; songCount: number; sourceUrl?: string } | { id: string }) {
     try {
       const stub = this.room.context.parties.library.get(ownerHostId);
       const body = action === "UPSERT" ? { action, entry } : { action, id: entry.id };
@@ -113,10 +113,11 @@ export default class PlaylistParty implements Party.Server {
       const existing = await this.room.storage.get<SavedPlaylist>("playlist");
       if (existing) return err("Playlist already exists — use PUT to update", 409);
 
-      const { ownerHostId, name, action } = body as {
+      const { ownerHostId, name, action, sourceUrl } = body as {
         ownerHostId?: unknown;
         name?: unknown;
         action?: unknown;
+        sourceUrl?: unknown;
       };
       if (typeof ownerHostId !== "string" || ownerHostId.trim().length === 0)
         return err("ownerHostId required");
@@ -149,10 +150,16 @@ export default class PlaylistParty implements Party.Server {
         songs,
         createdAt: Date.now(),
         updatedAt: Date.now(),
+        ...(typeof sourceUrl === "string" && sourceUrl.trim() ? { sourceUrl: sourceUrl.trim() } : {}),
       };
       await this.room.storage.put("playlist", playlist);
       await this.room.storage.put("ownerHostId", ownerHostId.trim());
-      await this.syncLibrary("UPSERT", ownerHostId.trim(), { id: playlist.id, name: playlist.name, songCount: playlist.songs.length });
+      await this.syncLibrary("UPSERT", ownerHostId.trim(), {
+        id: playlist.id,
+        name: playlist.name,
+        songCount: playlist.songs.length,
+        ...(playlist.sourceUrl ? { sourceUrl: playlist.sourceUrl } : {}),
+      });
       return json({ playlistId: playlist.id }, 201);
     }
 
