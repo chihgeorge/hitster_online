@@ -996,6 +996,18 @@ export default class HitsterRoom implements Party.Server {
       this.sendTo(conn, { type: "ERROR", error: "unauthorized" });
       return;
     }
+    // Re-entrancy guard (TODOS.md P3, /ship adversarial review 2026-09-21): unlike Timeline
+    // mode, this.state.phase never leaves "lobby" for Lyrics mode, so a second START_LYRICS_GAME
+    // (double click, or a client retry) would pass the check above and race this one — the
+    // stale call's deck could overwrite the newer one's after both resolve. this.lyricsState is
+    // set synchronously below, before any await, so this check is atomic against a concurrent
+    // call: whichever invocation runs first sets it, and every later one sees it non-null and
+    // bails, all before either does any real async work. Cleared only by abortLyricsStart()
+    // (an error, or a host-confirmed RESET_LYRICS_GAME once the game has ended).
+    if (this.lyricsState !== null) {
+      this.sendTo(conn, { type: "ERROR", error: "wrong_phase" });
+      return;
+    }
 
     this.lyricsConfig = {
       timerSeconds: Math.max(10, Math.min(config.timerSeconds ?? LYRICS_DEFAULT_TIMER, 300)),

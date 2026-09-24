@@ -1689,6 +1689,45 @@ describe("Lyrics Mode: START_LYRICS_GAME", () => {
     expect(lastMsg?.type).toBe("ERROR");
   });
 
+  // Regression (TODOS.md P3, /ship adversarial review 2026-09-21): a second START_LYRICS_GAME
+  // sent while the first is still mid-flight (double click, retry) used to pass the
+  // state.phase === "lobby" check (Lyrics mode never touches state.phase) and race the first
+  // call — whichever resolved last would silently clobber the deck the host actually saw.
+  it("rejects a second START_LYRICS_GAME while the first is still mid-flight, without clobbering the first's deck", async () => {
+    vi.mocked(fetchPlaylistItems).mockResolvedValue([fakeLyricsTrack()]);
+    vi.mocked(fetchEmbeddableVideoIds).mockResolvedValue(new Set(["vid1"]));
+    const mockRoom = makeRoom();
+    (mockRoom.storage.get as ReturnType<typeof vi.fn>).mockImplementation((keys: unknown) =>
+      Promise.resolve(new Map(Array.isArray(keys)
+        ? keys.filter((k: string) => k.startsWith("lyrics:") || k.startsWith("lyrics-sonnet:"))
+            .map((k: string) => [k, CACHED_LYRICS])
+        : []))
+    );
+    const room = new HitsterRoom(mockRoom as any);
+    const hostConn = makeConn("host-conn");
+    await send(room, hostConn, { type: "JOIN", playerId: P1, name: "Alice" });
+
+    // Fire both without awaiting the first — the second is dispatched while the first's async
+    // pipeline is still running its awaits, exactly the double-click/retry race in question.
+    const first = send(room, hostConn, {
+      type: "START_LYRICS_GAME", hostId: "host-uuid", playlistUrl: "PLtest",
+      config: { timerSeconds: 60, totalRounds: 1, fuzzyEnabled: false },
+    });
+    const second = send(room, hostConn, {
+      type: "START_LYRICS_GAME", hostId: "host-uuid", playlistUrl: "PLtest",
+      config: { timerSeconds: 60, totalRounds: 1, fuzzyEnabled: false },
+    });
+    await Promise.all([first, second]);
+
+    // Exactly one of the two calls should have won and produced a deck; the rejected call's
+    // "wrong_phase" ERROR is somewhere in hostConn's messages (not necessarily last — the
+    // winning call's later broadcasts arrive after it).
+    const hostMsgs = (hostConn.send as ReturnType<typeof vi.fn>).mock.calls.map((c) => JSON.parse(c[0] as string));
+    expect(hostMsgs).toContainEqual(expect.objectContaining({ type: "ERROR", error: "wrong_phase" }));
+    expect(room.lyricsState).not.toBeNull();
+    expect(room.lyricsState?.rounds.length).toBeGreaterThan(0);
+  });
+
   it("fetches and caches popularity summaries for songs needing a fresh Sonnet resolve (docs/designs/lyrics-question-search-grounding.md)", async () => {
     process.env.ANTHROPIC_API_KEY = "test-key";
     vi.mocked(fetchPlaylistItems).mockResolvedValue([fakeLyricsTrack()]);
