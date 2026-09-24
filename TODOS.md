@@ -130,6 +130,12 @@
 - [ ] **P3** Host UI needs a "quit game" control for Lyrics/Guess  
   Server now accepts `RESET_LYRICS_GAME` / `RESET_GUESS_GAME` in any phase (the lobby guard would otherwise lock an abandoned room), but the host page only shows reset at `ended`. Add a confirm-first quit button during play (T5/T6). _From /review D6, 2026-09-24._
 
+- [ ] **P3** Host setup says "N 首歌曲有確認年份" in Guess/Lyrics mode  
+  The load-success line (`app/room/[code]/host/page.tsx`, ready state) talks about confirmed release years, which only matter in Timeline. Make it mode-aware ("N 首歌曲已載入"). _Found by /qa ISSUE-002, 2026-09-24._
+
+- [ ] **P3** Host keeps the lobby vinyl background during Lyrics/Guess play (DESIGN.md)  
+  `.bg-vinyl-pattern` is keyed on `state.phase === "lobby"`, which stays "lobby" through Lyrics/Guess games; DESIGN.md keeps the pattern out of active gameplay. Key it on "no timed game in play" too. _Found by /qa ISSUE-003, 2026-09-24._
+
 - [ ] **P3** Guess grading tuning after playtest  
   Fuzzy distance 2 on 5-char Latin targets is lenient ("hello"~"help"). Answers accepted in the 500ms grace window always score 0 (inherited from Lyrics). Tune with real games. _From /review adversarial pass, 2026-09-24._
 
