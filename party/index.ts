@@ -27,7 +27,7 @@ import { proposeEdits, proposeLyricEdits, type AITrackMeta } from "../lib/ai-met
 import { resolveLyricsForTracks, MODEL_GAME, type LyricsResult } from "../lib/lyrics-resolver";
 import { fetchPopularitySummaries } from "../lib/lyrics-popularity";
 import * as timedRound from "./timed-round";
-import { scoreGuess, decodeEntities } from "../lib/guess-scoring";
+import { scoreGuess, decodeEntities, normGuess } from "../lib/guess-scoring";
 import { isCorrect, computePoints } from "../lib/fuzzy";
 import {
   resolvePlaylistFromUrl,
@@ -90,6 +90,9 @@ export default class HitsterRoom implements Party.Server {
   guessState: GuessGameState | null = null;
   private guessConfig: GuessGameConfig = timedRound.clampConfig({});
   private abortLoad = false;
+  // True while the newest LOAD_PLAYLIST is still resolving (pendingPlaylist may hold partial,
+  // not-yet-AI-cleaned titles). Guess mode refuses to start then: its answers ARE those titles.
+  private playlistLoading = false;
   private loadSeq = 0;
   // hostId and screenId (state.hostId / this.screenId below) both claim through the same
   // first-non-empty-value-wins model — see claimOrValidateFirstClaim. Neither depends on
@@ -189,6 +192,16 @@ export default class HitsterRoom implements Party.Server {
       const full = { type: "STATE" as const, state: this.sanitizedState(true) };
       for (const conn of privileged) this.sendTo(conn, full);
     }
+  }
+
+  /**
+   * Host/screen only. LYRICS_PREVIEW carries every candidate's answer (blankSentence) plus each
+   * song's title/artist/videoId — the whole answer key for Lyrics AND Guess mode — so it must never
+   * be a room broadcast (it was, until /review 2026-09-24). Only the host page reads it, and the
+   * host is privileged before any preview runs (LOAD_PLAYLIST claims it).
+   */
+  private sendPrivileged(msg: ServerMessage) {
+    for (const conn of this.privilegedConns) this.sendTo(conn, msg);
   }
 
   private sendTo(conn: Party.Connection, msg: ServerMessage) {
@@ -516,6 +529,7 @@ export default class HitsterRoom implements Party.Server {
     this.abortLoad = false;
     const mySeq = ++this.loadSeq;
     this.pendingPlaylist = null;
+    this.playlistLoading = true;
 
     try {
       const { youtubeKey, anthropicKey } = resolveEnv(this.room.env);
@@ -575,6 +589,8 @@ export default class HitsterRoom implements Party.Server {
       }
     } catch (err) {
       this.sendTo(conn, { type: "PLAYLIST_LOAD_ERROR", error: parseResolveErrorCode(err) });
+    } finally {
+      if (mySeq === this.loadSeq) this.playlistLoading = false;
     }
   }
 
@@ -603,7 +619,7 @@ export default class HitsterRoom implements Party.Server {
     anthropicKey: string | undefined
   ) {
     // Signal loading so the host table shows a spinner instead of dashes.
-    this.broadcast({ type: "LYRICS_PREVIEW", rounds: [], loading: true });
+    this.sendPrivileged({ type: "LYRICS_PREVIEW", rounds: [], loading: true });
 
     const enrichedTracks = allSongs.map((s) => {
       const meta = aiResults.get(s.videoId);
@@ -627,7 +643,7 @@ export default class HitsterRoom implements Party.Server {
     // If we have cached results, broadcast them immediately so the table is not empty.
     if (cachedLyrics.size > 0) {
       const cachedRounds = this.buildPreviewRounds(enrichedTracks, cachedLyrics);
-      this.broadcast({ type: "LYRICS_PREVIEW", rounds: cachedRounds, loading: uncachedTracks.length > 0 });
+      this.sendPrivileged({ type: "LYRICS_PREVIEW", rounds: cachedRounds, loading: uncachedTracks.length > 0 });
     }
 
     if (anthropicKey && uncachedTracks.length > 0) {
@@ -636,7 +652,7 @@ export default class HitsterRoom implements Party.Server {
       await resolveLyricsForTracks(uncachedTracks, anthropicKey, (partial) => {
         partial.forEach((v, k) => accumulated.set(k, v));
         const progressRounds = this.buildPreviewRounds(enrichedTracks, accumulated);
-        this.broadcast({ type: "LYRICS_PREVIEW", rounds: progressRounds, loading: true });
+        this.sendPrivileged({ type: "LYRICS_PREVIEW", rounds: progressRounds, loading: true });
       });
 
       // Cache only the newly generated entries.
@@ -650,10 +666,10 @@ export default class HitsterRoom implements Party.Server {
 
       const allLyrics = accumulated;
       this.lyricsPreviewMap = allLyrics;
-      this.broadcast({ type: "LYRICS_PREVIEW", rounds: this.buildPreviewRounds(enrichedTracks, allLyrics), loading: false });
+      this.sendPrivileged({ type: "LYRICS_PREVIEW", rounds: this.buildPreviewRounds(enrichedTracks, allLyrics), loading: false });
     } else {
       this.lyricsPreviewMap = cachedLyrics;
-      this.broadcast({ type: "LYRICS_PREVIEW", rounds: this.buildPreviewRounds(enrichedTracks, cachedLyrics), loading: false });
+      this.sendPrivileged({ type: "LYRICS_PREVIEW", rounds: this.buildPreviewRounds(enrichedTracks, cachedLyrics), loading: false });
     }
   }
 
@@ -1082,6 +1098,10 @@ export default class HitsterRoom implements Party.Server {
       consecutiveSkips: 0,
     };
     this.broadcastLyricsState();
+    // RESET_LYRICS_GAME works in any phase, including mid-"loading" — after every await below,
+    // bail if this game was reset (and maybe replaced by a new START) while we waited, so a stale
+    // call never writes its deck into, or aborts, a newer game.
+    const game = this.lyricsState;
 
     try {
       const { anthropicKey, youtubeKey } = resolveEnv(this.room.env);
@@ -1103,6 +1123,7 @@ export default class HitsterRoom implements Party.Server {
         return;
       }
 
+      if (this.lyricsState !== game) return;
       if (tracks.length === 0) {
         this.sendTo(conn, { type: "ERROR", error: "not_enough_songs" });
         this.abortLyricsStart();
@@ -1215,6 +1236,7 @@ export default class HitsterRoom implements Party.Server {
         });
       }
 
+      if (this.lyricsState !== game) return;
       if (deck.length === 0) {
         this.sendTo(conn, { type: "ERROR", error: "not_enough_songs" });
         this.abortLyricsStart();
@@ -1229,6 +1251,7 @@ export default class HitsterRoom implements Party.Server {
       this.lyricsState.answers = {};
       this.broadcastLyricsState();
     } catch (err) {
+      if (this.lyricsState !== game) return;
       this.sendTo(conn, { type: "ERROR", error: parseResolveErrorCode(err) });
       this.abortLyricsStart();
     }
@@ -1345,7 +1368,9 @@ export default class HitsterRoom implements Party.Server {
       this.sendTo(conn, { type: "ERROR", error: "unauthorized" });
       return;
     }
-    if (!this.lyricsState || this.lyricsState.phase !== "ended") {
+    // Any phase: quitting mid-game is a normal host action (the host UI confirms first). Before
+    // the lobby guard (timedRoundInPlay) an abandoned game couldn't block anything; now it would.
+    if (!this.lyricsState) {
       this.sendTo(conn, { type: "ERROR", error: "wrong_phase" });
       return;
     }
@@ -1393,6 +1418,10 @@ export default class HitsterRoom implements Party.Server {
       this.sendTo(conn, { type: "ERROR", error: "wrong_phase" });
       return;
     }
+    if (this.playlistLoading) {
+      this.sendTo(conn, { type: "ERROR", error: "wrong_phase" });
+      return;
+    }
     const songs = this.pendingPlaylist?.allSongs ?? [];
     if (songs.length === 0) {
       this.sendTo(conn, { type: "ERROR", error: "not_enough_songs" });
@@ -1406,15 +1435,20 @@ export default class HitsterRoom implements Party.Server {
         title: typeof s.title === "string" ? s.title : undefined,
         artist: typeof s.artist === "string" ? s.artist : undefined,
       }]));
+    // decode first: allSongs from a saved playlist is already escaped — escape exactly once.
+    // slice before decoding bounds decodeEntities' work on hostile host input.
+    const clean = (s: string, max: number) => sanitizeText(decodeEntities(s.slice(0, max * 6)), max);
     const deck: GuessRound[] = shuffle(songs.map((s) => {
       const ov = overrides.get(s.videoId);
+      const artist = clean(ov?.artist ?? s.artist ?? "", 100);
       return {
         videoId: s.videoId,
-        // decode first: allSongs from a saved playlist is already escaped — escape exactly once
-        title: sanitizeText(decodeEntities(ov?.title || s.title), 200),
-        artist: sanitizeText(decodeEntities(ov?.artist ?? s.artist ?? ""), 100),
+        title: clean(ov?.title || s.title, 200),
+        // An artist with no letters/digits (e.g. the band "!!!") can never be matched — treat the
+        // round as title-only rather than dangle an unreachable artist field and bonus.
+        artist: normGuess(artist) ? artist : "",
       };
-    }).filter((r) => r.title !== "")).slice(0, this.guessConfig.totalRounds);
+    }).filter((r) => normGuess(r.title) !== "")).slice(0, this.guessConfig.totalRounds);
     if (deck.length === 0) {
       this.sendTo(conn, { type: "ERROR", error: "not_enough_songs" });
       return;
@@ -1508,7 +1542,7 @@ export default class HitsterRoom implements Party.Server {
       this.sendTo(conn, { type: "ERROR", error: "unauthorized" });
       return;
     }
-    if (!this.guessState || this.guessState.phase !== "ended") {
+    if (!this.guessState) { // any phase — see handleResetLyricsGame
       this.sendTo(conn, { type: "ERROR", error: "wrong_phase" });
       return;
     }

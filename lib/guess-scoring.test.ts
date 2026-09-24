@@ -78,3 +78,15 @@ describe("guessMatches (review 2026-09-24 regressions)", () => {
     expect(guessMatches("告白氣球 live", "告白氣球 (Live)", false)).toBe(true);
   });
 });
+
+describe("scoreGuess on long timers (review 2026-09-24)", () => {
+  it("still pays full points for an instant answer at the 300s max timer", () => {
+    const s = scoreGuess({ title: "晴天", artist: "周杰倫", ts: 0 }, { title: "晴天", artist: "周杰倫" }, 0, 300, false);
+    expect(s).toMatchObject({ titlePoints: GUESS_POINTS.title, artistPoints: GUESS_POINTS.artist, bonusPoints: GUESS_POINTS.bonus });
+  });
+
+  it("scales linearly at an uneven timer", () => {
+    const s = scoreGuess({ title: "晴天", artist: "", ts: 30_000 }, { title: "晴天", artist: "" }, 0, 120, false);
+    expect(s.titlePoints).toBe(Math.round(GUESS_POINTS.title * 0.75));
+  });
+});

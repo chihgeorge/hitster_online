@@ -3,7 +3,7 @@
 // speed-scaled from the one timestamp of the player's single submit.
 
 import { distance as levenshtein } from "fastest-levenshtein";
-import { computePoints, isCJKText } from "./fuzzy";
+import { isCJKText } from "./fuzzy";
 
 /** Max points per part, before speed scaling. Tune after playtesting (design Open Question 2). */
 export const GUESS_POINTS = { title: 250, artist: 250, bonus: 100 } as const;
@@ -64,7 +64,11 @@ export function scoreGuess(
 ): GuessScore {
   const titleCorrect = guessMatches(guess.title, target.title, fuzzyEnabled);
   const artistCorrect = guessMatches(guess.artist, target.artist, fuzzyEnabled);
-  const scale = (max: number) => computePoints(roundStart, guess.ts, timerSeconds, max);
+  // Linear speed scaling. Not computePoints: its floor(max / timer) step zeroes these small
+  // per-part maxima on long timers (every part scored 0 at 300s — /review 2026-09-24).
+  const elapsed = Math.max(0, (guess.ts - roundStart) / 1000);
+  const remaining = elapsed > timerSeconds ? 0 : (timerSeconds - elapsed) / timerSeconds;
+  const scale = (max: number) => Math.round(max * remaining);
   const titlePoints = titleCorrect ? scale(GUESS_POINTS.title) : 0;
   const artistPoints = artistCorrect ? scale(GUESS_POINTS.artist) : 0;
   const bonusPoints = titleCorrect && artistCorrect ? scale(GUESS_POINTS.bonus) : 0;

@@ -121,6 +121,18 @@
 - [ ] **P3** Players who join mid-game can't answer in Lyrics/Guess mode  
   `lyricsState.players` / `guessState.players` are snapshots taken at game start; JOIN/REJOIN never add to them and `connected` never updates. A late joiner sees the round, types an answer, and `timedRound.acceptAnswer` drops it silently (`"ignored"`, no error). More likely in Guess mode (no loading phase to wait through). Fix: add late joiners to the active timed-round state with score 0 (and sync `connected` on REJOIN/onClose), or send an explicit spectator signal the client can show. _Found by /review red team on feat/guess-mode-engine, 2026-09-24._
 
+- [ ] **P2** Guess mode answers fall back to raw YouTube titles when AI cleanup is missing  
+  Without AI metadata (no Anthropic key, or a failed call) `lib/playlist-resolver.ts` uses the raw video title ("Artist - Song (Official MV)") and channel name ("…VEVO", "… - Topic") as the Guess answer, so players typing the real name are marked wrong and nobody is told. Mid-load starts are already refused (`playlistLoading`). Decide in the host UI (T5/T6): warn the host which songs lack cleaned metadata, strip common YouTube title noise, or exclude those songs from the Guess deck. _Found by /review adversarial pass on feat/guess-mode-engine, 2026-09-24._
+
+- [ ] **P2** Guess mode: whoever claims the screen holds the answer key  
+  `GET_GUESS_AUDIO` hands the current videoId (which reveals title/artist) to the first `screenId` claimant — the accepted first-claim gap above, but in Guess mode the videoId *is* the answer. Revisit with the minted-token fix before Guess ships to wider play. _Found by /review adversarial pass, 2026-09-24._
+
+- [ ] **P3** Host UI needs a "quit game" control for Lyrics/Guess  
+  Server now accepts `RESET_LYRICS_GAME` / `RESET_GUESS_GAME` in any phase (the lobby guard would otherwise lock an abandoned room), but the host page only shows reset at `ended`. Add a confirm-first quit button during play (T5/T6). _From /review D6, 2026-09-24._
+
+- [ ] **P3** Guess grading tuning after playtest  
+  `normGuess` strips combining marks (`\p{M}`), so Thai/Devanagari/Arabic words differing only by vowel marks grade equal; fuzzy distance 2 on 5-char Latin targets is lenient ("hello"~"help"). Answers accepted in the 500ms grace window always score 0 (inherited from Lyrics). Tune with real games. _From /review adversarial pass, 2026-09-24._
+
 - [ ] **P3** `consecutiveSkips` is a dead field in the timed-round state  
   Carried in `TimedRoundState` (lib/game.ts) and reset in `timedRound.showResults`, but nothing increments or reads it. Delete it (wire-visible on LYRICS_STATE, no client reads it) unless a skip-round feature is planned. _Found by /review on feat/guess-mode-engine, 2026-09-24._
 
