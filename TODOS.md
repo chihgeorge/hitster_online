@@ -36,8 +36,8 @@
 - [x] **P2** Full-round E2E test (host + player completing a game round)  
   Completed: `e2e/two-player-game.spec.ts` covers 3-round turn-based game with Alice + Bob, testing guessing, spectating, reveal, and win condition.
 
-- [ ] **P2** Concurrent-placement integration test  
-  The party server's `handlePlace` doesn't race, but a test with two `PLACE` messages arriving within the same tick would confirm `placements[playerId]` is set correctly and `PLACEMENT_ACK` is sent to both.  
+- [x] **P2** Concurrent-placement integration test  
+  **Completed:** `party/index.test.ts`'s "PLACE handler" describe block covers this — one test confirms `placements[playerId]` and exactly 2 `PLACEMENT_ACK`s for two concurrent same-position PLACEs (strengthened from an earlier shallow version that only checked "at least one" ACK), a second new test confirms last-write-wins for two concurrent PLACEs at *different* positions, documenting that `handlePlace`'s fully-synchronous body means the Durable Object's single-threaded model makes this deterministic, not a real race. Matches what the client's `pendingPlace` guard (v0.12.8.0) already assumes.  
   _Deferred from plan: foamy-crafting-bonbon.md_
 
 - [ ] **P2** Cross-session playlist dedup by source URL  

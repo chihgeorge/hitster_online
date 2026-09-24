@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.13.1.2] — 2026-09-23
+
+### Changed
+- **Closed the "concurrent-placement integration test" TODO** (P2, open since `foamy-crafting-bonbon.md`): strengthened the existing two-concurrent-PLACE test to check exactly 2 `PLACEMENT_ACK`s (was checking "at least one"), and added a new test for two concurrent PLACEs at *different* positions confirming last-write-wins — `handlePlace` does no async work internally, so this is deterministic under the Durable Object's single-threaded model, not a genuine race, matching what the client's `pendingPlace` guard (v0.12.8.0) already assumes
+
 ## [0.13.1.1] — 2026-09-23
 
 ### Changed
