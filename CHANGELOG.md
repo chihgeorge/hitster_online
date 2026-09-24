@@ -1,5 +1,25 @@
 # Changelog
 
+## [0.14.0.0] — 2026-09-24
+
+### Added
+- **Guess Mode (🎧 猜歌模式), a third game mode:** the TV plays a song and everyone names the title and/or artist on their phone before the timer runs out. Title and artist score separately, getting both earns a bonus, and faster answers score more. No AI step, so a game starts the moment a playlist is loaded. Songs with no artist metadata become title-only rounds. The reveal shows each player's guesses with ✓/✗ per field and a points breakdown on both the phone and the TV
+- **Quit game mid-round:** the host can end a Lyrics or Guess game at any point (with a confirm), including a Lyrics start stuck on "preparing lyrics". Everyone returns to the lobby
+- The host song editor is available in Guess mode, since titles and artists are the answers
+- The host's Play / Show Results / Next button ignores an accidental double-tap, so the reveal can't be skipped
+
+### Fixed
+- **Lyrics answers leaked before the game started:** loading a playlist in Lyrics mode sent every question's answer (and each song's title and video) to all players' phones. It now goes to the host and TV only
+- **Lyrics marked correct apostrophe answers wrong:** typing "Don't stop believing" exactly was graded as a miss. Answers with `'`, `&` or `"` now match
+- **A stray host click mid-round could reveal every answer:** starting Timeline or loading a playlist during a Lyrics/Guess round broadcast the whole song list to players. Those actions now wait until the round is over
+- **The TV could play the previous game's song** after reconnecting into a restarted game
+- **A playlist load you'd abandoned could replace the one you picked next** (e.g. aborting a slow load, then choosing a saved playlist)
+- **Host header on phones:** the "open on TV" card collapsed to one character per line and overlapped the player list
+- Text inputs on the phone now show a focus outline; the Lyrics and Guess score chip is gold only for the current leader (per DESIGN.md)
+
+### Changed
+- Lyrics mode now runs on a shared round engine (`party/timed-round.ts`) that Guess mode also uses. No change to how Lyrics plays
+
 ## [0.13.5.0] — 2026-09-23
 
 ### Fixed
