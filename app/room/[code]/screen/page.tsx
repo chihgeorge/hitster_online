@@ -11,8 +11,9 @@ import Confetti from "@/components/Confetti";
 import VictoryPlayer from "@/components/VictoryPlayer";
 import { Qr } from "@/components/Qr";
 import { Stage } from "@/components/Stage";
+import { GuessScreen, guessAudioProps } from "@/components/GuessMode";
 import { getOrCreatePersistedId } from "@/lib/device-id";
-import type { GameState, ServerMessage, PublicLyricsGameState } from "@/lib/game";
+import type { GameState, ServerMessage, PublicLyricsGameState, PublicGuessGameState } from "@/lib/game";
 
 const VICTORY_VIDEO_ID: string | null = "bqon4TM2MgM";
 
@@ -29,6 +30,8 @@ export default function ScreenPage() {
   const [lyricsState, setLyricsState] = useState<PublicLyricsGameState | null>(null);
   const [lyricsAudio, setLyricsAudio] = useState<{ videoId: string | null; roundIndex: number } | null>(null);
   const [lyricsTimerLeft, setLyricsTimerLeft] = useState<number | null>(null);
+  const [guessState, setGuessState] = useState<PublicGuessGameState | null>(null);
+  const [guessAudio, setGuessAudio] = useState<{ videoId: string | null; roundIndex: number } | null>(null);
   const screenIdRef = useRef<string>("");
 
   useEffect(() => {
@@ -49,6 +52,12 @@ export default function ScreenPage() {
       }
       if (msg.type === "LYRICS_ABORTED") { setLyricsState(null); setLyricsAudio(null); }
       if (msg.type === "LYRICS_AUDIO") setLyricsAudio({ videoId: msg.videoId, roundIndex: msg.roundIndex });
+      if (msg.type === "GUESS_STATE") {
+        setGuessState(msg.state);
+        if (msg.state.phase === "ended") setGuessAudio(null);
+      }
+      if (msg.type === "GUESS_ABORTED") { setGuessState(null); setGuessAudio(null); }
+      if (msg.type === "GUESS_AUDIO") setGuessAudio({ videoId: msg.videoId, roundIndex: msg.roundIndex });
     },
     onOpen() {
       // Claim the screen credential immediately (mode-independent) so Timeline mode's video id
@@ -65,6 +74,13 @@ export default function ScreenPage() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps -- socket is stable; re-run on new state or reply
   }, [lyricsState, lyricsAudio]);
+
+  useEffect(() => {
+    if (needsLyricsAudio(guessState, guessAudio)) {
+      socket.send(JSON.stringify({ type: "GET_GUESS_AUDIO", screenId: screenIdRef.current }));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- socket is stable; re-run on new state or reply
+  }, [guessState, guessAudio]);
 
   useEffect(() => {
     if (lyricsState?.phase !== "guessing" || lyricsState.roundStart === null) {
@@ -101,7 +117,7 @@ export default function ScreenPage() {
 
         <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden", padding: "16px 32px 32px" }}>
           {/* ── waiting for the host to start ───────────────────────────────── */}
-          {phase === "lobby" && !lyricsState && (
+          {phase === "lobby" && !lyricsState && !guessState && (
             <div className="bg-vinyl-pattern" style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 20, borderRadius: 20 }}>
               <p style={{ fontSize: 22, fontWeight: 700, color: "var(--ink)" }}>掃描加入 · Scan to join</p>
               <Qr
@@ -253,9 +269,13 @@ export default function ScreenPage() {
               </div>
             </div>
           )}
+
+          {/* ── Guess mode ───────────────────────────────────────────────────── */}
+          {guessState && <GuessScreen state={guessState} />}
         </div>
       </div>
       {isAudioPhase(lyricsState) && <LyricsPlayer {...lyricsAudioProps(lyricsState, lyricsAudio)} />}
+      {isAudioPhase(guessState) && <LyricsPlayer {...guessAudioProps(guessState, guessAudio)} />}
     </Stage>
   );
 }

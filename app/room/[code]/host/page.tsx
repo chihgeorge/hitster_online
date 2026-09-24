@@ -7,9 +7,10 @@ import PlaylistEditor from "@/components/PlaylistEditor";
 import LyricsTable from "@/components/LyricsTable";
 import LyricRoundItemEditor from "@/components/LyricRoundItemEditor";
 import { Qr } from "@/components/Qr";
+import { GuessHostControls, QuitGameButton } from "@/components/GuessMode";
 import { getOrCreatePersistedId } from "@/lib/device-id";
 import { importLocalPlaylistsToLibrary } from "@/lib/playlist-library-migration";
-import type { GameState, ServerMessage, ClientMessage, SongDiagnostic, EditableSong, PublicLyricsGameState, PublicLyricsRound, LyricsGameConfig, SongEditDiff, EditableLyricRound, LyricEditDiff } from "@/lib/game";
+import type { GameState, ServerMessage, ClientMessage, SongDiagnostic, EditableSong, PublicLyricsGameState, PublicLyricsRound, LyricsGameConfig, PublicGuessGameState, SongEditDiff, EditableLyricRound, LyricEditDiff } from "@/lib/game";
 
 const PARTYKIT_HOST = process.env.NEXT_PUBLIC_PARTYKIT_HOST || "localhost:1999";
 
@@ -55,7 +56,11 @@ export default function HostPage() {
   const [saveError, setSaveError] = useState("");
   const [skippedEmbeddingCount, setSkippedEmbeddingCount] = useState(0);
   // Lyrics Mode
-  const [gameMode, setGameMode] = useState<"timeline" | "lyrics">("timeline");
+  const [gameMode, setGameMode] = useState<"timeline" | "lyrics" | "guess">("timeline");
+  // Guess Mode — starts synchronously on the server (no AI), so a local pending flag only has to
+  // cover the one round trip; cleared by GUESS_STATE, GUESS_ABORTED or ERROR.
+  const [guessState, setGuessState] = useState<PublicGuessGameState | null>(null);
+  const [pendingGuessStart, setPendingGuessStart] = useState(false);
   const [lyricsState, setLyricsState] = useState<PublicLyricsGameState | null>(null);
   const [lyricsPreview, setLyricsPreview] = useState<PublicLyricsRound[]>([]);
   const [lyricsPreviewLoading, setLyricsPreviewLoading] = useState(false);
@@ -141,6 +146,7 @@ export default function HostPage() {
         setError(msg.error);
         setStarting(false);
         setPendingLyricsStart(false);
+        setPendingGuessStart(false);
       }
       if (msg.type === "DIAGNOSTIC") {
         setDiagnostic(msg.songs);
@@ -174,6 +180,8 @@ export default function HostPage() {
       }
       if (msg.type === "LYRICS_STATE") { setLyricsState(msg.state); setPendingLyricsStart(false); }
       if (msg.type === "LYRICS_ABORTED") { setLyricsState(null); setPendingLyricsStart(false); }
+      if (msg.type === "GUESS_STATE") { setGuessState(msg.state); setPendingGuessStart(false); }
+      if (msg.type === "GUESS_ABORTED") { setGuessState(null); setPendingGuessStart(false); }
       if (msg.type === "LYRICS_PREVIEW") {
         setLyricsPreviewLoading(msg.loading);
         if (!msg.loading) setLyricsPreview(msg.rounds);
@@ -260,6 +268,13 @@ export default function HostPage() {
   function handleStartGame(e: React.FormEvent) {
     e.preventDefault();
     setError("");
+    if (gameMode === "guess") {
+      if (pendingGuessStart) return;
+      setPendingGuessStart(true);
+      // songs carries the host's title/artist edits — they ARE the answers in this mode.
+      send({ type: "START_GUESS_GAME", hostId: hostIdRef.current, config: lyricsConfig, songs: readySongsRef.current });
+      return;
+    }
     if (gameMode === "lyrics") {
       const overrides = Object.entries(lyricOverrides)
         .filter(([, v]) => v.lyricContext !== undefined || v.blankSentence !== undefined)
@@ -304,6 +319,11 @@ export default function HostPage() {
   function handleResetLyricsGame() {
     send({ type: "RESET_LYRICS_GAME", hostId: hostIdRef.current });
     setLyricsState(null);
+  }
+
+  function handleResetGuessGame() {
+    send({ type: "RESET_GUESS_GAME", hostId: hostIdRef.current });
+    setGuessState(null);
   }
 
   function handleReveal() {
@@ -493,7 +513,7 @@ export default function HostPage() {
       )}
 
       {/* Lobby setup */}
-      {phase === "lobby" && !starting && (!lyricsState || lyricsState.phase === "preview") && (
+      {phase === "lobby" && !starting && !guessState && (!lyricsState || lyricsState.phase === "preview") && (
         <>
         <form onSubmit={handleStartGame} style={{ ...panel, display: "flex", flexDirection: "column", gap: 18 }}>
           <h2 style={{ fontWeight: 900, fontSize: 17, color: "var(--ink)" }}>設定遊戲 · Set Up Game</h2>
@@ -502,14 +522,14 @@ export default function HostPage() {
           {lyricsState?.phase !== "preview" && (<>
           {/* Mode picker */}
           <div style={{ display: "flex", gap: 0, background: "var(--surface2)", borderRadius: 12, padding: 4 }}>
-            {(["timeline", "lyrics"] as const).map((m) => (
+            {(["timeline", "lyrics", "guess"] as const).map((m) => (
               <button key={m} type="button" onClick={() => setGameMode(m)}
                 style={{ flex: 1, padding: "10px 0", borderRadius: 10, border: "none", cursor: "pointer", fontWeight: 900, fontSize: 13, fontFamily: "var(--font-zh)", transition: "all .15s",
                   background: gameMode === m ? "var(--orange)" : "transparent",
                   color: gameMode === m ? "white" : "var(--text3)",
                   boxShadow: gameMode === m ? "0 2px 8px rgba(255,107,53,.3)" : "none",
                 }}>
-                {m === "timeline" ? "📅 時間軸模式" : "🎵 歌詞模式"}
+                {m === "timeline" ? "📅 時間軸模式" : m === "lyrics" ? "🎵 歌詞模式" : "🎧 猜歌模式"}
               </button>
             ))}
           </div>
@@ -561,7 +581,7 @@ export default function HostPage() {
             <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
               <div style={{ background: "var(--surface2)", borderRadius: 14, border: "2px solid rgba(255,107,53,.15)", padding: "14px 16px", display: "flex", flexDirection: "column", gap: 8 }}>
                 <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", fontSize: 13 }}>
-                  <span style={{ fontWeight: 700, color: "var(--ink)" }}>{gameMode === "lyrics" ? "解析歌曲資料中…" : "查找發行年份中…"}</span>
+                  <span style={{ fontWeight: 700, color: "var(--ink)" }}>{gameMode === "timeline" ? "查找發行年份中…" : "解析歌曲資料中…"}</span>
                   {diagnostic && (
                     <span style={{ color: "var(--text3)" }}>
                       <span style={{ color: "var(--orange)", fontWeight: 900 }}>{diagnostic.filter((s) => s.year !== null).length}</span>
@@ -582,7 +602,7 @@ export default function HostPage() {
                 const resolvedCount = diagnostic?.filter((s) => s.year !== null).length ?? 0;
                 return (
                   <div style={{ background: "var(--surface2)", border: "2px solid rgba(255,107,53,.35)", borderRadius: 14, padding: "16px", display: "flex", flexDirection: "column", gap: 10 }}>
-                    <p style={{ fontWeight: 900, fontSize: 13, color: "var(--orange-dk)" }}>{gameMode === "lyrics" ? "仍在解析歌曲中… Still loading" : "仍在搜索年份中… Still searching"}</p>
+                    <p style={{ fontWeight: 900, fontSize: 13, color: "var(--orange-dk)" }}>{gameMode === "timeline" ? "仍在搜索年份中… Still searching" : "仍在解析歌曲中… Still loading"}</p>
                     <p style={{ fontSize: 12, color: "var(--text2)" }}>
                       已找到 <span style={{ color: "var(--orange)", fontWeight: 900 }}>{resolvedCount}</span> 首歌曲。繼續搜索或立即開始？
                     </p>
@@ -655,13 +675,18 @@ export default function HostPage() {
                   {saveError && <p style={{ fontSize: 12, color: "var(--red)" }}>{saveError}</p>}
                 </div>
               )}
-              {gameMode === "timeline" && readySongs.length > 0 && (
+              {gameMode === "guess" && readySongs.length > 0 && (
+                <p style={{ fontSize: 12, color: "var(--text2)" }}>
+                  💡 歌名和歌手就是答案，開始前可先修正 · Titles and artists are the answers: fix any messy ones first.
+                </p>
+              )}
+              {gameMode !== "lyrics" && readySongs.length > 0 && (
                 <button type="button" data-testid="edit-songs-toggle-btn" onClick={() => setShowEditor((v) => !v)}
                   style={{ background: "var(--surface2)", border: "2px solid rgba(255,107,53,.2)", borderRadius: 10, padding: "10px 14px", fontSize: 13, fontWeight: 700, color: "var(--ink)", cursor: "pointer", textAlign: "left", fontFamily: "var(--font-zh)" }}>
                   {showEditor ? "▲ 隱藏歌曲編輯器" : "✎ 編輯歌曲資訊"}
                 </button>
               )}
-              {gameMode === "timeline" && showEditor && readySongs.length > 0 && (
+              {gameMode !== "lyrics" && showEditor && readySongs.length > 0 && (
                 <PlaylistEditor
                   playlistId={savedId} songs={readySongs} hostId={hostIdRef.current} partyKitHost={PARTYKIT_HOST} onSongsChange={setReadySongs}
                   onProposeEdits={handleProposeEdits} proposing={proposingEdits} proposedDiff={proposedDiff} proposeError={proposeError}
@@ -716,9 +741,9 @@ export default function HostPage() {
           )}
 
           {/* Lyrics config (lyrics mode only, hidden once preview is ready) */}
-          {loadStatus !== "loading" && gameMode === "lyrics" && !lyricsState && (
+          {loadStatus !== "loading" && gameMode !== "timeline" && !lyricsState && (
             <div style={{ display: "flex", flexDirection: "column", gap: 10, background: "var(--surface2)", borderRadius: 14, padding: 14, border: "2px solid rgba(255,107,53,.15)" }}>
-              <p style={{ fontSize: 12, fontWeight: 700, color: "var(--text2)", marginBottom: 2 }}>歌詞模式設定</p>
+              <p style={{ fontSize: 12, fontWeight: 700, color: "var(--text2)", marginBottom: 2 }}>{gameMode === "lyrics" ? "歌詞模式設定" : "猜歌模式設定"}</p>
               <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
                 <label style={{ fontSize: 12, fontWeight: 700, color: "var(--text2)" }}>
                   回答時間：<span style={{ color: "var(--orange)", fontWeight: 900 }}>{lyricsConfig.timerSeconds}秒</span>
@@ -749,9 +774,9 @@ export default function HostPage() {
             </button>
           )}
           {loadStatus === "ready" && !lyricsState && (
-            <button type="submit" data-testid="start-game-btn" disabled={playerCount === 0}
+            <button type="submit" data-testid="start-game-btn" disabled={playerCount === 0 || pendingGuessStart}
               style={{ background: playerCount === 0 ? "rgba(255,107,53,.35)" : "var(--orange)", color: "white", border: "none", borderRadius: 14, padding: "15px", fontSize: 16, fontWeight: 900, cursor: playerCount === 0 ? "not-allowed" : "pointer", fontFamily: "var(--font-zh)", boxShadow: playerCount > 0 ? "0 4px 16px rgba(255,107,53,.3)" : "none" }}>
-              {gameMode === "lyrics" ? "🎵 開始歌詞模式 · Start Lyrics" : "🎮 開始遊戲 · Start Game"}
+              {gameMode === "lyrics" ? "🎵 開始歌詞模式 · Start Lyrics" : gameMode === "guess" ? "🎧 開始猜歌模式 · Start Guess" : "🎮 開始遊戲 · Start Game"}
             </button>
           )}
 
@@ -817,6 +842,7 @@ export default function HostPage() {
           </div>
           <p style={{ fontSize: 16, fontWeight: 700, color: "var(--ink)" }}>AI 正在準備歌詞…</p>
           <p style={{ fontSize: 12, color: "var(--text3)" }}>Preparing lyrics with AI — this takes about 15–30 seconds</p>
+          <QuitGameButton onQuit={handleResetLyricsGame} />
         </div>
       )}
 
@@ -830,6 +856,7 @@ export default function HostPage() {
             style={{ background: "var(--orange)", color: "white", border: "none", borderRadius: 14, padding: "15px", fontSize: 16, fontWeight: 900, cursor: "pointer", fontFamily: "var(--font-zh)", boxShadow: "0 4px 16px rgba(255,107,53,.3)" }}>
             ✂️ 切歌！Cut!
           </button>
+          <QuitGameButton onQuit={handleResetLyricsGame} />
         </div>
       )}
 
@@ -843,6 +870,7 @@ export default function HostPage() {
             style={{ background: "var(--ink)", color: "white", border: "none", borderRadius: 14, padding: "14px", fontSize: 15, fontWeight: 900, cursor: "pointer", fontFamily: "var(--font-zh)" }}>
             🔍 揭曉答案 · Show Results
           </button>
+          <QuitGameButton onQuit={handleResetLyricsGame} />
         </div>
       )}
 
@@ -856,6 +884,7 @@ export default function HostPage() {
             style={{ background: "var(--orange)", color: "white", border: "none", borderRadius: 14, padding: "14px", fontSize: 15, fontWeight: 900, cursor: "pointer", fontFamily: "var(--font-zh)", boxShadow: "0 4px 16px rgba(255,107,53,.3)" }}>
             {lyricsState.currentRoundIndex + 1 >= lyricsState.totalRounds ? "🏆 查看排名 · See Rankings" : "▶ 下一回合 · Next Round"}
           </button>
+          <QuitGameButton onQuit={handleResetLyricsGame} />
         </div>
       )}
 
@@ -871,6 +900,18 @@ export default function HostPage() {
             再玩一次 · Play Again
           </button>
         </div>
+      )}
+
+      {/* Guess Mode: all phases — controls only; the question, timer and results are on the big screen */}
+      {guessState && (
+        <GuessHostControls
+          state={guessState}
+          panel={panel}
+          onStartRound={() => send({ type: "START_GUESS_ROUND", hostId: hostIdRef.current })}
+          onShowResults={() => send({ type: "SHOW_GUESS_RESULTS", hostId: hostIdRef.current })}
+          onNext={() => send({ type: "NEXT_GUESS_ROUND", hostId: hostIdRef.current })}
+          onReset={handleResetGuessGame}
+        />
       )}
 
       {/* Timeline mode: in progress — controls only; the video and timelines are on the big screen */}

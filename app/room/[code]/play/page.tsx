@@ -6,7 +6,8 @@ import Link from "next/link";
 import usePartySocket from "partysocket/react";
 import Timeline from "@/components/Timeline";
 import Vinyl from "@/components/Vinyl";
-import type { GameState, ServerMessage, ClientMessage, Player, PublicLyricsGameState } from "@/lib/game";
+import { GuessPlay } from "@/components/GuessMode";
+import type { GameState, ServerMessage, ClientMessage, Player, PublicLyricsGameState, PublicGuessGameState } from "@/lib/game";
 
 function getOrCreatePlayerId(): string {
   const key = "hitster_player_id";
@@ -29,6 +30,8 @@ export default function PlayPage() {
   const [lyricsSubmitted, setLyricsSubmitted] = useState(false);
   const [lyricsTooLate, setLyricsTooLate] = useState(false);
   const [lyricsTimerLeft, setLyricsTimerLeft] = useState<number | null>(null);
+  const [guessState, setGuessState] = useState<PublicGuessGameState | null>(null);
+  const [guessTooLate, setGuessTooLate] = useState(false);
   const [selectedPosition, setSelectedPosition] = useState<number | null>(null);
   const [hasPlaced, setHasPlaced] = useState(false);
   // Closes the same class of race T2 fixed for Lyrics mode's Start button: hasPlaced only
@@ -65,6 +68,11 @@ export default function PlayPage() {
       setLyricsTimerLeft(null);
     }
   }, [lyricsState?.phase, lyricsState?.currentRoundIndex]);
+
+  // Reset Guess mode's TOO_LATE flag on each new round
+  useEffect(() => {
+    if (guessState?.phase === "playing") setGuessTooLate(false);
+  }, [guessState?.phase, guessState?.currentRoundIndex]);
 
   // Lyrics countdown timer
   useEffect(() => {
@@ -113,6 +121,12 @@ export default function PlayPage() {
         case "LYRICS_ABORTED":
           setLyricsState(null);
           break;
+        case "GUESS_STATE":
+          setGuessState(msg.state);
+          break;
+        case "GUESS_ABORTED":
+          setGuessState(null);
+          break;
         case "PLACEMENT_ACK":
           if (msg.playerId === playerIdRef.current) { setHasPlaced(true); setPendingPlace(false); }
           break;
@@ -120,6 +134,7 @@ export default function PlayPage() {
           setTooLate(true);
           setLyricsTooLate(true);
           setLyricsSubmitted(false);
+          setGuessTooLate(true);
           setPendingPlace(false);
           break;
         case "ERROR":
@@ -153,6 +168,18 @@ export default function PlayPage() {
 
   const myLyricsPlayer = lyricsState?.players[playerIdRef.current] ?? null;
   const myLyricsAnswer = lyricsState?.answers[playerIdRef.current] ?? null;
+
+  if (guessState) {
+    return (
+      <GuessPlay
+        state={guessState}
+        playerId={playerIdRef.current}
+        playerName={playerName}
+        tooLate={guessTooLate}
+        onSubmit={(title, artist) => send({ type: "SUBMIT_GUESS", playerId: playerIdRef.current, title, artist })}
+      />
+    );
+  }
 
   /* ── Lyrics Mode: loading ── */
   if (lyricsState?.phase === "loading") {
