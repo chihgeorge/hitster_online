@@ -21,6 +21,14 @@ async function joinRoom(page: Page, name: string, code: string) {
   await page.waitForURL(/\/room\/[A-Z]+\/play/);
 }
 
+// The host's Play / Show Results / Next button ignores a tap within 400ms of the previous one
+// (double-tap guard, components/GuessMode.tsx). Playwright taps faster than any human, so pace
+// host taps like a person would.
+async function hostTap(host: Page, testId: string) {
+  await host.waitForTimeout(450);
+  await host.locator(`[data-testid='${testId}']`).click();
+}
+
 async function expectNoTitle(page: Page) {
   const text = await page.locator("body").innerText();
   for (const t of CPOP_TITLES) expect(text, `answer "${t}" visible before reveal`).not.toContain(t);
@@ -56,7 +64,7 @@ test.describe("Guess Mode", () => {
       await expect(host.getByText("第 1 / 3 回合 · 猜歌模式")).toBeVisible();
 
       // ── Guessing ──────────────────────────────────────────────────────────
-      await host.locator("[data-testid='guess-start-round-btn']").click();
+      await hostTap(host, "guess-start-round-btn");
       await expect(alice.locator("[data-testid='guess-title-input']")).toBeVisible({ timeout: 10_000 });
       await expect(screen.getByText("🎧 這是什麼歌？")).toBeVisible();
       await expectNoTitle(screen);
@@ -71,7 +79,7 @@ test.describe("Guess Mode", () => {
       await expectNoTitle(bob); // Bob still guessing: Alice's answer and the real one both hidden
 
       // ── Reveal ───────────────────────────────────────────────────────────
-      await host.locator("[data-testid='guess-show-results-btn']").click();
+      await hostTap(host, "guess-show-results-btn");
       const answer = alice.locator("[data-testid='guess-answer-title']");
       await expect(answer).toBeVisible({ timeout: 10_000 });
       const title = (await answer.innerText()).trim();
@@ -82,7 +90,7 @@ test.describe("Guess Mode", () => {
       await expect(screen.getByText("未作答")).toBeVisible(); // Bob's row
 
       // ── Next round, then quit ─────────────────────────────────────────────
-      await host.locator("[data-testid='guess-next-btn']").click();
+      await hostTap(host, "guess-next-btn");
       await expect(host.getByText("第 2 / 3 回合 · 猜歌模式")).toBeVisible({ timeout: 10_000 });
       host.once("dialog", (d) => void d.accept());
       await host.locator("[data-testid='quit-game-btn']").click();

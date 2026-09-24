@@ -367,17 +367,18 @@ interface HostProps {
 
 export function GuessHostControls({ state, panel, onStartRound, onShowResults, onNext, onReset }: HostProps) {
   // Play / Show Results / Next all render as the same button in the same spot, so a double-tap
-  // could skip the reveal. Ignore taps for a moment after the phase changes (the second tap of a
+  // could skip the reveal. Ignore a tap within 400ms of the previous tap (the second tap of a
   // double-tap lands on the NEW button), and while a tap is in flight. "In flight" ends with ANY
   // new server snapshot (incl. the one resent on reconnect) or after 3s — a tap lost with a
-  // dropping phone socket must never leave the only progression button disabled.
-  const stateKey = `${state.phase}:${state.currentRoundIndex}`;
+  // dropping phone socket must never leave the only progression button disabled. A single quick
+  // tap right after a button appears is never ignored.
   const [tapped, setTapped] = useState<PublicGuessGameState | null>(null);
-  const shownAt = useRef(0);
-  useEffect(() => { shownAt.current = Date.now(); }, [stateKey]);
+  const lastTapAt = useRef(0);
   const busy = tapped === state;
   const once = (fn: () => void) => () => {
-    if (busy || Date.now() - shownAt.current < 400) return;
+    const now = Date.now();
+    if (busy || now - lastTapAt.current < 400) return;
+    lastTapAt.current = now;
     setTapped(state);
     window.setTimeout(() => setTapped((t) => (t === state ? null : t)), 3000);
     fn();

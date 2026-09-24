@@ -186,6 +186,7 @@ describe("/ship adversarial fixes", () => {
     expect((screen.getByTestId("guess-next-btn") as HTMLButtonElement).disabled).toBe(true);
     rerender(<GuessHostControls state={results()} {...props} />); // reconnect resends the same phase
     expect((screen.getByTestId("guess-next-btn") as HTMLButtonElement).disabled).toBe(false);
+    vi.advanceTimersByTime(2000); // the host retries a moment later
     fireEvent.click(screen.getByTestId("guess-next-btn"));
     expect(onNext).toHaveBeenCalledTimes(2);
     vi.useRealTimers();
@@ -199,4 +200,11 @@ describe("/ship adversarial fixes", () => {
     render(<GuessPlay state={s} playerId={ME} playerName="Alice" tooLate={false} onSubmit={vi.fn()} />);
     expect(screen.getByTestId("guess-my-result").textContent).not.toContain("沒猜中");
   });
+});
+
+it("a single quick tap right after the button appears is not ignored (e2e regression)", () => {
+  const onStartRound = vi.fn();
+  render(<GuessHostControls state={state({ phase: "playing" })} panel={{}} onStartRound={onStartRound} onShowResults={vi.fn()} onNext={vi.fn()} onReset={vi.fn()} />);
+  fireEvent.click(screen.getByTestId("guess-start-round-btn"));
+  expect(onStartRound).toHaveBeenCalledTimes(1);
 });
