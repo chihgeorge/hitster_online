@@ -5,6 +5,7 @@
 // Falls back gracefully: returns an empty Map on any API or parse failure.
 
 import type { EditableSong, SongEditDiff, EditableLyricRound, LyricEditDiff } from "./game";
+import { mapWithConcurrency } from "./utils";
 
 export interface AITrackMeta {
   title: string;
@@ -134,18 +135,14 @@ export async function resolveTracksWithAI(
   }
 
   // Run in windows of MAX_CONCURRENT to stay within API rate limits.
-  for (let i = 0; i < batches.length; i += MAX_CONCURRENT) {
-    const window = batches.slice(i, i + MAX_CONCURRENT);
-    const results = await Promise.allSettled(
-      window.map((batch) => resolveBatch(batch, apiKey))
-    );
+  await mapWithConcurrency(batches, MAX_CONCURRENT, (batch) => resolveBatch(batch, apiKey), (results) => {
     for (const r of results) {
       if (r.status === "fulfilled") {
         r.value.forEach((meta, id) => combined.set(id, meta));
         onBatchDone?.(combined);
       }
     }
-  }
+  });
 
   return combined;
 }

@@ -11,6 +11,7 @@ import { useState } from "react";
 import type { EditableSong, SongEditDiff } from "@/lib/game";
 import { isValidYear } from "@/lib/utils";
 import { useItemDraft } from "@/lib/use-item-draft";
+import { focusFieldBox, focusNavBtn } from "./focus-editor-styles";
 
 interface Props {
   playlistId: string;
@@ -98,31 +99,21 @@ export default function SongItemEditor({ playlistId, songs, hostId, partyKitHost
     }
   }
 
-  const fieldInput: React.CSSProperties = {
-    background: "var(--surface2)", border: "2px solid rgba(255,107,53,.2)", borderRadius: 14,
-    padding: "12px 16px", outline: "none", fontFamily: "var(--font-zh)", color: "var(--ink)",
-    textAlign: "center", width: "100%",
-  };
-  const navBtn: React.CSSProperties = {
-    background: "rgba(26,26,46,.06)", border: "none", borderRadius: 12, padding: "10px 18px",
-    fontSize: 13, fontWeight: 700, color: "var(--ink)", cursor: "pointer",
-  };
-
   return (
     <div className="fixed inset-0 z-50 flex flex-col items-center justify-center gap-6 px-6" style={{ background: "var(--bg)" }}>
-      <button type="button" onClick={onClose} style={{ position: "absolute", top: 20, right: 20, ...navBtn }}>
+      <button type="button" onClick={onClose} style={{ position: "absolute", top: 20, right: 20, ...focusNavBtn }}>
         ✕ 關閉 · Close
       </button>
       <p style={{ fontSize: 12, color: "var(--text3)" }}>{index + 1} / {songs.length}</p>
 
       <div style={{ display: "flex", flexDirection: "column", gap: 12, width: "100%", maxWidth: 420 }}>
         <input type="text" value={draft.title} onChange={(e) => setField("title", e.target.value)}
-          placeholder="Title" style={{ ...fieldInput, fontSize: 24, fontWeight: 900 }} />
+          placeholder="Title" style={{ ...focusFieldBox, fontSize: 24, fontWeight: 900 }} />
         <input type="text" value={draft.artist} onChange={(e) => setField("artist", e.target.value)}
-          placeholder="Artist" style={{ ...fieldInput, fontSize: 16 }} />
+          placeholder="Artist" style={{ ...focusFieldBox, fontSize: 16 }} />
         <input type="number" value={draft.year ?? ""} min={1900} max={new Date().getFullYear() + 1}
           onChange={(e) => { const v = parseInt(e.target.value, 10); setField("year", isNaN(v) ? null : v); }}
-          placeholder="Year" style={{ ...fieldInput, fontSize: 16, fontFamily: "var(--font-mono)" }} />
+          placeholder="Year" style={{ ...focusFieldBox, fontSize: 16, fontFamily: "var(--font-mono)" }} />
         {error && <p style={{ color: "var(--red)", fontSize: 12, textAlign: "center" }}>{error}</p>}
       </div>
 
@@ -143,7 +134,7 @@ export default function SongItemEditor({ playlistId, songs, hostId, partyKitHost
 
       <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
         <button type="button" onClick={() => setIndex((i) => i - 1)} disabled={index === 0}
-          style={{ ...navBtn, opacity: index === 0 ? 0.4 : 1, cursor: index === 0 ? "not-allowed" : "pointer" }}>
+          style={{ ...focusNavBtn, opacity: index === 0 ? 0.4 : 1, cursor: index === 0 ? "not-allowed" : "pointer" }}>
           ← 上一首 · Prev
         </button>
         {dirty && (
@@ -153,7 +144,7 @@ export default function SongItemEditor({ playlistId, songs, hostId, partyKitHost
           </button>
         )}
         <button type="button" onClick={() => setIndex((i) => i + 1)} disabled={index === songs.length - 1}
-          style={{ ...navBtn, opacity: index === songs.length - 1 ? 0.4 : 1, cursor: index === songs.length - 1 ? "not-allowed" : "pointer" }}>
+          style={{ ...focusNavBtn, opacity: index === songs.length - 1 ? 0.4 : 1, cursor: index === songs.length - 1 ? "not-allowed" : "pointer" }}>
           下一首 · Next →
         </button>
       </div>
