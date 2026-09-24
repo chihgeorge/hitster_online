@@ -125,7 +125,7 @@ test.describe("Host lobby: save and load playlist", () => {
 
     // PLAYLIST_READY fires immediately for test seed
     await expect(page.getByText(/已載入/i)).toBeVisible({ timeout: 5000 });
-    await expect(page.getByRole("button", { name: "儲存播放清單" })).toBeVisible();
+    await expect(page.locator("[data-testid='save-playlist-toggle-btn']")).toBeVisible();
   });
 
   test("can expand and collapse the save panel", async ({ page }) => {
@@ -138,11 +138,11 @@ test.describe("Host lobby: save and load playlist", () => {
     await expect(page.getByText(/已載入/i)).toBeVisible({ timeout: 5000 });
 
     // Click "儲存播放清單" to reveal the name input
-    await page.getByRole("button", { name: "儲存播放清單" }).click();
+    await page.locator("[data-testid='save-playlist-toggle-btn']").click();
     await expect(page.getByPlaceholder("播放清單名稱")).toBeVisible();
   });
 
-  test("save → reload → load saved playlist → start game", async ({ page }) => {
+  test("save → reload → load saved playlist → start game (with a real song-drawing round)", async ({ page, context }) => {
     await createRoomAsHost(page);
 
     // Load test seed
@@ -153,11 +153,9 @@ test.describe("Host lobby: save and load playlist", () => {
     await expect(page.getByText(/已載入/i)).toBeVisible({ timeout: 5_000 });
 
     // Save the playlist
-    await page.getByRole("button", { name: "儲存播放清單" }).click();
-    const nameInput = page.getByPlaceholder("播放清單名稱");
-    await nameInput.fill("E2E Test Playlist");
-    // The submit button reads "儲存 (N)"; /儲存/ alone also matches the "儲存播放清單" toggle
-    await page.getByRole("button", { name: /^儲存 \(\d+\)/ }).click();
+    await page.locator("[data-testid='save-playlist-toggle-btn']").click();
+    await page.locator("[data-testid='save-playlist-name-input']").fill("E2E Test Playlist");
+    await page.locator("[data-testid='save-playlist-submit-btn']").click();
     // After save, the "已儲存 ✓" badge appears and the copy ID button is shown
     await expect(page.getByText("已儲存 ✓")).toBeVisible({ timeout: 5_000 });
 
@@ -169,14 +167,31 @@ test.describe("Host lobby: save and load playlist", () => {
     await expect(page.getByText("E2E Test Playlist")).toBeVisible({ timeout: 5_000 });
 
     // Load it from the saved list
-    const loadBtn = page.locator("button", { hasText: "載入" }).last();
-    await loadBtn.click();
+    await page.locator("[data-testid='load-saved-playlist-btn']").click();
     await expect(page.getByText(/已載入/i)).toBeVisible({ timeout: 5_000 });
 
-    // Start game button should now be available (no players needed for this assertion)
-    await expect(page.locator("[data-testid='start-game-btn']")).toBeVisible();
+    // A player joins so Start Game is actually clickable
+    const code = page.url().match(/\/room\/([A-Z]+)\/host/)![1];
+    const playerPage = await context.newPage();
+    await playerPage.goto("/");
+    await playerPage.locator("[data-testid='join-name-input']").fill("Alice");
+    await playerPage.locator("[data-testid='join-code-input']").fill(code);
+    await playerPage.locator("[data-testid='join-room-btn']").click();
+    await expect(page.getByText("Alice")).toBeVisible({ timeout: 5_000 });
+
+    // Actually start the game — proves the round-trip produced a real, playable deck, not just
+    // a button that happens to be enabled.
+    await page.locator("[data-testid='start-game-btn']").click();
+    await expect(page.locator("[data-testid='reveal-btn']")).toBeVisible({ timeout: 10_000 });
+    await playerPage.close();
   });
 
+  // UI-level smoke test only — the hitster://test seed ignores song overrides server-side
+  // (party/index.ts's handleStartGame only applies them on the LOAD_PLAYLIST-cached path, not
+  // the test-seed shortcut), so this can't exercise real placement scoring. That propagation
+  // is covered deterministically in party/index.test.ts's "START_GAME song year override
+  // reaches placement evaluation" (TODOS.md P2) — a browser round trip would add flakiness
+  // (deck shuffle order) for no extra coverage the unit test doesn't already give.
   test("edit year on a song → verify the edit is reflected in the editor", async ({ page }) => {
     await createRoomAsHost(page);
 
@@ -188,7 +203,7 @@ test.describe("Host lobby: save and load playlist", () => {
     await expect(page.getByText(/已載入/i)).toBeVisible({ timeout: 5_000 });
 
     // Open the song editor
-    await page.getByRole("button", { name: /編輯歌曲資訊/i }).click();
+    await page.locator("[data-testid='edit-songs-toggle-btn']").click();
     await expect(page.getByRole("table")).toBeVisible({ timeout: 3_000 });
 
     // Edit year of first song (1960 → 1961)

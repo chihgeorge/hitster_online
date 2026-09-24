@@ -25,9 +25,9 @@ const PARTY_URL = (id: string) => `http://${PARTYKIT_HOST}/parties/playlist/${id
 
 async function joinRoom(page: Page, name: string, code: string) {
   await page.goto("/");
-  await page.getByPlaceholder("你的名字").fill(name);
-  await page.getByPlaceholder("房間代碼").fill(code);
-  await page.getByRole("button", { name: /加入/i }).click();
+  await page.locator("[data-testid='join-name-input']").fill(name);
+  await page.locator("[data-testid='join-code-input']").fill(code);
+  await page.locator("[data-testid='join-room-btn']").click();
   await page.waitForURL(/\/room\/[A-Z]+\/play/);
 }
 
@@ -50,7 +50,7 @@ async function expectSpectating(page: Page, activePlayerName: string) {
   await expect(
     page.getByText(new RegExp(`${activePlayerName}.*正在猜測中`)),
   ).toBeVisible({ timeout: 15_000 });
-  await expect(page.getByRole("button", { name: /確認放置/i })).not.toBeVisible();
+  await expect(page.locator("[data-testid='place-btn']")).not.toBeVisible();
 }
 
 // ── test ─────────────────────────────────────────────────────────────────────
@@ -174,7 +174,7 @@ test.describe("Two-player game using saved playlist", () => {
         await expect(hostPage.getByText("Alice")).toBeVisible({ timeout: 10_000 });
 
         // ── 3. Host loads the saved playlist by pasting its ID ───────────────
-        const loadInput = hostPage.getByPlaceholder(/貼上播放清單 ID/);
+        const loadInput = hostPage.locator("[data-testid='load-by-id-input']");
         await loadInput.fill(playlistId);
         await loadInput.press("Enter");
         await expect(hostPage.getByText(/已載入/i)).toBeVisible({ timeout: 5_000 });

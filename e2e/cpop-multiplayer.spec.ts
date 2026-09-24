@@ -27,9 +27,9 @@ import { createRoomAsHost } from "./helpers";
 
 async function joinRoom(page: Page, name: string, code: string) {
   await page.goto("/");
-  await page.getByPlaceholder("你的名字").fill(name);
-  await page.getByPlaceholder("房間代碼").fill(code);
-  await page.getByRole("button", { name: /加入/i }).click();
+  await page.locator("[data-testid='join-name-input']").fill(name);
+  await page.locator("[data-testid='join-code-input']").fill(code);
+  await page.locator("[data-testid='join-room-btn']").click();
   await page.waitForURL(/\/room\/[A-Z]+\/play/);
 }
 
@@ -39,8 +39,8 @@ async function appendCard(page: Page) {
   const dropZones = page.locator("button").filter({ hasText: /^\+$/ });
   const count = await dropZones.count();
   await dropZones.nth(count - 1).click();
-  await page.getByRole("button", { name: /確認放置/i }).click();
-  await expect(page.getByRole("button", { name: /確認放置/i })).not.toBeVisible({ timeout: 5_000 });
+  await page.locator("[data-testid='place-btn']").click();
+  await expect(page.locator("[data-testid='place-btn']")).not.toBeVisible({ timeout: 5_000 });
 }
 
 /** Verify a page shows the spectator banner during guessing phase. */
@@ -48,7 +48,7 @@ async function expectSpectating(page: Page, activePlayerName: string) {
   await expect(
     page.getByText(new RegExp(`${activePlayerName}.*正在猜測中`)),
   ).toBeVisible({ timeout: 15_000 });
-  await expect(page.getByRole("button", { name: /確認放置/i })).not.toBeVisible();
+  await expect(page.locator("[data-testid='place-btn']")).not.toBeVisible();
 }
 
 // ── test ─────────────────────────────────────────────────────────────────────
@@ -81,9 +81,9 @@ test.describe("C-pop multiplayer with metadata verification", () => {
         const urlInput = hostPage.locator('input[type="url"]');
         await urlInput.click();
         await urlInput.pressSequentially("hitster://cpop-test");
-        await hostPage.getByRole("button", { name: /Load/i }).click();
+        await hostPage.locator("[data-testid='load-playlist-btn']").click();
         await expect(hostPage.getByText(/已載入/i)).toBeVisible({ timeout: 5_000 });
-        await hostPage.getByRole("button", { name: /Start Game/i }).click();
+        await hostPage.locator("[data-testid='start-game-btn']").click();
 
         // ── 4. Metadata verification ─────────────────────────────────────────
         // After game starts, the diagnostic panel button appears in the host page.
@@ -109,37 +109,37 @@ test.describe("C-pop multiplayer with metadata verification", () => {
         await expectSpectating(p2Page, "Alice");
 
         await expect(
-          hostPage.getByRole("button", { name: /reveal/i }),
+          hostPage.locator("[data-testid='reveal-btn']"),
         ).toBeVisible({ timeout: 10_000 });
-        await hostPage.getByRole("button", { name: /reveal/i }).click();
+        await hostPage.locator("[data-testid='reveal-btn']").click();
 
         await expect(
-          hostPage.getByRole("button", { name: /next round/i }),
+          hostPage.locator("[data-testid='next-round-btn']"),
         ).toBeVisible({ timeout: 10_000 });
-        await hostPage.getByRole("button", { name: /next round/i }).click();
+        await hostPage.locator("[data-testid='next-round-btn']").click();
 
         // ── 6. Round 2: Bob's turn ────────────────────────────────────────────
         await appendCard(p2Page);
         await expectSpectating(p1Page, "Bob");
 
         await expect(
-          hostPage.getByRole("button", { name: /reveal/i }),
+          hostPage.locator("[data-testid='reveal-btn']"),
         ).toBeVisible({ timeout: 10_000 });
-        await hostPage.getByRole("button", { name: /reveal/i }).click();
+        await hostPage.locator("[data-testid='reveal-btn']").click();
 
         await expect(
-          hostPage.getByRole("button", { name: /next round/i }),
+          hostPage.locator("[data-testid='next-round-btn']"),
         ).toBeVisible({ timeout: 10_000 });
-        await hostPage.getByRole("button", { name: /next round/i }).click();
+        await hostPage.locator("[data-testid='next-round-btn']").click();
 
         // ── 7. Round 3: Alice's turn again ───────────────────────────────────
         await appendCard(p1Page);
         await expectSpectating(p2Page, "Alice");
 
         await expect(
-          hostPage.getByRole("button", { name: /reveal/i }),
+          hostPage.locator("[data-testid='reveal-btn']"),
         ).toBeVisible({ timeout: 10_000 });
-        await hostPage.getByRole("button", { name: /reveal/i }).click();
+        await hostPage.locator("[data-testid='reveal-btn']").click();
 
         // ── 8. Game over: Alice wins ──────────────────────────────────────────
         await expect(p1Page.getByRole("heading", { name: "WINNER!" })).toBeVisible({ timeout: 10_000 });

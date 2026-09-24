@@ -628,7 +628,7 @@ export default function HostPage() {
                     </button>
                   </div>
                 ) : (
-                  <button type="button" onClick={() => setShowSavePanel((v) => !v)}
+                  <button type="button" data-testid="save-playlist-toggle-btn" onClick={() => setShowSavePanel((v) => !v)}
                     style={{ fontSize: 11, color: "var(--text2)", background: "none", border: "none", cursor: "pointer", flexShrink: 0 }}>
                     儲存播放清單
                   </button>
@@ -643,11 +643,11 @@ export default function HostPage() {
               {showSavePanel && (
                 <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
                   <div style={{ display: "flex", gap: 8 }}>
-                    <input type="text" placeholder="播放清單名稱" value={savePlaylistName}
+                    <input type="text" data-testid="save-playlist-name-input" placeholder="播放清單名稱" value={savePlaylistName}
                       onChange={(e) => { setSavePlaylistName(e.target.value); setSaveError(""); }}
                       onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); void handleSavePlaylist(); } }}
                       style={{ ...inp, flex: 1, padding: "10px 14px", fontSize: 13 }} />
-                    <button type="button" disabled={!savePlaylistName.trim() || saving} onClick={() => void handleSavePlaylist()}
+                    <button type="button" data-testid="save-playlist-submit-btn" disabled={!savePlaylistName.trim() || saving} onClick={() => void handleSavePlaylist()}
                       style={{ flexShrink: 0, background: "var(--orange)", color: "white", border: "none", borderRadius: 10, padding: "10px 16px", fontSize: 13, fontWeight: 900, cursor: "pointer", fontFamily: "var(--font-zh)", opacity: (!savePlaylistName.trim() || saving) ? 0.45 : 1, alignSelf: "stretch", display: "flex", alignItems: "center" }}>
                       {saving ? "儲存中…" : `儲存 ${readySongs.length > 0 ? `(${readySongs.length})` : ""}`}
                     </button>
@@ -656,7 +656,7 @@ export default function HostPage() {
                 </div>
               )}
               {gameMode === "timeline" && readySongs.length > 0 && (
-                <button type="button" onClick={() => setShowEditor((v) => !v)}
+                <button type="button" data-testid="edit-songs-toggle-btn" onClick={() => setShowEditor((v) => !v)}
                   style={{ background: "var(--surface2)", border: "2px solid rgba(255,107,53,.2)", borderRadius: 10, padding: "10px 14px", fontSize: 13, fontWeight: 700, color: "var(--ink)", cursor: "pointer", textAlign: "left", fontFamily: "var(--font-zh)" }}>
                   {showEditor ? "▲ 隱藏歌曲編輯器" : "✎ 編輯歌曲資訊"}
                 </button>
@@ -767,12 +767,12 @@ export default function HostPage() {
         <div style={{ ...panel, display: "flex", flexDirection: "column", gap: 14 }}>
           <h3 style={{ fontWeight: 900, fontSize: 14, color: "var(--ink)" }}>已儲存的播放清單 · Saved Playlists</h3>
           <div style={{ display: "flex", gap: 10 }}>
-            <input type="text" placeholder="貼上播放清單 ID 以從任何裝置載入…"
+            <input type="text" data-testid="load-by-id-input" placeholder="貼上播放清單 ID 以從任何裝置載入…"
               value={loadById}
               onChange={(e) => setLoadById(e.target.value)}
               onKeyDown={(e) => { if (e.key === "Enter" && loadById.trim()) { e.preventDefault(); void handleLoadSavedPlaylist(loadById.trim()); setLoadById(""); } }}
               style={{ ...inp, flex: 1, fontFamily: "var(--font-mono)", fontSize: 13, padding: "10px 14px" }} />
-            <button type="button" disabled={!loadById.trim() || loadStatus === "loading"}
+            <button type="button" data-testid="load-by-id-btn" disabled={!loadById.trim() || loadStatus === "loading"}
               onClick={() => { void handleLoadSavedPlaylist(loadById.trim()); setLoadById(""); }}
               style={{ flexShrink: 0, background: "var(--orange)", color: "white", border: "none", borderRadius: 14, padding: "10px 18px", fontSize: 13, fontWeight: 900, cursor: "pointer", fontFamily: "var(--font-zh)", opacity: (!loadById.trim() || loadStatus === "loading") ? 0.45 : 1, alignSelf: "stretch", display: "flex", alignItems: "center" }}>
               載入
@@ -787,11 +787,11 @@ export default function HostPage() {
                     <p style={{ fontSize: 10, color: "var(--text3)", fontFamily: "var(--font-mono)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{p.id}</p>
                   </div>
                   <div style={{ display: "flex", gap: 8, flexShrink: 0 }}>
-                    <button type="button" disabled={loadStatus === "loading"} onClick={() => void handleLoadSavedPlaylist(p.id)}
+                    <button type="button" data-testid="load-saved-playlist-btn" disabled={loadStatus === "loading"} onClick={() => void handleLoadSavedPlaylist(p.id)}
                       style={{ background: "rgba(255,107,53,.12)", border: "none", borderRadius: 10, padding: "7px 14px", fontSize: 12, fontWeight: 900, color: "var(--orange)", cursor: "pointer", opacity: loadStatus === "loading" ? 0.45 : 1 }}>
                       載入
                     </button>
-                    <button type="button" onClick={() => void handleDeleteSavedPlaylist(p.id)}
+                    <button type="button" data-testid="delete-saved-playlist-btn" onClick={() => void handleDeleteSavedPlaylist(p.id)}
                       style={{ background: "var(--surface2)", border: "none", borderRadius: 10, padding: "7px 12px", fontSize: 12, color: "var(--text3)", cursor: "pointer" }}>
                       ✕
                     </button>

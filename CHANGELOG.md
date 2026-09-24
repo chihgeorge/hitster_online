@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.13.3.0] — 2026-09-23
+
+### Added
+- **Closed all 4 remaining P2 TODOs** from `georgechih-feat-custom-playlist-eng-review-test-plan-20260828-221211.md`:
+  - E2E selector hardening: added `data-testid` to the join form, save-playlist panel, song editor toggle, and saved-playlist load/delete/by-id controls (host page + homepage); all 4 e2e spec files now use testids instead of CJK button text/placeholder matches wherever one exists
+  - E2E round-trip save → reload → load saved playlist → start game: strengthened to actually join a player and click Start Game, asserting the round reaches `reveal-btn` — proves a real playable deck, not just an enabled button
+  - Year-override → placement-evaluation propagation: added `party/index.test.ts`'s "START_GAME song year override reaches placement evaluation" — a deterministic integration test (not a flaky browser E2E, since every e2e test seed ignores `songOverrides` and a real playlist's deck is shuffled) proving a host-edited year lands in the dealt deck and flips the placement's correct/incorrect scoring outcome
+  - Two-player saved-playlist game: already fully implemented and passing (`e2e/two-player-game.spec.ts`) — was a stale checkbox, no new coverage needed
+
 ## [0.13.2.0] — 2026-09-23
 
 ### Added
