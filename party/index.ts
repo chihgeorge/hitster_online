@@ -957,7 +957,19 @@ export default class HitsterRoom implements Party.Server {
     const publicRounds: PublicLyricsRound[] = ls.phase === "preview"
       ? ls.rounds.map((r) => ({ videoId: r.videoId, title: r.title, artist: r.artist, language: r.language, lyricContext: r.lyricContext, blankSentence: r.blankSentence }))
       : [];
-    return { ...ls, currentRound: publicRound, rounds: publicRounds };
+    // Answer-leak fix (TODOS.md P2, docs/designs/guess-mode-song-artist.md eng review):
+    // during guessing, strip every submitted answer's raw text before it's broadcast — a
+    // player who answers later than others must not be able to read earlier answers off the
+    // wire before submitting their own. Keys (who has answered) and the correct/points
+    // placeholders (always false/0 pre-scoring) stay, since the host's "N / M answered"
+    // count (Object.keys(answers).length) and the client's own hasAnswered check depend on
+    // them. Full text is safe to reveal at every other phase — results is exactly when the
+    // client first actually reads answer text (host/play/screen pages all gate their .answers
+    // reads on phase !== "guessing").
+    const publicAnswers = ls.phase === "guessing"
+      ? Object.fromEntries(Object.entries(ls.answers).map(([pid, a]) => [pid, { ...a, text: "" }]))
+      : ls.answers;
+    return { ...ls, currentRound: publicRound, rounds: publicRounds, answers: publicAnswers };
   }
 
   private broadcastLyricsState() {
@@ -1292,7 +1304,7 @@ export default class HitsterRoom implements Party.Server {
 
     // Evaluate all submitted answers
     for (const [pid, ans] of Object.entries(ls.answers)) {
-      const correct = isCorrect(ans.text, round, this.lyricsConfig);
+      const correct = isCorrect(ans.text, round.blankSentence, round.acceptableVariants, this.lyricsConfig.fuzzyEnabled);
       const points = correct ? computePoints(ls.roundStart!, ans.ts, ls.timerSeconds) : 0;
       ls.answers[pid] = { ...ans, correct, points };
       if (correct && ls.players[pid]) {

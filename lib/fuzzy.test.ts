@@ -1,21 +1,12 @@
 import { describe, it, expect } from "vitest";
 import { isCorrect, computePoints, normCJK, normLatin, isCJKText } from "./fuzzy";
-import type { LyricsRound, LyricsGameConfig } from "./game";
 
-function makeRound(overrides: Partial<LyricsRound> = {}): LyricsRound {
-  return {
-    videoId: "vid1",
-    title: "Test Song",
-    artist: "Test Artist",
-    language: "en",
-    lyricContext: "Before ___",
-    blankSentence: "Hello world",
-    acceptableVariants: [],
-    ...overrides,
-  };
+// isCorrect now takes (answer, target, variants, fuzzyEnabled) directly — no longer coupled
+// to LyricsRound/LyricsGameConfig (docs/designs/guess-mode-song-artist.md, D-eng-2). This
+// helper keeps the test bodies below reading the same as before the signature widened.
+function checkCorrect(answer: string, target: string, variants: string[] = [], fuzzyEnabled = false): boolean {
+  return isCorrect(answer, target, variants, fuzzyEnabled);
 }
-
-const cfg = (fuzzyEnabled = false): LyricsGameConfig => ({ timerSeconds: 60, totalRounds: 10, fuzzyEnabled });
 
 describe("normLatin", () => {
   it("lowercases and strips punctuation", () => {
@@ -46,48 +37,40 @@ describe("isCJKText", () => {
 
 describe("isCorrect — exact match", () => {
   it("returns true for exact match", () => {
-    const r = makeRound({ blankSentence: "Hello world" });
-    expect(isCorrect("Hello world", r, cfg())).toBe(true);
+    expect(checkCorrect("Hello world", "Hello world")).toBe(true);
   });
 
   it("returns true for case-insensitive latin match", () => {
-    const r = makeRound({ blankSentence: "Hello world" });
-    expect(isCorrect("HELLO WORLD", r, cfg())).toBe(true);
+    expect(checkCorrect("HELLO WORLD", "Hello world")).toBe(true);
   });
 
   it("returns true for variant match", () => {
-    const r = makeRound({ blankSentence: "Hello world", acceptableVariants: ["hello"] });
-    expect(isCorrect("hello", r, cfg())).toBe(true);
+    expect(checkCorrect("hello", "Hello world", ["hello"])).toBe(true);
   });
 });
 
 describe("isCorrect — fuzzy disabled", () => {
   it("rejects close-but-not-exact answer when fuzzy is off", () => {
-    const r = makeRound({ blankSentence: "Hello world" });
-    expect(isCorrect("Helo world", r, cfg(false))).toBe(false);
+    expect(checkCorrect("Helo world", "Hello world", [], false)).toBe(false);
   });
 });
 
 describe("isCorrect — fuzzy enabled (D5 fix: checks variants too)", () => {
   it("accepts answer within threshold of target", () => {
-    const r = makeRound({ blankSentence: "Hello world" });
-    expect(isCorrect("Helo world", r, cfg(true))).toBe(true);
+    expect(checkCorrect("Helo world", "Hello world", [], true)).toBe(true);
   });
 
   it("accepts answer within threshold of a variant (D5 fix)", () => {
-    const r = makeRound({ blankSentence: "Hello world", acceptableVariants: ["hi world"] });
-    expect(isCorrect("hi wrld", r, cfg(true))).toBe(true);
+    expect(checkCorrect("hi wrld", "Hello world", ["hi world"], true)).toBe(true);
   });
 
   it("rejects answer too far from both target and variants", () => {
-    const r = makeRound({ blankSentence: "Hello world" });
-    expect(isCorrect("completely wrong", r, cfg(true))).toBe(false);
+    expect(checkCorrect("completely wrong", "Hello world", [], true)).toBe(false);
   });
 
   it("uses threshold=1 for CJK", () => {
-    const r = makeRound({ blankSentence: "你好世界", language: "zh-TW" });
     // Distance 1 from "你好世界" (replace last char) — should be accepted
-    expect(isCorrect("你好世界!", r, cfg(true))).toBe(true);
+    expect(checkCorrect("你好世界!", "你好世界", [], true)).toBe(true);
   });
 });
 
@@ -111,5 +94,18 @@ describe("computePoints", () => {
 
   it("never returns negative", () => {
     expect(computePoints(0, 999999, 60)).toBe(0);
+  });
+
+  // maxPoints (D-eng-2): defaults to 500 so every pre-existing caller is unaffected;
+  // Guess mode's compound scorer passes a smaller cap per point category.
+  it("defaults maxPoints to 500", () => {
+    const now = Date.now();
+    expect(computePoints(now, now + 100, 60)).toBe(computePoints(now, now + 100, 60, 500));
+  });
+
+  it("scales to a custom maxPoints", () => {
+    const now = 1000000;
+    const pts = computePoints(now, now + 30_000, 60, 250);
+    expect(pts).toBe(Math.round(30 * Math.floor(250 / 60)));
   });
 });
