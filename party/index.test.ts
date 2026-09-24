@@ -2990,3 +2990,23 @@ describe("Guess Mode: deck sources (coverage audit)", () => {
     expect(r.artist).not.toBe(""); // non-string artist override falls back to the playlist's artist
   });
 });
+
+describe("playlist bookkeeping: stale aborted load (/ship adversarial #2)", () => {
+  beforeEach(() => vi.clearAllMocks());
+  it("an aborted load superseded by a saved playlist doesn't announce its songs", async () => {
+    let release!: (v: unknown) => void;
+    vi.mocked(fetchPlaylistItems).mockReturnValueOnce(new Promise((r) => { release = r; }) as any);
+    const room = new HitsterRoom(makeRoom() as any);
+    const hostConn = makeConn("host-conn");
+    const stale = send(room, hostConn, { type: "LOAD_PLAYLIST", hostId: "host-uuid", playlistUrl: "PLtest" });
+    await send(room, hostConn, { type: "ABORT_LOAD", hostId: "host-uuid" });
+    await send(room, hostConn, { type: "LOAD_SAVED_PLAYLIST", hostId: "host-uuid", playlistId: "saved-1", songs: [
+      { videoId: "s1", title: "Saved A", artist: "X", year: 1985 }, { videoId: "s2", title: "Saved B", artist: "Y", year: 1990 },
+    ] });
+    release([fakeTrack("v1", 2001), fakeTrack("v2", 2002)]);
+    await stale;
+    const ready = (hostConn.send as ReturnType<typeof vi.fn>).mock.calls.map((c: unknown[]) => JSON.parse(c[0] as string)).filter((m) => m.type === "PLAYLIST_READY");
+    expect(ready).toHaveLength(1);
+    expect(ready[0].songs.map((x: { videoId: string }) => x.videoId)).toEqual(["s1", "s2"]);
+  });
+});

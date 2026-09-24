@@ -15,7 +15,9 @@ export function sanitizeText(s: string, maxLength = 100): string {
   return s
     .replace(/[&<>"']/g, (c) => HTML_ESCAPE[c] ?? c)
     .trim()
-    .slice(0, maxLength);
+    .slice(0, maxLength)
+    // Escaping happens before the cut, so the cut can land inside an entity ("&am"): drop it.
+    .replace(/&[#a-z0-9]*$/i, "");
 }
 
 const HTML_UNESCAPE = Object.fromEntries(Object.entries(HTML_ESCAPE).map(([c, e]) => [e, c]));

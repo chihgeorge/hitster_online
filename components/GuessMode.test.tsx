@@ -173,3 +173,30 @@ describe("Guess ended screens (/ship review D3)", () => {
     expect(screen.getByTestId("guess-next-btn").textContent).toContain("查看排名");
   });
 });
+
+describe("/ship adversarial fixes", () => {
+  it("a lost tap can't leave the host button disabled: any new snapshot re-arms it", () => {
+    vi.useFakeTimers();
+    const onNext = vi.fn();
+    const results = () => state({ phase: "results", currentRound: { hasArtist: true, title: "晴天", artist: "周杰倫" } });
+    const props = { panel: {}, onStartRound: vi.fn(), onShowResults: vi.fn(), onNext, onReset: vi.fn() };
+    const { rerender } = render(<GuessHostControls state={results()} {...props} />);
+    vi.advanceTimersByTime(500);
+    fireEvent.click(screen.getByTestId("guess-next-btn")); // message lost with a dropping socket
+    expect((screen.getByTestId("guess-next-btn") as HTMLButtonElement).disabled).toBe(true);
+    rerender(<GuessHostControls state={results()} {...props} />); // reconnect resends the same phase
+    expect((screen.getByTestId("guess-next-btn") as HTMLButtonElement).disabled).toBe(false);
+    fireEvent.click(screen.getByTestId("guess-next-btn"));
+    expect(onNext).toHaveBeenCalledTimes(2);
+    vi.useRealTimers();
+  });
+
+  it("a correct answer that scored 0 (grace window) isn't shown as a miss", () => {
+    const s = state({
+      phase: "results", currentRound: { hasArtist: true, title: "晴天", artist: "周杰倫" },
+      answers: { [ME]: answer({ title: "晴天", titleCorrect: true, points: 0 }) },
+    });
+    render(<GuessPlay state={s} playerId={ME} playerName="Alice" tooLate={false} onSubmit={vi.fn()} />);
+    expect(screen.getByTestId("guess-my-result").textContent).not.toContain("沒猜中");
+  });
+});

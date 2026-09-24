@@ -11,3 +11,11 @@ describe("decodeEntities", () => {
     expect(decodeEntities("&nbsp;&copy;")).toBe("&nbsp;&copy;");
   });
 });
+
+describe("sanitizeText truncation (/ship adversarial #8)", () => {
+  it("never leaves half an entity at the cut", () => {
+    const out = sanitizeText("a".repeat(197) + "&b", 200); // escaped "&amp;" straddles the 200 cut
+    expect(out).toBe("a".repeat(197));
+    expect(decodeEntities(sanitizeText("Tom & Jerry", 200))).toBe("Tom & Jerry");
+  });
+});

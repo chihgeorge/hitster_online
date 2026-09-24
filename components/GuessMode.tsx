@@ -211,7 +211,8 @@ export function GuessPlay({ state, playerId, playerName, tooLate, onSubmit }: Pl
 }
 
 function MyResult({ answer, hasArtist }: { answer: GuessAnswer; hasArtist: boolean }) {
-  const any = answer.points > 0;
+  // Correctness, not points: a right answer in the 500ms grace window scores 0 but isn't a miss.
+  const any = answer.titleCorrect || answer.artistCorrect;
   const row = (label: string, text: string, ok: boolean, pts: number) => (
     <div style={{ display: "flex", alignItems: "center", gap: 10, justifyContent: "space-between" }}>
       <span style={{ fontSize: 12, color: "var(--text3)", minWidth: 40, textAlign: "left" }}>{label}</span>
@@ -302,7 +303,7 @@ export function GuessScreen({ state }: { state: PublicGuessGameState }) {
           {ranked(state).map(([id, p]) => {
             const a = state.answers[id];
             return (
-              <div key={id} style={{ display: "flex", alignItems: "center", gap: 14, background: a && a.points > 0 ? "rgba(0,200,150,.08)" : "rgba(255,107,53,.04)", borderRadius: 12, padding: "10px 16px" }}>
+              <div key={id} style={{ display: "flex", alignItems: "center", gap: 14, background: a && (a.titleCorrect || a.artistCorrect) ? "rgba(0,200,150,.08)" : "rgba(255,107,53,.04)", borderRadius: 12, padding: "10px 16px" }}>
                 <span style={{ fontWeight: 700, color: "var(--ink)", flex: 1 }}>{p.name}</span>
                 {a ? (
                   <>
@@ -366,16 +367,19 @@ interface HostProps {
 
 export function GuessHostControls({ state, panel, onStartRound, onShowResults, onNext, onReset }: HostProps) {
   // Play / Show Results / Next all render as the same button in the same spot, so a double-tap
-  // could skip the reveal. Ignore taps while one is in flight for this phase, and for a moment
-  // after the phase changes (the second tap of a double-tap lands on the NEW button).
+  // could skip the reveal. Ignore taps for a moment after the phase changes (the second tap of a
+  // double-tap lands on the NEW button), and while a tap is in flight. "In flight" ends with ANY
+  // new server snapshot (incl. the one resent on reconnect) or after 3s — a tap lost with a
+  // dropping phone socket must never leave the only progression button disabled.
   const stateKey = `${state.phase}:${state.currentRoundIndex}`;
-  const [tappedKey, setTappedKey] = useState<string | null>(null);
+  const [tapped, setTapped] = useState<PublicGuessGameState | null>(null);
   const shownAt = useRef(0);
   useEffect(() => { shownAt.current = Date.now(); }, [stateKey]);
-  const busy = tappedKey === stateKey;
+  const busy = tapped === state;
   const once = (fn: () => void) => () => {
     if (busy || Date.now() - shownAt.current < 400) return;
-    setTappedKey(stateKey);
+    setTapped(state);
+    window.setTimeout(() => setTapped((t) => (t === state ? null : t)), 3000);
     fn();
   };
   const label: React.CSSProperties = { fontSize: 11, color: "var(--text3)", textTransform: "uppercase", letterSpacing: ".1em" };

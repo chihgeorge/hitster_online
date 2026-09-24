@@ -148,6 +148,15 @@
 - [ ] **P3** Share timed-round UI helpers between Lyrics and Guess  
   `useCountdown`, `Standings`, `guessAudioProps`, and the TV score row in `components/GuessMode.tsx` duplicate inline Lyrics code in the play/screen pages (~50 lines). Widen them to structural types and use them for Lyrics too (touches live Lyrics UI — do it with tests). _Advisory from /ship review, 2026-09-24._
 
+- [ ] **P3** Ties crown a single winner in Lyrics/Guess  
+  Players tied on top get "WINNER!" vs "#2" by object-key order; TV/host show one name. Decide tie semantics (co-winners?). _From /ship adversarial #5, 2026-09-24._
+
+- [ ] **P3** Timeline START_GAME isn't blocked by an *ended* Guess/Lyrics game  
+  `timedRoundInPlay()` treats "ended" as safe, so a stale host tab could start Timeline while `guessState` (ended) still exists — phones then stay on the Guess standings (play page renders GuessPlay whenever guessState is set). Clear ended timed states (+ ABORTED broadcast) in handleStartGame. _From /ship adversarial #6, 2026-09-24._
+
+- [ ] **P3** Unauthorized TV retries GET_*_AUDIO on every state broadcast  
+  If another connection claimed the screen id, each GUESS_STATE/LYRICS_STATE makes the TV resend GET_GUESS_AUDIO and get ERROR unauthorized, with no backoff and no visible reason. Stop retrying after unauthorized and show a message. _From /ship adversarial #7, 2026-09-24._
+
 - [ ] **P3** Guess grading tuning after playtest  
   Fuzzy distance 2 on 5-char Latin targets is lenient ("hello"~"help"). Answers accepted in the 500ms grace window always score 0 (inherited from Lyrics). Tune with real games. _From /review adversarial pass, 2026-09-24._
 

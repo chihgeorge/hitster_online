@@ -492,6 +492,7 @@ export default class HitsterRoom implements Party.Server {
   /** New playlist generation: any in-flight load's `mySeq !== loadSeq` checks drop its writes. */
   private startPlaylistLoad(): number {
     this.lastLyricsPreview = null;
+    this.abortLoad = false; // an ABORT_LOAD belongs to the load it was sent for, not the next one
     return ++this.loadSeq;
   }
 
@@ -575,7 +576,7 @@ export default class HitsterRoom implements Party.Server {
           // "Use what's loaded": the deck must be exactly what the host was just shown.
           this.pendingPlaylist = { playlistId, songs: result.songs, allSongs: result.allSongs, diagnostics: result.diagnostics };
         }
-        if (this.abortLoad) {
+        if (this.abortLoad && mySeq === this.loadSeq) {
           this.sendTo(conn, result.allSongs.length >= 2
             ? { type: "PLAYLIST_READY", songCount: result.allSongs.length, songs: result.allSongs }
             : { type: "PLAYLIST_LOAD_ERROR", error: "not_enough_songs" });

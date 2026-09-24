@@ -232,3 +232,19 @@ describe("PlayPage: Guess Mode TOO_LATE resets on the next round", () => {
     expect(sent).toContainEqual({ type: "SUBMIT_GUESS", playerId: PLAYER, title: "晴天", artist: "周杰倫" });
   });
 });
+
+describe("PlayPage: Guess TOO_LATE is per round (/ship adversarial #3)", () => {
+  const guess = (over: object = {}) => ({
+    mode: "guess", phase: "guessing", players: { [PLAYER]: { name: "QA", score: 0, connected: true } },
+    currentRound: { hasArtist: true, title: null, artist: null }, roundStart: Date.now(), timerSeconds: 60,
+    answers: {}, totalRounds: 3, currentRoundIndex: 0, consecutiveSkips: 0, ...over,
+  });
+  it("reconnecting straight into the next round's guessing still shows the inputs", () => {
+    render(<PlayPage />);
+    serverSends({ type: "GUESS_STATE", state: guess() });
+    serverSends({ type: "TOO_LATE" });
+    // No "playing" snapshot seen (phone was offline) — lands directly in round 1 guessing.
+    serverSends({ type: "GUESS_STATE", state: guess({ currentRoundIndex: 1 }) });
+    expect(screen.getByTestId("guess-title-input")).toBeTruthy();
+  });
+});
