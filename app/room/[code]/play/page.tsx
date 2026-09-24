@@ -124,6 +124,9 @@ export default function PlayPage() {
           setGuessState(msg.state);
           break;
         case "GUESS_ABORTED":
+          // The game is gone: a TOO_LATE from it must not carry into the next game's same round.
+          guessRoundRef.current = null;
+          setGuessTooLateRound(null);
           setGuessState(null);
           break;
         case "PLACEMENT_ACK":

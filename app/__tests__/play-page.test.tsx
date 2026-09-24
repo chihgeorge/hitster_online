@@ -248,3 +248,20 @@ describe("PlayPage: Guess TOO_LATE is per round (/ship adversarial #3)", () => {
     expect(screen.getByTestId("guess-title-input")).toBeTruthy();
   });
 });
+
+describe("PlayPage: Guess TOO_LATE doesn't leak into the next game (/land-and-deploy review)", () => {
+  const guess = (over: object = {}) => ({
+    mode: "guess", phase: "guessing", players: { [PLAYER]: { name: "QA", score: 0, connected: true } },
+    currentRound: { hasArtist: true, title: null, artist: null }, roundStart: Date.now(), timerSeconds: 60,
+    answers: {}, totalRounds: 3, currentRoundIndex: 0, consecutiveSkips: 0, ...over,
+  });
+  it("after the host quits and restarts, round 0 of the new game shows the inputs", () => {
+    render(<PlayPage />);
+    serverSends({ type: "GUESS_STATE", state: guess() });
+    serverSends({ type: "TOO_LATE" });
+    expect(screen.getByText(/時間到/)).toBeTruthy();
+    serverSends({ type: "GUESS_ABORTED" }); // host quit
+    serverSends({ type: "GUESS_STATE", state: guess() }); // new game, same round index 0
+    expect(screen.getByTestId("guess-title-input")).toBeTruthy();
+  });
+});
