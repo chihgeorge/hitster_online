@@ -60,3 +60,29 @@ describe("timed-round engine", () => {
     expect(tr.publicAnswers(s, strip).p1.text).toBe("secret");
   });
 });
+
+describe("clampConfig (replaced Lyrics' inline clamping)", () => {
+  it("falls back to defaults for missing, non-numeric or non-object config", () => {
+    const d = { timerSeconds: tr.DEFAULT_TIMER_SECONDS, totalRounds: tr.DEFAULT_TOTAL_ROUNDS, fuzzyEnabled: false };
+    expect(tr.clampConfig(undefined)).toEqual(d);
+    expect(tr.clampConfig("x")).toEqual(d);
+    expect(tr.clampConfig({ timerSeconds: "90", totalRounds: NaN, fuzzyEnabled: "yes" })).toEqual(d);
+  });
+  it("clamps to the allowed ranges", () => {
+    expect(tr.clampConfig({ timerSeconds: 1, totalRounds: 0 })).toMatchObject({ timerSeconds: 10, totalRounds: 1 });
+    expect(tr.clampConfig({ timerSeconds: 9999, totalRounds: 99, fuzzyEnabled: true })).toEqual({ timerSeconds: 300, totalRounds: 30, fuzzyEnabled: true });
+  });
+});
+
+describe("timed-round wrong-phase refusals", () => {
+  it("every transition refuses outside its phase and leaves state untouched", () => {
+    const s = fresh();
+    expect(tr.acceptAnswer(s, "p1", 0, 500, build("x"))).toBe("ignored"); // preview
+    expect(tr.showResults(s, (_, a) => ({ answer: a, points: 1 }))).toBe(false);
+    expect(tr.nextRound(s)).toBe(false);
+    tr.confirmPreview(s);
+    expect(tr.confirmPreview(s)).toBe(false);
+    expect(s).toMatchObject({ phase: "playing", currentRound: "r1", answers: {} });
+    expect(s.players.p1.score).toBe(0);
+  });
+});

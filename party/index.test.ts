@@ -2964,3 +2964,29 @@ describe("Lyrics Mode: apostrophe answers grade correctly (sanitizeText escaping
     expect(room.lyricsState!.players[P1].score).toBeGreaterThan(0);
   });
 });
+
+describe("Guess Mode: deck sources (coverage audit)", () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it("ABORT_LOAD ('use what's loaded') makes the finished load's songs the Guess deck", async () => {
+    let release!: (v: unknown) => void;
+    vi.mocked(fetchPlaylistItems).mockReturnValueOnce(new Promise((r) => { release = r; }) as any);
+    vi.mocked(fetchEmbeddableVideoIds).mockResolvedValueOnce(new Set(["v1", "v2"])); // earlier tests leave a narrower default
+    const room = new HitsterRoom(makeRoom() as any);
+    const hostConn = makeConn("host-conn");
+    const load = send(room, hostConn, { type: "LOAD_PLAYLIST", hostId: "host-uuid", playlistUrl: "PLtest" });
+    await send(room, hostConn, { type: "ABORT_LOAD", hostId: "host-uuid" });
+    release([fakeTrack("v1", 2001), fakeTrack("v2", 2002)]);
+    await load;
+    await send(room, hostConn, { type: "START_GUESS_GAME", hostId: "host-uuid", config: {} });
+    expect(room.guessState?.rounds.map((r) => r.videoId).sort()).toEqual(["v1", "v2"]);
+  });
+
+  it("ignores malformed host overrides and escapes a pre-escaped title exactly once", async () => {
+    const songs = [null, 7, { title: "no id" }, { videoId: "KqjgLbKZ1h0", title: "Don&amp;#39;t Stop", artist: 5 }];
+    const { room } = await setupGuessGame({ timerSeconds: 60, totalRounds: 30, fuzzyEnabled: false }, songs as object[]);
+    const r = room.guessState!.rounds.find((x) => x.videoId === "KqjgLbKZ1h0")!;
+    expect(r.title).toBe("Don&#39;t Stop");
+    expect(r.artist).not.toBe(""); // non-string artist override falls back to the playlist's artist
+  });
+});
