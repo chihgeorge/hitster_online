@@ -4,28 +4,34 @@
 // it never looks inside a round or an answer — each mode supplies those through its type params
 // and callbacks. Auth, error messages and broadcasting stay in the room (party/index.ts).
 
-export type TimedRoundPhase = "lobby" | "loading" | "preview" | "playing" | "guessing" | "results" | "ended";
-
-export interface TimedRoundState<R, A extends { ts: number }> {
-  phase: TimedRoundPhase;
-  players: Record<string, { name: string; score: number; connected: boolean }>;
-  rounds: R[];
-  currentRound: R | null;
-  roundStart: number | null;
-  timerSeconds: number;
-  answers: Record<string, A>;
-  totalRounds: number;
-  currentRoundIndex: number;
-  consecutiveSkips: number;
-}
+import type { TimedRoundState } from "../lib/game";
 
 type State<R, A extends { ts: number }> = TimedRoundState<R, A>;
 
-/** preview → playing on the deck's first round. False if not in preview. */
-export function confirmPreview<R, A extends { ts: number }>(s: State<R, A>, deck: R[]): boolean {
+export const DEFAULT_TIMER_SECONDS = 60;
+export const DEFAULT_TOTAL_ROUNDS = 10;
+/** Slack past the timer for network latency before an answer is TOO_LATE. */
+export const ANSWER_GRACE_MS = 500;
+const TIMER_RANGE = [10, 300] as const;
+const ROUNDS_RANGE = [1, 30] as const;
+
+/** Host-supplied config, clamped; anything missing or non-numeric falls back to the default. */
+export function clampConfig(config: unknown): { timerSeconds: number; totalRounds: number; fuzzyEnabled: boolean } {
+  const c = (config && typeof config === "object" ? config : {}) as Record<string, unknown>;
+  const num = (v: unknown, fallback: number, [lo, hi]: readonly [number, number]) =>
+    Math.max(lo, Math.min(typeof v === "number" && Number.isFinite(v) ? v : fallback, hi));
+  return {
+    timerSeconds: num(c.timerSeconds, DEFAULT_TIMER_SECONDS, TIMER_RANGE),
+    totalRounds: num(c.totalRounds, DEFAULT_TOTAL_ROUNDS, ROUNDS_RANGE),
+    fuzzyEnabled: c.fuzzyEnabled === true,
+  };
+}
+
+/** preview → playing on the deck's (s.rounds) first round. False if not in preview. */
+export function confirmPreview<R, A extends { ts: number }>(s: State<R, A>): boolean {
   if (s.phase !== "preview") return false;
   s.phase = "playing";
-  s.currentRound = deck[0] ?? null;
+  s.currentRound = s.rounds[0] ?? null;
   s.answers = {};
   return true;
 }
@@ -78,15 +84,15 @@ export function showResults<R, A extends { ts: number }>(
 }
 
 /** results → next round's playing, or ended after the last round. False if not in results. */
-export function nextRound<R, A extends { ts: number }>(s: State<R, A>, deck: R[]): boolean {
+export function nextRound<R, A extends { ts: number }>(s: State<R, A>): boolean {
   if (s.phase !== "results") return false;
   s.currentRoundIndex += 1;
-  if (s.currentRoundIndex >= deck.length) {
+  if (s.currentRoundIndex >= s.rounds.length) {
     s.phase = "ended";
     s.currentRound = null;
   } else {
     s.phase = "playing";
-    s.currentRound = deck[s.currentRoundIndex];
+    s.currentRound = s.rounds[s.currentRoundIndex];
     s.roundStart = null;
     s.answers = {};
   }

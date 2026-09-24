@@ -2698,11 +2698,12 @@ describe("Guess Mode: lifecycle", () => {
     expect(noArtist?.artist).toBe("");
     // Walk rounds until the title-only one is current, then check the public flag.
     const hostConn = makeConn("host-conn");
-    while (room.guessState!.currentRound!.videoId !== "KqjgLbKZ1h0") {
+    for (let i = 0; i < room.guessState!.rounds.length && room.guessState!.currentRound?.videoId !== "KqjgLbKZ1h0"; i++) {
       await send(room, hostConn, { type: "START_GUESS_ROUND", hostId: "host-uuid" });
       await send(room, hostConn, { type: "SHOW_GUESS_RESULTS", hostId: "host-uuid" });
       await send(room, hostConn, { type: "NEXT_GUESS_ROUND", hostId: "host-uuid" });
     }
+    expect(room.guessState!.currentRound?.videoId).toBe("KqjgLbKZ1h0");
     await send(room, hostConn, { type: "START_GUESS_ROUND", hostId: "host-uuid" });
     expect(lastBroadcast(room).state.currentRound.hasArtist).toBe(false);
   });
@@ -2776,5 +2777,75 @@ describe("Guess Mode: guards", () => {
     expect(types).toContain("GUESS_STATE");
     expect(types).not.toContain("GUESS_ABORTED");
     expect(types.indexOf("STATE")).toBeLessThan(types.indexOf("GUESS_STATE"));
+  });
+});
+
+describe("Guess Mode: review hardening", () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it.each(["START_GUESS_ROUND", "SHOW_GUESS_RESULTS", "NEXT_GUESS_ROUND", "RESET_GUESS_GAME"])(
+    "%s from a non-host is unauthorized and changes nothing", async (type) => {
+      const { room } = await setupGuessGame();
+      const before = { phase: room.guessState!.phase, idx: room.guessState!.currentRoundIndex };
+      const stranger = makeConn("stranger");
+      await send(room, stranger, { type, hostId: "bad-id" });
+      expect(lastSentTo(stranger)).toMatchObject({ type: "ERROR", error: "unauthorized" });
+      expect(room.guessState).toMatchObject({ phase: before.phase, currentRoundIndex: before.idx });
+    });
+
+  it("START_GUESS_GAME from a non-host is unauthorized", async () => {
+    const room = new HitsterRoom(makeRoom() as any);
+    const hostConn = makeConn("host-conn");
+    await send(room, hostConn, { type: "LOAD_PLAYLIST", hostId: "host-uuid", playlistUrl: "hitster://cpop-test" });
+    const stranger = makeConn("stranger");
+    await send(room, stranger, { type: "START_GUESS_GAME", hostId: "bad-id", config: {} });
+    expect(lastSentTo(stranger)).toMatchObject({ type: "ERROR", error: "unauthorized" });
+    expect(room.guessState).toBeNull();
+  });
+
+  it("RESET_GUESS_GAME mid-game is wrong_phase and keeps the game", async () => {
+    const { room, hostConn } = await setupGuessGame();
+    await send(room, hostConn, { type: "START_GUESS_ROUND", hostId: "host-uuid" });
+    await send(room, hostConn, { type: "RESET_GUESS_GAME", hostId: "host-uuid" });
+    expect(lastSentTo(hostConn)).toMatchObject({ type: "ERROR", error: "wrong_phase" });
+    expect(room.guessState?.phase).toBe("guessing");
+    expect(allSentMessages(room).some((m) => m.type === "GUESS_ABORTED")).toBe(false);
+  });
+
+  it("START_GUESS_GAME during a Timeline game is wrong_phase", async () => {
+    const room = new HitsterRoom(makeRoom() as any);
+    const hostConn = makeConn("host-conn");
+    await send(room, makeConn("p1"), { type: "JOIN", playerId: P1, name: "Alice" });
+    await send(room, hostConn, { type: "START_GAME", hostId: "host-uuid", playlistUrl: "hitster://test" });
+    expect(room.state.phase).toBe("guessing");
+    await send(room, hostConn, { type: "START_GUESS_GAME", hostId: "host-uuid", config: {} });
+    expect(lastSentTo(hostConn)).toMatchObject({ type: "ERROR", error: "wrong_phase" });
+    expect(room.guessState).toBeNull();
+  });
+
+  it("lobby actions mid-round are refused, so the song list never reaches players", async () => {
+    const { room, hostConn } = await setupGuessGame();
+    await send(room, hostConn, { type: "START_GUESS_ROUND", hostId: "host-uuid" });
+    (room.room.broadcast as ReturnType<typeof vi.fn>).mockClear();
+    await send(room, hostConn, { type: "START_GAME", hostId: "host-uuid", playlistUrl: "hitster://cpop-test" });
+    expect(lastSentTo(hostConn)).toMatchObject({ type: "ERROR", error: "wrong_phase" });
+    await send(room, hostConn, { type: "LOAD_PLAYLIST", hostId: "host-uuid", playlistUrl: "hitster://cpop-test", gameMode: "lyrics" });
+    expect(lastSentTo(hostConn)).toMatchObject({ type: "PLAYLIST_LOAD_ERROR", error: "wrong_phase" });
+    await send(room, hostConn, { type: "LOAD_SAVED_PLAYLIST", hostId: "host-uuid", playlistId: "x", songs: [] });
+    expect(lastSentTo(hostConn)).toMatchObject({ type: "PLAYLIST_LOAD_ERROR", error: "wrong_phase" });
+    const sent = (room.room.broadcast as ReturnType<typeof vi.fn>).mock.calls.map((c: unknown[]) => JSON.parse(c[0] as string).type);
+    expect(sent).not.toContain("DIAGNOSTIC");
+    expect(sent).not.toContain("LYRICS_PREVIEW");
+    expect(room.state.phase).toBe("lobby");
+  });
+
+  it("lobby actions are allowed again once the Guess game has ended", async () => {
+    const { room, hostConn } = await setupGuessGame({ timerSeconds: 60, totalRounds: 1, fuzzyEnabled: false });
+    await send(room, hostConn, { type: "START_GUESS_ROUND", hostId: "host-uuid" });
+    await send(room, hostConn, { type: "SHOW_GUESS_RESULTS", hostId: "host-uuid" });
+    await send(room, hostConn, { type: "NEXT_GUESS_ROUND", hostId: "host-uuid" });
+    expect(room.guessState?.phase).toBe("ended");
+    await send(room, hostConn, { type: "LOAD_PLAYLIST", hostId: "host-uuid", playlistUrl: "hitster://cpop-test" });
+    expect(lastSentTo(hostConn)?.type).toBe("PLAYLIST_READY");
   });
 });

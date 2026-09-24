@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { scoreGuess, GUESS_POINTS } from "./guess-scoring";
+import { scoreGuess, guessMatches, GUESS_POINTS } from "./guess-scoring";
 
 const target = { title: "晴天", artist: "周杰倫" };
 // Answered instantly (ts == roundStart) → every part scores its full max (timer 10s divides evenly).
@@ -48,5 +48,33 @@ describe("scoreGuess", () => {
     const latin = { title: "Bohemian Rhapsody", artist: "Queen" };
     expect(scoreGuess({ title: "Bohemian Rapsody", artist: "Quen", ts: 0 }, latin, 0, 10, false).points).toBe(0);
     expect(scoreGuess({ title: "Bohemian Rapsody", artist: "Quen", ts: 0 }, latin, 0, 10, true).bonusPoints).toBe(GUESS_POINTS.bonus);
+  });
+});
+
+describe("guessMatches (review 2026-09-24 regressions)", () => {
+  it("matches titles with apostrophes/ampersands, even when the target was escaped twice", () => {
+    expect(guessMatches("Don&#39;t Stop", "Don&amp;#39;t Stop", false)).toBe(true); // escaped guess vs saved-playlist target
+    expect(guessMatches("dont stop", "Don&#39;t Stop", false)).toBe(true);
+    expect(guessMatches("Simon &amp; Garfunkel", "Simon & Garfunkel", false)).toBe(true);
+  });
+
+  it("never matches when either side normalizes to nothing, in any script", () => {
+    expect(guessMatches("?", "Кино", false)).toBe(false);
+    expect(guessMatches("Группа крови", "Кино", false)).toBe(false);
+    expect(guessMatches("кино", "Кино", false)).toBe(true);
+    expect(guessMatches("!!!", "???", true)).toBe(false);
+  });
+
+  it("fuzzy doesn't let short guesses hit short targets", () => {
+    expect(guessMatches("a", "U2", true)).toBe(false);
+    expect(guessMatches("Sea", "Sia", true)).toBe(false);
+    expect(guessMatches("晴", "晴天", true)).toBe(false);
+    expect(guessMatches("Bohemian Rapsody", "Bohemian Rhapsody", true)).toBe(true);
+    expect(guessMatches("告白汽球", "告白氣球", true)).toBe(true);
+  });
+
+  it("mixed-script names ignore case and punctuation", () => {
+    expect(guessMatches("五月天 mayday", "五月天 Mayday", false)).toBe(true);
+    expect(guessMatches("告白氣球 live", "告白氣球 (Live)", false)).toBe(true);
   });
 });

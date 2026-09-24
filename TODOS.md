@@ -118,6 +118,12 @@
 
 ## P3 — Nice to have
 
+- [ ] **P3** Players who join mid-game can't answer in Lyrics/Guess mode  
+  `lyricsState.players` / `guessState.players` are snapshots taken at game start; JOIN/REJOIN never add to them and `connected` never updates. A late joiner sees the round, types an answer, and `timedRound.acceptAnswer` drops it silently (`"ignored"`, no error). More likely in Guess mode (no loading phase to wait through). Fix: add late joiners to the active timed-round state with score 0 (and sync `connected` on REJOIN/onClose), or send an explicit spectator signal the client can show. _Found by /review red team on feat/guess-mode-engine, 2026-09-24._
+
+- [ ] **P3** `consecutiveSkips` is a dead field in the timed-round state  
+  Carried in `TimedRoundState` (lib/game.ts) and reset in `timedRound.showResults`, but nothing increments or reads it. Delete it (wire-visible on LYRICS_STATE, no client reads it) unless a skip-round feature is planned. _Found by /review on feat/guess-mode-engine, 2026-09-24._
+
 - [x] **P3** Cross-device playlist library listing  
   Per-playlist DOs keyed by UUID make individual playlists cross-device accessible via URL, but the full library listing comes from localStorage — empty on a new device. Fix: add a host-library DO (keyed by hostId) that stores the playlist index so the full library is visible from any device.  
   _Surfaced by /plan-eng-review on feat/custom-playlist, 2026-08-28_. **Completed:** v0.12.1.0 (2026-09-22), `party/library.ts` + one-time localStorage migration, part of docs/designs/decouple-quiz-bank.md.

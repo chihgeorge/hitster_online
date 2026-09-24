@@ -16,19 +16,26 @@ export interface LyricsRound {
   acceptableVariants: string[];
 }
 
-export interface LyricsGameState {
-  mode: "lyrics";
-  phase: "lobby" | "loading" | "preview" | "playing" | "guessing" | "results" | "ended";
+// Shared shape of every simultaneous-timed-round mode (Lyrics, Guess); lifecycle in party/timed-round.ts.
+export type TimedRoundPhase = "lobby" | "loading" | "preview" | "playing" | "guessing" | "results" | "ended";
+
+export interface TimedRoundState<R, A extends { ts: number }> {
+  phase: TimedRoundPhase;
   players: Record<string, { name: string; score: number; connected: boolean }>;
-  rounds: LyricsRound[];   // full generated deck, available in preview phase
-  currentRound: LyricsRound | null;
+  rounds: R[];
+  currentRound: R | null;
   roundStart: number | null;
   timerSeconds: number;
-  answers: Record<string, { text: string; ts: number; correct: boolean; points: number }>;
+  answers: Record<string, A>;
   totalRounds: number;
   currentRoundIndex: number;
   consecutiveSkips: number;
 }
+
+export interface LyricsAnswer { text: string; ts: number; correct: boolean; points: number }
+
+// rounds: full generated deck, available in preview phase
+export type LyricsGameState = TimedRoundState<LyricsRound, LyricsAnswer> & { mode: "lyrics" };
 
 export interface LyricsGameConfig {
   timerSeconds: number;
@@ -52,19 +59,8 @@ export interface GuessAnswer extends GuessScore {
   ts: number;
 }
 
-export interface GuessGameState {
-  mode: "guess";
-  phase: LyricsGameState["phase"];
-  players: Record<string, { name: string; score: number; connected: boolean }>;
-  rounds: GuessRound[]; // server-only deck; never broadcast
-  currentRound: GuessRound | null;
-  roundStart: number | null;
-  timerSeconds: number;
-  answers: Record<string, GuessAnswer>;
-  totalRounds: number;
-  currentRoundIndex: number;
-  consecutiveSkips: number;
-}
+// rounds: server-only deck; never broadcast
+export type GuessGameState = TimedRoundState<GuessRound, GuessAnswer> & { mode: "guess" };
 
 // Public round: no video id ever (the screen fetches it via GET_GUESS_AUDIO), and title/artist
 // stay null until results. hasArtist is explicit so clients hide the artist input on a title-only
