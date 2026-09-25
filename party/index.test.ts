@@ -1795,6 +1795,53 @@ describe("Lyrics Mode: START_LYRICS_GAME", () => {
     expect(room.lyricsState?.rounds.map((r) => r.blankSentence)).toEqual([CACHED_LYRICS.blankSentence]);
   });
 
+  it("treats a cached giveaway round as uncached, so Sonnet regenerates it", async () => {
+    process.env.ANTHROPIC_API_KEY = "test-key";
+    vi.mocked(fetchPlaylistItems).mockResolvedValue([fakeLyricsTrack()]);
+    vi.mocked(fetchEmbeddableVideoIds).mockResolvedValue(new Set(["vid1"]));
+    vi.mocked(resolveLyricsForTracks).mockResolvedValue(new Map([["vid1", CACHED_LYRICS]]));
+    const giveaway = { ...CACHED_LYRICS, language: "en" as const, lyricContext: "This is ___", blankSentence: "Test Song" };
+    const mockRoom = makeRoom();
+    (mockRoom.storage.get as ReturnType<typeof vi.fn>).mockImplementation((keys: unknown) =>
+      Promise.resolve(new Map(Array.isArray(keys)
+        ? keys.filter((k: string) => k.startsWith("lyrics:") || k.startsWith("lyrics-sonnet:"))
+            .map((k: string) => [k, k.startsWith("lyrics-sonnet:") ? giveaway : CACHED_LYRICS])
+        : []))
+    );
+    const room = new HitsterRoom(mockRoom as any);
+    const hostConn = makeConn("host-conn");
+    await send(room, hostConn, { type: "JOIN", playerId: P1, name: "Alice" });
+    await send(room, hostConn, {
+      type: "START_LYRICS_GAME", hostId: "host-uuid", playlistUrl: "PLtest",
+      config: { timerSeconds: 60, totalRounds: 1, fuzzyEnabled: false },
+    });
+    const [tracksArg] = vi.mocked(resolveLyricsForTracks).mock.calls.at(-1)!;
+    expect(tracksArg.map((t) => t.videoId)).toEqual(["vid1"]);
+    expect(room.lyricsState?.rounds.map((r) => r.blankSentence)).toEqual([CACHED_LYRICS.blankSentence]);
+    delete process.env.ANTHROPIC_API_KEY;
+  });
+
+  it("errors with not_enough_songs when every cached round gives the title away", async () => {
+    vi.mocked(fetchPlaylistItems).mockResolvedValue([fakeLyricsTrack()]);
+    vi.mocked(fetchEmbeddableVideoIds).mockResolvedValue(new Set(["vid1"]));
+    const giveaway = { ...CACHED_LYRICS, language: "en" as const, lyricContext: "This is ___", blankSentence: "test song" };
+    const mockRoom = makeRoom();
+    (mockRoom.storage.get as ReturnType<typeof vi.fn>).mockImplementation((keys: unknown) =>
+      Promise.resolve(new Map(Array.isArray(keys)
+        ? keys.filter((k: string) => k.startsWith("lyrics:") || k.startsWith("lyrics-sonnet:")).map((k: string) => [k, giveaway])
+        : []))
+    );
+    const room = new HitsterRoom(mockRoom as any);
+    const hostConn = makeConn("host-conn");
+    await send(room, hostConn, { type: "JOIN", playerId: P1, name: "Alice" });
+    await send(room, hostConn, {
+      type: "START_LYRICS_GAME", hostId: "host-uuid", playlistUrl: "PLtest",
+      config: { timerSeconds: 60, totalRounds: 1, fuzzyEnabled: false },
+    });
+    const msgs = (hostConn.send as ReturnType<typeof vi.fn>).mock.calls.map((c: any[]) => JSON.parse(c[0] as string));
+    expect(msgs).toContainEqual(expect.objectContaining({ type: "ERROR", error: "not_enough_songs" }));
+  });
+
   it("skips fetching popularity when the sonnet cache already has everything", async () => {
     process.env.ANTHROPIC_API_KEY = "test-key";
     await setupLyricsGame(); // pre-caches lyrics: and lyrics-sonnet: — no uncached tracks
@@ -2329,8 +2376,8 @@ describe("Lyrics Mode: generateLyricsPreview broadcasts LYRICS_PREVIEW", () => {
     vi.mocked(fetchEmbeddableVideoIds).mockResolvedValue(new Set(["v1", "v2"]));
     vi.mocked(resolveTracksWithAI).mockResolvedValue(new Map());
 
-    const LYRICS_V1 = { title: "Song A", artist: "Artist", language: "en" as const, lyricContext: "X ___", blankSentence: "a", acceptableVariants: [] };
-    const LYRICS_V2 = { title: "Song B", artist: "Artist", language: "en" as const, lyricContext: "Y ___", blankSentence: "b", acceptableVariants: [] };
+    const LYRICS_V1 = { title: "Song A", artist: "Artist", language: "en" as const, lyricContext: "X ___", blankSentence: "hello", acceptableVariants: [] };
+    const LYRICS_V2 = { title: "Song B", artist: "Artist", language: "en" as const, lyricContext: "Y ___", blankSentence: "world", acceptableVariants: [] };
 
     const mockRoom = makeRoom();
     (mockRoom.storage.get as ReturnType<typeof vi.fn>).mockImplementation((keys: unknown) =>

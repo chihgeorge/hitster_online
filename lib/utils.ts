@@ -80,3 +80,9 @@ export function itemsSchema(item: Record<string, unknown>) {
     },
   };
 }
+
+/** The items of an itemsSchema response. Untyped: each caller validates its own item shape. Throws on malformed JSON. */
+export function parseItems(text: string): unknown[] {
+  const items = (JSON.parse(text) as { items?: unknown }).items;
+  return Array.isArray(items) ? items : [];
+}

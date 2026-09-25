@@ -5,7 +5,7 @@
 // Falls back gracefully: returns an empty Map on any API or parse failure.
 
 import type { EditableSong, SongEditDiff, EditableLyricRound, LyricEditDiff } from "./game";
-import { mapWithConcurrency, itemsSchema } from "./utils";
+import { mapWithConcurrency, itemsSchema, parseItems } from "./utils";
 
 export interface AITrackMeta {
   title: string;
@@ -73,13 +73,6 @@ const LYRIC_EDITS_FORMAT = itemsSchema({
   required: ["v", "f", "n"],
 });
 
-// Untyped on purpose — shared by resolveBatch, proposeEdits and proposeLyricEdits, which each
-// validate their own item shape.
-function parseResponse(text: string): unknown[] {
-  const items = (JSON.parse(text) as { items?: unknown }).items;
-  return Array.isArray(items) ? items : [];
-}
-
 async function resolveBatch(
   tracks: { videoId: string; title: string; description: string; channelTitle: string }[],
   apiKey: string
@@ -114,7 +107,7 @@ async function resolveBatch(
 
   let parsed: RawResult[] = [];
   try {
-    parsed = parseResponse(text) as RawResult[];
+    parsed = parseItems(text) as RawResult[];
   } catch (e) {
     console.error(`[ai-metadata] parse error: ${e}`);
     return result;
@@ -236,7 +229,7 @@ export async function proposeEdits(
 
   let parsed: RawEditDiff[] = [];
   try {
-    parsed = parseResponse(text) as RawEditDiff[];
+    parsed = parseItems(text) as RawEditDiff[];
   } catch (e) {
     console.error(`[ai-metadata] proposeEdits parse error: ${e}`);
     return [];
@@ -327,7 +320,7 @@ export async function proposeLyricEdits(
 
   let parsed: RawLyricEditDiff[] = [];
   try {
-    parsed = parseResponse(text) as RawLyricEditDiff[];
+    parsed = parseItems(text) as RawLyricEditDiff[];
   } catch (e) {
     console.error(`[ai-metadata] proposeLyricEdits parse error: ${e}`);
     return [];

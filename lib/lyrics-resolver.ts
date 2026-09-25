@@ -9,7 +9,7 @@
 
 import type { LyricsRound } from "./game";
 import { fetchLyricsBatch } from "./lyrics-fetcher";
-import { mapWithConcurrency, decodeEntities, itemsSchema } from "./utils";
+import { mapWithConcurrency, decodeEntities, itemsSchema, parseItems } from "./utils";
 import { normGuess } from "./guess-scoring";
 import { isCJKText } from "./fuzzy";
 
@@ -143,7 +143,8 @@ Rules:
       "content-type": "application/json",
     },
     // A stuck call would hold the game start; a timed-out batch just yields no rounds.
-    signal: AbortSignal.timeout(thinks ? 60_000 : 30_000),
+    // Generous for a 10-song thinking batch (measured ~6-10s for 4 songs).
+    signal: AbortSignal.timeout(thinks ? 120_000 : 30_000),
     body: JSON.stringify({
       model,
       // Thinking counts toward max_tokens: leave headroom for adaptive thinking.
@@ -165,13 +166,16 @@ Rules:
     return result;
   }
 
-  const data = (await res.json()) as { content?: { type: string; text: string }[] };
+  const data = (await res.json()) as { stop_reason?: string; content?: { type: string; text: string }[] };
+  // max_tokens or refusal cuts the JSON off and the whole batch is lost: say so in the logs.
+  if (data.stop_reason && data.stop_reason !== "end_turn") {
+    console.error(`[lyrics-resolver] ${model} stopped with ${data.stop_reason}`);
+  }
   const text = data.content?.find((b) => b.type === "text")?.text ?? "";
 
   let parsed: RawLyricsResult[] = [];
   try {
-    const items = (JSON.parse(text) as { items?: unknown }).items;
-    parsed = Array.isArray(items) ? (items as RawLyricsResult[]) : [];
+    parsed = parseItems(text) as RawLyricsResult[];
   } catch {
     console.error("[lyrics-resolver] parse error");
     return result;

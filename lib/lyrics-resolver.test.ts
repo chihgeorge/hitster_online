@@ -382,6 +382,16 @@ describe("structured outputs parsing + title guard", () => {
   }
   afterEach(() => mockFetch.mockReset());
 
+  it("sends a timeout signal, and a timed-out call just yields no rounds", async () => {
+    mockFetch.mockImplementation((url: string) => String(url).includes("anthropic")
+      ? Promise.reject(new DOMException("timed out", "TimeoutError"))
+      : Promise.resolve(miss()));
+    const result = await resolveLyricsForTracks([TRACK], "key", undefined, "claude-sonnet-5");
+    expect(result.size).toBe(0);
+    const call = mockFetch.mock.calls.find(([url]) => String(url).includes("anthropic"))!;
+    expect(call[1].signal).toBeInstanceOf(AbortSignal);
+  });
+
   it("fails open on malformed JSON, missing items, non-array items, and a thinking-only response", async () => {
     const replies = [
       rawAnthropic([{ type: "text", text: "not json" }]),
@@ -404,8 +414,7 @@ describe("structured outputs parsing + title guard", () => {
       .map((c) => JSON.parse(c[1].body as string));
     expect(game.max_tokens).toBe(16000);
     expect(bulk.max_tokens).toBe(4000);
-    const body = bulk;
-    expect(body.output_config.format.schema.required).toEqual(["items"]);
+    expect(bulk.output_config.format.schema.required).toEqual(["items"]);
   });
 
   const round = (v: string, blankSentence: string, language = "en") => ({
