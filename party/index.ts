@@ -24,7 +24,7 @@ import {
 } from "../lib/game";
 import { isValidYear, sanitizeText, decodeEntities, shuffle } from "../lib/utils";
 import { proposeEdits, proposeLyricEdits, type AITrackMeta } from "../lib/ai-metadata";
-import { resolveLyricsForTracks, MODEL_GAME, type LyricsResult } from "../lib/lyrics-resolver";
+import { resolveLyricsForTracks, givesAwayTitle, MODEL_GAME, type LyricsResult } from "../lib/lyrics-resolver";
 import { fetchPopularitySummaries } from "../lib/lyrics-popularity";
 import * as timedRound from "./timed-round";
 import { scoreGuess, normGuess } from "../lib/guess-scoring";
@@ -1233,11 +1233,13 @@ export default class HitsterRoom implements Party.Server {
         }
       }
 
-      // For the deck: prefer Sonnet result, fall back to Haiku preview, then raw cache.
+      // For the deck: prefer Sonnet result, fall back to Haiku preview, then raw cache. Skip any
+      // candidate whose answer gives the title away — cached rounds predate that check.
       const sonnetAll = new Map([...sonnetCached, ...sonnetFresh]);
       const allLyrics = new Map<string, LyricsResult>();
+      const fair = (l: LyricsResult | undefined) => (l && !givesAwayTitle(l.blankSentence, l.title) ? l : undefined);
       for (const t of enrichedTracks) {
-        const best = sonnetAll.get(t.videoId) ?? candidatePool.get(t.videoId) ?? cachedLyrics.get(t.videoId);
+        const best = fair(sonnetAll.get(t.videoId)) ?? fair(candidatePool.get(t.videoId)) ?? fair(cachedLyrics.get(t.videoId));
         if (best) allLyrics.set(t.videoId, best);
       }
 

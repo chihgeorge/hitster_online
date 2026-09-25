@@ -59,8 +59,9 @@ vi.mock("../lib/ai-metadata", () => ({
   proposeLyricEdits: vi.fn().mockResolvedValue([]),
 }));
 
-vi.mock("../lib/lyrics-resolver", () => ({
+vi.mock("../lib/lyrics-resolver", async (importOriginal) => ({
   resolveLyricsForTracks: vi.fn().mockResolvedValue(new Map()),
+  givesAwayTitle: (await importOriginal<typeof import("../lib/lyrics-resolver")>()).givesAwayTitle,
   MODEL_GAME: "claude-sonnet-5",
 }));
 
@@ -1771,6 +1772,27 @@ describe("Lyrics Mode: START_LYRICS_GAME", () => {
     expect(cachedPopularity).toBeDefined();
 
     delete process.env.ANTHROPIC_API_KEY;
+  });
+
+  it("skips a cached round whose answer gives the title away, falling back to the next source", async () => {
+    vi.mocked(fetchPlaylistItems).mockResolvedValue([fakeLyricsTrack()]);
+    vi.mocked(fetchEmbeddableVideoIds).mockResolvedValue(new Set(["vid1"]));
+    const giveaway = { ...CACHED_LYRICS, language: "en" as const, lyricContext: "This is ___", blankSentence: "test song" };
+    const mockRoom = makeRoom();
+    (mockRoom.storage.get as ReturnType<typeof vi.fn>).mockImplementation((keys: unknown) =>
+      Promise.resolve(new Map(Array.isArray(keys)
+        ? keys.filter((k: string) => k.startsWith("lyrics:") || k.startsWith("lyrics-sonnet:"))
+            .map((k: string) => [k, k.startsWith("lyrics-sonnet:") ? giveaway : CACHED_LYRICS])
+        : []))
+    );
+    const room = new HitsterRoom(mockRoom as any);
+    const hostConn = makeConn("host-conn");
+    await send(room, hostConn, { type: "JOIN", playerId: P1, name: "Alice" });
+    await send(room, hostConn, {
+      type: "START_LYRICS_GAME", hostId: "host-uuid", playlistUrl: "PLtest",
+      config: { timerSeconds: 60, totalRounds: 1, fuzzyEnabled: false },
+    });
+    expect(room.lyricsState?.rounds.map((r) => r.blankSentence)).toEqual([CACHED_LYRICS.blankSentence]);
   });
 
   it("skips fetching popularity when the sonnet cache already has everything", async () => {
