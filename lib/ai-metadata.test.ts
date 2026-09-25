@@ -14,7 +14,7 @@ function anthropicResponse(text: string, ok = true) {
   return {
     ok,
     text: () => Promise.resolve(ok ? "" : "server error body"),
-    json: () => Promise.resolve({ content: [{ type: "text", text }] }),
+    json: () => Promise.resolve({ content: [{ type: "text", text: `{"items":${text}}` }] }),
   } as Response;
 }
 
@@ -111,11 +111,6 @@ describe("proposeEdits", () => {
     expect(diff).toEqual([]);
   });
 
-  it("strips markdown code fences the model might add", async () => {
-    mockFetch.mockResolvedValueOnce(anthropicResponse('```json\n[{"v":"v1","f":"year","n":2000}]\n```'));
-    const diff = await proposeEdits("fix it", songs, "fake-key");
-    expect(diff).toEqual([{ videoId: "v1", field: "year", oldValue: 1994, newValue: 2000 }]);
-  });
 });
 
 describe("proposeLyricEdits", () => {
@@ -173,9 +168,65 @@ describe("proposeLyricEdits", () => {
     expect(diff).toEqual([]);
   });
 
-  it("strips markdown code fences the model might add", async () => {
-    mockFetch.mockResolvedValueOnce(anthropicResponse('```json\n[{"v":"v1","f":"blankSentence","n":"新答案"}]\n```'));
-    const diff = await proposeLyricEdits("fix it", rounds, "fake-key");
-    expect(diff).toEqual([{ videoId: "v1", field: "blankSentence", oldValue: "你的愛", newValue: "新答案" }]);
+});
+
+// Structured outputs: the response is {"items":[...]} — these cover the request shape and the
+// parser's fail-open paths that the {"items":...}-wrapping anthropicResponse helper can't reach.
+describe("structured outputs (output_config.format)", () => {
+  const songs: EditableSong[] = [{ videoId: "v1", title: "Wonderwall", artist: "Oasis", year: 1994 }];
+  const rounds: EditableLyricRound[] = [
+    { videoId: "v1", title: "Dynamite", artist: "BTS", lyricContext: "in the ___", blankSentence: "stars" },
+  ];
+  const track = { videoId: "v1", title: "t", description: "", channelTitle: "c" };
+  function rawResponse(text: string) {
+    return { ok: true, json: () => Promise.resolve({ content: [{ type: "text", text }] }) } as Response;
+  }
+  const sentBody = () => JSON.parse(mockFetch.mock.calls[0][1].body as string);
+
+  it("resolveTracksWithAI sends a json_schema format with an {items} object root", async () => {
+    mockFetch.mockResolvedValueOnce(anthropicResponse(`[]`));
+    await resolveTracksWithAI([track], "fake-key");
+    const { format } = sentBody().output_config;
+    expect(format.type).toBe("json_schema");
+    expect(format.schema.type).toBe("object");
+    expect(format.schema.required).toEqual(["items"]);
+    expect(format.schema.properties.items.items.required).toEqual(["v", "t", "a", "y"]);
+  });
+
+  it("proposeEdits and proposeLyricEdits constrain f to their own field enums", async () => {
+    mockFetch.mockResolvedValueOnce(anthropicResponse(`[]`));
+    await proposeEdits("fix it", songs, "fake-key");
+    expect(sentBody().output_config.format.schema.properties.items.items.properties.f.enum).toEqual(["title", "artist", "year"]);
+    mockFetch.mockClear();
+    mockFetch.mockResolvedValueOnce(anthropicResponse(`[]`));
+    await proposeLyricEdits("fix it", rounds, "fake-key");
+    expect(sentBody().output_config.format.schema.properties.items.items.properties.f.enum).toEqual(["lyricContext", "blankSentence"]);
+  });
+
+  it("fails open when valid JSON lacks items, has non-array items, is a bare array, or is null", async () => {
+    for (const text of [`{}`, `{"items":{"v":"v1"}}`, `[{"v":"v1","f":"year","n":2000}]`, `null`]) {
+      mockFetch.mockResolvedValueOnce(rawResponse(text));
+      expect(await proposeEdits("fix it", songs, "fake-key")).toEqual([]);
+      mockFetch.mockResolvedValueOnce(rawResponse(text));
+      expect(await proposeLyricEdits("fix it", rounds, "fake-key")).toEqual([]);
+      mockFetch.mockResolvedValueOnce(rawResponse(text));
+      expect((await resolveTracksWithAI([track], "fake-key")).size).toBe(0);
+    }
+  });
+
+  it("resolveTracksWithAI fails open on malformed JSON and on a response with no text block", async () => {
+    mockFetch.mockResolvedValueOnce(rawResponse("not json"));
+    expect((await resolveTracksWithAI([track], "fake-key")).size).toBe(0);
+    mockFetch.mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({ content: [] }) } as unknown as Response);
+    expect((await resolveTracksWithAI([track], "fake-key")).size).toBe(0);
+  });
+
+  it("resolveTracksWithAI keeps a null year and skips items missing title/artist", async () => {
+    mockFetch.mockResolvedValueOnce(
+      anthropicResponse(`[{"v":"v1","t":"Song","a":"Artist","y":null},{"v":"v2","t":"","a":"Artist","y":2000}]`)
+    );
+    const result = await resolveTracksWithAI([track, { ...track, videoId: "v2" }], "fake-key");
+    expect(result.get("v1")).toEqual({ title: "Song", artist: "Artist", year: null });
+    expect(result.has("v2")).toBe(false);
   });
 });

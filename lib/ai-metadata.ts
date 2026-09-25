@@ -5,7 +5,7 @@
 // Falls back gracefully: returns an empty Map on any API or parse failure.
 
 import type { EditableSong, SongEditDiff, EditableLyricRound, LyricEditDiff } from "./game";
-import { mapWithConcurrency } from "./utils";
+import { mapWithConcurrency, itemsSchema } from "./utils";
 
 export interface AITrackMeta {
   title: string;
@@ -19,12 +19,10 @@ const BATCH_SIZE = 10;
 // Max parallel batches — keeps total concurrent Anthropic connections low.
 const MAX_CONCURRENT = 4;
 
-const SYSTEM_PROMPT = `Music metadata expert. For each YouTube track, return clean title, primary artist, and release year.
+const SYSTEM_PROMPT = `Music metadata expert. For each YouTube track, return clean title, primary artist, and release year — one item per input track.
 
-Return ONLY a JSON array, one object per input track, same order:
-[{"v":"VIDEO_ID","t":"Song Title","a":"Artist","y":2019},...]
-
-Rules:
+Fields:
+- v: the track's video ID, copied from the input.
 - t: clean song name, strip suffixes (Official MV, Audio, Lyric Video, Live, HD, 4K, etc.)
 - a: primary artist only, no ft./feat.
 - y: original studio/single release year as integer. Best estimate — prefer a number over null. null only for truly unidentifiable tracks.
@@ -45,16 +43,41 @@ function formatBatch(
 // Compact field names: v=videoId, t=title, a=artist, y=year
 type RawResult = { v?: unknown; t?: unknown; a?: unknown; y?: unknown };
 
-// Untyped on purpose — shared by resolveBatch (RawResult[]) and proposeEdits (RawEditDiff[]),
-// which parse differently-shaped arrays from the same "strip fences, find the outer []" logic.
+// Structured outputs: every response is {"items": [...]} matching the schema, so no fence
+// stripping or bracket hunting.
+const METADATA_FORMAT = itemsSchema({
+  properties: {
+    v: { type: "string" },
+    t: { type: "string" },
+    a: { type: "string" },
+    y: { anyOf: [{ type: "integer" }, { type: "null" }] },
+  },
+  required: ["v", "t", "a", "y"],
+});
+
+const SONG_EDITS_FORMAT = itemsSchema({
+  properties: {
+    v: { type: "string" },
+    f: { type: "string", enum: ["title", "artist", "year"] },
+    n: { anyOf: [{ type: "string" }, { type: "integer" }] },
+  },
+  required: ["v", "f", "n"],
+});
+
+const LYRIC_EDITS_FORMAT = itemsSchema({
+  properties: {
+    v: { type: "string" },
+    f: { type: "string", enum: ["lyricContext", "blankSentence"] },
+    n: { type: "string" },
+  },
+  required: ["v", "f", "n"],
+});
+
+// Untyped on purpose — shared by resolveBatch, proposeEdits and proposeLyricEdits, which each
+// validate their own item shape.
 function parseResponse(text: string): unknown[] {
-  // Strip optional markdown fences the model might add despite instructions.
-  const cleaned = text.replace(/^```(?:json)?\n?/m, "").replace(/\n?```$/m, "").trim();
-  // Find the outermost JSON array.
-  const start = cleaned.indexOf("[");
-  const end = cleaned.lastIndexOf("]");
-  if (start === -1 || end === -1) return [];
-  return JSON.parse(cleaned.slice(start, end + 1)) as unknown[];
+  const items = (JSON.parse(text) as { items?: unknown }).items;
+  return Array.isArray(items) ? items : [];
 }
 
 async function resolveBatch(
@@ -75,6 +98,7 @@ async function resolveBatch(
       model: MODEL,
       max_tokens: 600,
       system: SYSTEM_PROMPT,
+      output_config: { format: METADATA_FORMAT },
       messages: [{ role: "user", content: formatBatch(tracks) }],
     }),
   });
@@ -149,15 +173,14 @@ export async function resolveTracksWithAI(
 
 const PROPOSE_EDITS_SYSTEM_PROMPT = `You edit a music quiz's song list based on a host's plain-language instruction.
 
-Given the current song list and an instruction, return ONLY a JSON array of field-level changes:
-[{"v":"VIDEO_ID","f":"title"|"artist"|"year","n":"new value, or an integer for year"},...]
+Given the current song list and an instruction, return one item per field-level change.
 
 Rules:
 - v: the videoId of the song being changed — must match one from the input list exactly.
 - f: which field changes — "title", "artist", or "year".
 - n: the new value. For "year", a 4-digit integer. For "title"/"artist", the corrected string.
 - Only include entries for fields that actually need to change per the instruction — never restate unchanged songs.
-- If the instruction doesn't clearly map to any song in the list, return an empty array [].
+- If the instruction doesn't clearly map to any song in the list, return no items.
 - Preserve CJK characters exactly.`;
 
 type RawEditDiff = { v?: unknown; f?: unknown; n?: unknown };
@@ -197,6 +220,7 @@ export async function proposeEdits(
       model: MODEL,
       max_tokens: 1000,
       system: PROPOSE_EDITS_SYSTEM_PROMPT,
+      output_config: { format: SONG_EDITS_FORMAT },
       messages: [{ role: "user", content: `Song list:\n${songList}\n\nInstruction: ${instruction}` }],
     }),
   });
@@ -245,8 +269,7 @@ const PROPOSE_LYRIC_EDITS_SYSTEM_PROMPT = `You edit a Lyrics-mode music quiz's r
 
 Each round shows a lyric snippet with one line blanked out (lyricContext, using ___ for the blank) and the blanked line itself (blankSentence, the correct answer players must type). A round with empty context/answer means the bulk generator couldn't confidently produce one — the host may be asking you to fill it in from scratch (e.g. "give me the chorus for this song").
 
-Given the current rounds and an instruction, return ONLY a JSON array of field-level changes:
-[{"v":"VIDEO_ID","f":"lyricContext"|"blankSentence","n":"new value"},...]
+Given the current rounds and an instruction, return one item per field-level change.
 
 Rules:
 - v: the videoId of the round being changed — must match one from the input list exactly.
@@ -254,7 +277,7 @@ Rules:
 - n: the new value as a string.
 - lyricContext must still contain a "___" placeholder marking exactly where blankSentence fits.
 - Only include entries for fields that actually need to change per the instruction — never restate unchanged rounds.
-- If the instruction doesn't clearly map to any round in the list, return an empty array [].
+- If the instruction doesn't clearly map to any round in the list, return no items.
 - Filling in an empty round: only output lyrics you know VERBATIM and with high confidence. If you're not sure, leave that round out of the response entirely — never guess or invent lyrics, even when explicitly asked for "the chorus" or "any lyrics you know". Wrong lyrics are worse than no question.
 - Preserve CJK characters exactly.`;
 
@@ -288,6 +311,7 @@ export async function proposeLyricEdits(
       model: MODEL,
       max_tokens: 1500,
       system: PROPOSE_LYRIC_EDITS_SYSTEM_PROMPT,
+      output_config: { format: LYRIC_EDITS_FORMAT },
       messages: [{ role: "user", content: `Rounds:\n${roundList}\n\nInstruction: ${instruction}` }],
     }),
   });

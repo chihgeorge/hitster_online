@@ -1,5 +1,5 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
-import { resolveLyricsForTracks, detectLanguageHint } from "./lyrics-resolver";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { resolveLyricsForTracks, detectLanguageHint, givesAwayTitle } from "./lyrics-resolver";
 
 // Mock fetch (used for both lrclib.net and Anthropic API calls)
 const mockFetch = vi.fn();
@@ -35,7 +35,7 @@ function anthropicResponse(items: object[]) {
     ok: true,
     json: () =>
       Promise.resolve({
-        content: [{ type: "text", text: JSON.stringify(items) }],
+        content: [{ type: "text", text: JSON.stringify({ items }) }],
       }),
   } as Response;
 }
@@ -177,6 +177,15 @@ describe("resolveLyricsForTracks — lrclib miss fallback", () => {
     const anthropicCall = mockFetch.mock.calls[2];
     const body = JSON.parse(anthropicCall[1].body as string);
     expect(body.messages[0].content).toContain("NO_LYRICS");
+  });
+
+  it("drops a round whose answer is the song title (players see the title)", async () => {
+    mockFetch.mockResolvedValueOnce(lrclibGetResponse());
+    mockFetch.mockResolvedValueOnce(
+      anthropicResponse([{ v: "v1", language: "en", lyricContext: "And after all\nYou're my ___", blankSentence: "WonderWall", acceptableVariants: [] }])
+    );
+    const result = await resolveLyricsForTracks([TRACK], "key");
+    expect(result.has("v1")).toBe(false);
   });
 
   it("excludes items with empty blankSentence (model low-confidence signal)", async () => {
@@ -342,5 +351,106 @@ describe("popularity grounding (search-based blank selection)", () => {
 
     const body = JSON.parse(mockFetch.mock.calls[1][1].body as string);
     expect(body.tools).toBeUndefined();
+  });
+
+  it("uses structured outputs; adaptive thinking at low effort only on the game model", async () => {
+    const reply = [{ v: "v1", language: "en", lyricContext: "x ___", blankSentence: "y", acceptableVariants: [] }];
+    mockFetch.mockResolvedValueOnce(lrclibGetResponse()).mockResolvedValueOnce(anthropicResponse(reply));
+    await resolveLyricsForTracks([TRACK], "key", undefined, "claude-sonnet-5");
+    const game = JSON.parse(mockFetch.mock.calls[1][1].body as string);
+    expect(game.output_config.format.type).toBe("json_schema");
+    expect(game.output_config.effort).toBe("low");
+    expect(game.thinking).toEqual({ type: "adaptive" });
+
+    mockFetch.mockResolvedValueOnce(lrclibGetResponse()).mockResolvedValueOnce(anthropicResponse(reply));
+    await resolveLyricsForTracks([TRACK], "key");
+    const bulk = JSON.parse(mockFetch.mock.calls[3][1].body as string);
+    expect(bulk.output_config).toEqual({ format: game.output_config.format });
+    expect(bulk.thinking).toBeUndefined();
+  });
+});
+
+// Structured-outputs parse paths and the title-giveaway guard.
+describe("structured outputs parsing + title guard", () => {
+  const miss = () => ({ ok: false, json: () => Promise.resolve({}) }) as Response;
+  function rawAnthropic(content: object[]) {
+    return { ok: true, json: () => Promise.resolve({ content }) } as Response;
+  }
+  // lrclib misses for every lookup; only the Anthropic call returns `reply`.
+  function routeFetch(reply: Response) {
+    mockFetch.mockImplementation((url: string) => Promise.resolve(String(url).includes("anthropic") ? reply : miss()));
+  }
+  afterEach(() => mockFetch.mockReset());
+
+  it("fails open on malformed JSON, missing items, non-array items, and a thinking-only response", async () => {
+    const replies = [
+      rawAnthropic([{ type: "text", text: "not json" }]),
+      rawAnthropic([{ type: "text", text: "{}" }]),
+      rawAnthropic([{ type: "text", text: '{"items":{"v":"v1"}}' }]),
+      rawAnthropic([{ type: "thinking", thinking: "..." }]), // e.g. thinking ate max_tokens
+    ];
+    for (const reply of replies) {
+      routeFetch(reply);
+      expect((await resolveLyricsForTracks([TRACK], "key")).size).toBe(0);
+    }
+  });
+
+  it("sizes max_tokens per model (thinking needs headroom) and sends the {items} schema root", async () => {
+    routeFetch(anthropicResponse([]));
+    await resolveLyricsForTracks([TRACK], "key", undefined, "claude-sonnet-5");
+    await resolveLyricsForTracks([TRACK], "key");
+    const [game, bulk] = mockFetch.mock.calls
+      .filter(([url]) => String(url).includes("anthropic"))
+      .map((c) => JSON.parse(c[1].body as string));
+    expect(game.max_tokens).toBe(16000);
+    expect(bulk.max_tokens).toBe(4000);
+    const body = bulk;
+    expect(body.output_config.format.schema.required).toEqual(["items"]);
+  });
+
+  const round = (v: string, blankSentence: string, language = "en") => ({
+    v, language, lyricContext: "line ___", blankSentence, acceptableVariants: [],
+  });
+
+  it("drops a blank that contains the title; keeps one that only shares letters with it", async () => {
+    routeFetch(anthropicResponse([round("v1", "my Wonderwall"), round("v2", "all"), round("v3", "anybody feels")]));
+    const tracks = ["v1", "v2", "v3"].map((videoId) => ({ ...TRACK, videoId }));
+    const result = await resolveLyricsForTracks(tracks, "key");
+    expect([...result.keys()]).toEqual(["v2", "v3"]);
+  });
+
+  it("givesAwayTitle: whole title words for Latin, any part of the title for CJK", () => {
+    expect(givesAwayTitle("Wonderwall", "Wonderwall")).toBe(true);
+    expect(givesAwayTitle("let it be", "Let It Be")).toBe(true);
+    expect(givesAwayTitle("it", "Let It Be")).toBe(true);
+    expect(givesAwayTitle("day", "Yesterday")).toBe(false);
+    expect(givesAwayTitle("all", "Wonderwall")).toBe(false);
+    expect(givesAwayTitle("don't", "Don&#39;t Stop Me Now")).toBe(true);
+    expect(givesAwayTitle("玫瑰", "九十九朵玫瑰")).toBe(true);
+    expect(givesAwayTitle("放晴的那天", "晴天")).toBe(false);
+  });
+
+  it("givesAwayTitle: compares Latin answers by word, never by shared letters", () => {
+    expect(givesAwayTitle("someone like you", "One")).toBe(false);
+    expect(givesAwayTitle("good times", "Go")).toBe(false);
+    expect(givesAwayTitle("you", "U")).toBe(false);
+    expect(givesAwayTitle("my wonderwall tonight", "Wonderwall")).toBe(true);
+    expect(givesAwayTitle("dont", "Don't Stop Me Now")).toBe(true);
+    expect(givesAwayTitle("cafe\u0301", "Café Song")).toBe(true);
+    expect(givesAwayTitle("all", "Wonderwall (中文版)")).toBe(false);
+    expect(givesAwayTitle("サクラ", "さくら サクラ")).toBe(true);
+    expect(givesAwayTitle("사랑", "사랑해")).toBe(true);
+  });
+
+  it("drops a CJK blank that is part of the title", async () => {
+    const zh = { videoId: "v1", title: "九十九朵玫瑰", artist: "丘丘合唱團", year: 1990 };
+    routeFetch(anthropicResponse([round("v1", "玫瑰", "zh-TW")]));
+    expect((await resolveLyricsForTracks([zh], "key")).size).toBe(0);
+  });
+
+  it("skips the guard when the title normalizes to empty (no letters/digits)", async () => {
+    routeFetch(anthropicResponse([round("v1", "anything at all")]));
+    const result = await resolveLyricsForTracks([{ ...TRACK, title: "★☆!" }], "key");
+    expect(result.get("v1")?.blankSentence).toBe("anything at all");
   });
 });

@@ -9,7 +9,9 @@
 
 import type { LyricsRound } from "./game";
 import { fetchLyricsBatch } from "./lyrics-fetcher";
-import { mapWithConcurrency } from "./utils";
+import { mapWithConcurrency, decodeEntities, itemsSchema } from "./utils";
+import { normGuess } from "./guess-scoring";
+import { isCJKText } from "./fuzzy";
 
 export type LyricsResult = Omit<LyricsRound, "videoId">;
 
@@ -31,6 +33,42 @@ export function detectLanguageHint(title: string, artist: string): string {
 }
 
 type TrackInput = { videoId: string; title: string; artist: string; year: number };
+
+// Same folding as normGuess (entities, NFKC, case, combining marks kept); apostrophes join words.
+const words = (s: string) =>
+  decodeEntities(s).normalize("NFKC").toLowerCase().replace(/['’]/g, "").split(/[^\p{L}\p{M}\p{N}]+/u).filter(Boolean);
+
+/**
+ * Players see the title during the round, so an answer built from it gives itself away.
+ * A CJK answer is compared as text: CJK titles are a few short words that reappear in the
+ * lyric line, so any part of the title counts. Other answers are compared word by word:
+ * they give it away by containing the whole title, or by using only title words
+ * ("let it be"), never by sharing letters ("all" in "Wonderwall", "someone" vs "One").
+ */
+export function givesAwayTitle(blank: string, title: string): boolean {
+  const nb = normGuess(blank);
+  const nt = normGuess(title);
+  if (!nb || !nt) return false;
+  if (isCJKText(blank)) return nb.includes(nt) || nt.includes(nb);
+  const bw = words(blank);
+  const tw = words(title);
+  return ` ${bw.join(" ")} `.includes(` ${tw.join(" ")} `) || bw.every((w) => tw.includes(w));
+}
+
+const LANGUAGES: readonly LyricsResult["language"][] = ["zh-TW", "en", "ja", "ko"];
+
+// Structured outputs: the response is {"items": [...]} matching this schema, so no fence
+// stripping or bracket hunting.
+const LYRICS_FORMAT = itemsSchema({
+  properties: {
+    v: { type: "string" },
+    language: { type: "string", enum: LANGUAGES },
+    lyricContext: { type: "string" },
+    blankSentence: { type: "string" },
+    acceptableVariants: { type: "array", items: { type: "string" } },
+  },
+  required: ["v", "language", "lyricContext", "blankSentence", "acceptableVariants"],
+});
 
 type RawLyricsResult = {
   v?: unknown;
@@ -77,25 +115,26 @@ async function resolveLyricsBatch(
   const systemPrompt = `Lyrics expert. For each song, create a fill-in-the-blank question that a fan would instantly recognise.
 
 When LYRICS are provided: use ONLY the actual lyrics text supplied. Do NOT add, change, or invent words.
-When NO_LYRICS: only output lyrics you know VERBATIM from memory. If uncertain, return {"v":"VIDEO_ID","blankSentence":""}.
-When a POPULARITY line is present: it was pre-fetched from a real web search about which line real listeners actually cite/quote for this song. Prefer the couplet it points to — matched against the real LYRICS text, never inventing wording the POPULARITY line implies but LYRICS doesn't contain — over your own guess at what's memorable. No POPULARITY line just means none was found; pick as you do today.
+When NO_LYRICS: only output lyrics you know VERBATIM from memory. If uncertain, set blankSentence to an empty string.
+When a POPULARITY line is present: it was pre-fetched from a real web search about which line real listeners actually cite/quote for this song. Prefer the couplet it points to — matched against the real LYRICS text, never inventing wording the POPULARITY line implies but LYRICS doesn't contain — over your own guess at what's memorable. With no POPULARITY line, pick the couplet fans would recognise most.
 
-Return ONLY a JSON array, one object per input, same order:
-[{"v":"VIDEO_ID","language":"zh-TW"|"en"|"ja"|"ko","lyricContext":"couplet line with ___ then next line","blankSentence":"the blanked phrase","acceptableVariants":["variant1","variant2"]},...]
+Return one item per input song; v is its video ID, copied from the input. lyricContext is the couplet with ___ in place of the blank.
 
 Rules:
 1. Pick a COUPLET from the chorus (two consecutive lines that go together naturally).
 2. Choose ONE memorable phrase within one of those lines to blank out — replace it with ___ in lyricContext. Keep the rest of both lines intact.
    - Good: "我要送你九十九朵___\n我要唱心內的話乎你聽"  →  blankSentence: "玫瑰花"
    - Bad: blank an entire line; bad: blank a single common word.
-   - For Chinese, Japanese and Korean the blank MUST be 2 to 6 characters long (never longer).
-3. blankSentence MUST NOT be the same as (or nearly the same as) the song title.
+   - For Chinese, Japanese and Korean, keep the blank to 2–6 characters; rounds outside that range are discarded.
+3. blankSentence must differ clearly from the song title, which players already see.
 4. blankSentence: the exact blanked phrase as a fan would type it — no punctuation at start/end unless essential.
 5. acceptableVariants: 1-3 alternate forms fans commonly type (typos, shorter forms). [] is fine.
 6. Output in the ORIGINAL language of the song. For Chinese: Traditional Chinese (繁體中文) ONLY.
 7. Preserve CJK characters exactly. Never translate.
 8. If supplied lyrics are Simplified Chinese, convert them to Traditional (繁體) character by character — same words, only the character forms change. lyricContext and blankSentence must contain no Simplified characters.`;
 
+  // Haiku (bulk preview) never thinks; any other model runs adaptive thinking.
+  const thinks = model !== MODEL_BULK;
   const res = await fetch(ANTHROPIC_API, {
     method: "POST",
     headers: {
@@ -103,11 +142,16 @@ Rules:
       "anthropic-version": "2023-06-01",
       "content-type": "application/json",
     },
+    // A stuck call would hold the game start; a timed-out batch just yields no rounds.
+    signal: AbortSignal.timeout(thinks ? 60_000 : 30_000),
     body: JSON.stringify({
       model,
-      max_tokens: 4000,
-      // Sonnet 5 thinks by default and hidden thinking can eat the whole budget, returning no text.
-      thinking: { type: "disabled" },
+      // Thinking counts toward max_tokens: leave headroom for adaptive thinking.
+      max_tokens: thinks ? 16000 : 4000,
+      // Adaptive thinking at low effort (short, calibrated thinking). Haiku 4.5 has no adaptive
+      // mode and doesn't think unless asked, so it just omits the field.
+      ...(thinks ? { thinking: { type: "adaptive" } } : {}),
+      output_config: { format: LYRICS_FORMAT, ...(thinks ? { effort: "low" } : {}) },
       // Deliberately NO tools param here — Approach C's core property. Whatever popularity
       // grounding this call gets was fetched by a separate, dedicated call before this one
       // (lib/lyrics-popularity.ts); the model never decides mid-generation whether to search.
@@ -126,11 +170,8 @@ Rules:
 
   let parsed: RawLyricsResult[] = [];
   try {
-    const cleaned = text.replace(/^```(?:json)?\n?/m, "").replace(/\n?```$/m, "").trim();
-    const start = cleaned.indexOf("[");
-    const end = cleaned.lastIndexOf("]");
-    if (start === -1 || end === -1) return result;
-    parsed = JSON.parse(cleaned.slice(start, end + 1)) as RawLyricsResult[];
+    const items = (JSON.parse(text) as { items?: unknown }).items;
+    parsed = Array.isArray(items) ? (items as RawLyricsResult[]) : [];
   } catch {
     console.error("[lyrics-resolver] parse error");
     return result;
@@ -144,8 +185,10 @@ Rules:
 
     const blankSentence = typeof item.blankSentence === "string" ? item.blankSentence.trim() : "";
     if (!blankSentence) continue; // model signalled low confidence
+    // The prompt asks for this too, but the model occasionally slips.
+    if (givesAwayTitle(blankSentence, track.title)) continue;
 
-    const language = (["zh-TW", "en", "ja", "ko"].includes(item.language as string)
+    const language = (LANGUAGES.includes(item.language as LyricsResult["language"])
       ? (item.language as LyricsResult["language"])
       : "en");
     let lyricContext = typeof item.lyricContext === "string" ? item.lyricContext.trim() : "";
