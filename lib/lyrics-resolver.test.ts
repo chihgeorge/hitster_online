@@ -485,6 +485,9 @@ describe("structured outputs parsing + title guard", () => {
     expect(givesAwayTitle("靠得那麼近", "小幸運")).toBe(false);
     expect(givesAwayTitle("絕對不放", "倔強")).toBe(false);
     expect(givesAwayTitle("幸福", "小幸運")).toBe(false);
+    expect(givesAwayTitle("愛して", "恋をして")).toBe(false);
+    expect(givesAwayTitle("天雨", "晴天 雨天")).toBe(false);
+    expect(givesAwayTitle("사랑해요", "사랑해")).toBe(true);
   });
 
   it("drops a CJK blank that is part of the title", async () => {

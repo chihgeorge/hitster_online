@@ -34,6 +34,8 @@ export function detectLanguageHint(title: string, artist: string): string {
 
 type TrackInput = { videoId: string; title: string; artist: string; year: number };
 
+const HAN = /\p{Script=Han}/u;
+
 // Same folding as normGuess (entities, NFKC, case, combining marks kept); apostrophes join words.
 const words = (s: string) =>
   decodeEntities(s).normalize("NFKC").toLowerCase().replace(/['’]/g, "").split(/[^\p{L}\p{M}\p{N}]+/u).filter(Boolean);
@@ -42,7 +44,8 @@ const words = (s: string) =>
  * Players see the title during the round, so an answer built from it gives itself away.
  * A CJK answer to a CJK title is compared as text: CJK titles are a few short words that
  * reappear in the lyric line, so any part of the title counts — the answer contains, sits
- * inside, or shares any two adjacent CJK characters with it (幸運的 for 小幸運). Otherwise (including mixed
+ * inside, or shares two adjacent Han characters of one title word with it (幸運的 for 小幸運;
+ * kana and Hangul pairs don't count — particles like して are too common). Otherwise (including mixed
  * lines like "good 같아" against the title "Go") answers are compared word by word:
  * they give it away by containing the whole title, or by using only title words
  * ("let it be"), never by sharing letters ("all" in "Wonderwall", "someone" vs "One").
@@ -52,9 +55,13 @@ export function givesAwayTitle(blank: string, title: string): boolean {
   const nt = normGuess(title);
   if (!nb || !nt) return false;
   if (isCJKText(blank) && isCJKText(title)) {
-    if (nb.includes(nt) || nt.includes(nb)) return true;
-    const t = [...nt];
-    return t.some((c, i) => i + 1 < t.length && isCJKText(c) && isCJKText(t[i + 1]) && nb.includes(c + t[i + 1]));
+    if (nb.includes(nt)) return true;
+    // Per title word, so nothing spans the space between two words ("晴天 雨天" has no 天雨).
+    return decodeEntities(title).normalize("NFKC").split(/\s+/).some((word) => {
+      if (normGuess(word).includes(nb)) return true;
+      const t = [...word];
+      return t.some((c, i) => HAN.test(c) && HAN.test(t[i + 1] ?? "") && nb.includes(c + t[i + 1]));
+    });
   }
   const bw = words(blank);
   const tw = words(title);
