@@ -449,6 +449,8 @@ describe("structured outputs parsing + title guard", () => {
     expect(givesAwayTitle("all", "Wonderwall (中文版)")).toBe(false);
     expect(givesAwayTitle("サクラ", "さくら サクラ")).toBe(true);
     expect(givesAwayTitle("사랑", "사랑해")).toBe(true);
+    expect(givesAwayTitle("good 같아", "Go")).toBe(false);
+    expect(givesAwayTitle("愛情", "Love Story 愛情故事")).toBe(true);
   });
 
   it("drops a CJK blank that is part of the title", async () => {

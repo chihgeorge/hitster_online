@@ -81,14 +81,14 @@ type PendingPlaylist = {
 };
 
 /**
- * Cached Lyrics rounds keyed by video id (the storage key minus its `prefixLen`-char prefix).
+ * Cached Lyrics rounds keyed by video id (the storage key minus `prefix`).
  * Rounds whose answer gives the visible title away are left out: entries cached before that
  * check existed count as uncached, so they're regenerated (and the cache overwritten).
  */
-function fairRounds(raw: Map<string, LyricsResult>, prefixLen: number): Map<string, LyricsResult> {
+function fairRounds(raw: Map<string, LyricsResult>, prefix: string): Map<string, LyricsResult> {
   return new Map([...raw]
     .filter(([, l]) => !givesAwayTitle(l.blankSentence, l.title))
-    .map(([k, l]) => [k.slice(prefixLen), l]));
+    .map(([k, l]) => [k.slice(prefix.length), l]));
 }
 
 export default class HitsterRoom implements Party.Server {
@@ -665,7 +665,7 @@ export default class HitsterRoom implements Party.Server {
     const lyricsCacheRaw = await storageBatchGet<LyricsResult>(this.room.storage,
       enrichedTracks.map((t) => `lyrics:${t.videoId}`)
     );
-    const cachedLyrics = fairRounds(lyricsCacheRaw, 7);
+    const cachedLyrics = fairRounds(lyricsCacheRaw, "lyrics:");
     const uncachedTracks = enrichedTracks.filter((t) => !cachedLyrics.has(t.videoId));
 
     // If we have cached results, broadcast them immediately so the table is not empty.
@@ -1177,7 +1177,7 @@ export default class HitsterRoom implements Party.Server {
       const lyricsCacheRaw = await storageBatchGet<LyricsResult>(this.room.storage,
         enrichedTracks.map((t) => `lyrics:${t.videoId}`)
       );
-      const cachedLyrics = fairRounds(lyricsCacheRaw, 7);
+      const cachedLyrics = fairRounds(lyricsCacheRaw, "lyrics:");
       const uncachedTracks = enrichedTracks.filter((t) => !cachedLyrics.has(t.videoId));
 
       // Use preloaded Haiku preview as the candidate pool.
@@ -1198,7 +1198,7 @@ export default class HitsterRoom implements Party.Server {
       const sonnetCacheRaw = await storageBatchGet<LyricsResult>(this.room.storage,
         deckCandidates.map((t) => `lyrics-sonnet:${t.videoId}`)
       );
-      const sonnetCached = fairRounds(sonnetCacheRaw, 14);
+      const sonnetCached = fairRounds(sonnetCacheRaw, "lyrics-sonnet:");
       const sonnetUncached = deckCandidates.filter((t) => !sonnetCached.has(t.videoId));
 
       // Popularity grounding (docs/designs/lyrics-question-search-grounding.md, Approach C):

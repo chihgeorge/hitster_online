@@ -166,6 +166,30 @@ Also tracked earlier as "Player shows "Submitted!" before the server acknowledge
 
 ## Lyrics Mode
 
+### Songs whose Lyrics round is dropped are re-resolved on every preview and game start
+
+**What:** Cache a "no usable round" marker for songs whose generated round is dropped (title giveaway, low confidence).
+
+**Why:** Each preview and game start re-sends those songs to Haiku/Sonnet, paying again for a round that is often dropped again.
+
+**Context:** `party/index.ts` only caches non-empty results under `lyrics:` / `lyrics-sonnet:`, and `fairRounds()` treats a cached giveaway as uncached so it gets regenerated. Live runs showed a title-giveaway round in about 1 of 3 Sonnet batches. Needs a versioned marker (or TTL) so a prompt change can retry. _Deferred from /ship review on refactor/prompt-structured-outputs, 2026-09-24._
+
+**Effort:** S
+**Priority:** P2
+**Depends on:** None
+
+### A Lyrics round the host fills in by hand is dropped at game start
+
+**What:** Build a deck round from the host's override when the song has no generated round.
+
+**Why:** The host can fill an empty preview row (the lyric-edit prompt supports it), but the round silently disappears from the game.
+
+**Context:** The deck build in `party/index.ts` does `if (!base) continue` before applying `lyricOverrides`. When the override has a `lyricContext` containing `___` and a non-empty `blankSentence`, build the round from it plus the track's title/artist (language via `detectLanguageHint`). Predates the title guard, but the guard makes empty rows more common. _Found by /ship red team on refactor/prompt-structured-outputs, 2026-09-24._
+
+**Effort:** S
+**Priority:** P2
+**Depends on:** None
+
 ### E2E: verify lrclib → Claude pipeline with a real player in the room
 
 **What:** E2E: verify lrclib → Claude pipeline with a real player in the room.
@@ -309,6 +333,18 @@ _Surfaced by /cso on 2026-09-16_
 **Depends on:** None
 
 ## Testing
+
+### Mobile Safari e2e specs time out at random under full-suite load
+
+**What:** One or two Mobile Safari specs fail on each full `npm run test:e2e` run with `browserContext.close: Test ended` / 120s test timeout.
+
+**Why:** A flaky suite hides real regressions: a red run stops meaning anything.
+
+**Context:** A different spec fails each run (seen: `guess-mode.spec.ts:38`, `two-player-game.spec.ts:151`, `cpop-multiplayer.spec.ts:57`); every one passes in isolation (`--repeat-each=2`), and `main` shows the same flake, so it is WebKit timing under load, not any one change. Start by checking the Playwright worker count and per-test timeouts for the Mobile Safari project. _Found by /ship on refactor/prompt-structured-outputs, 2026-09-24._
+
+**Effort:** M
+**Priority:** P0
+**Depends on:** None
 
 ### e2e coverage for the host/screen split (3-role flows)
 

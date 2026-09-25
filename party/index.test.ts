@@ -2367,6 +2367,28 @@ describe("Lyrics Mode: generateLyricsPreview broadcasts LYRICS_PREVIEW", () => {
     delete process.env.ANTHROPIC_API_KEY;
   });
 
+  it("leaves a cached round that gives the title away out of the host preview", async () => {
+    vi.mocked(fetchPlaylistItems).mockResolvedValue([
+      { videoId: "v1", title: "Song A", description: "", channelTitle: "Artist" },
+      { videoId: "v2", title: "Song B", description: "", channelTitle: "Artist" },
+    ]);
+    vi.mocked(fetchEmbeddableVideoIds).mockResolvedValue(new Set(["v1", "v2"]));
+    vi.mocked(resolveTracksWithAI).mockResolvedValue(new Map());
+    const round = (title: string, blankSentence: string) =>
+      ({ title, artist: "Artist", language: "en" as const, lyricContext: "X ___", blankSentence, acceptableVariants: [] });
+    const cache: Record<string, ReturnType<typeof round>> = { "lyrics:v1": round("Song A", "song a"), "lyrics:v2": round("Song B", "world") };
+    const mockRoom = makeRoom();
+    (mockRoom.storage.get as ReturnType<typeof vi.fn>).mockImplementation((keys: unknown) =>
+      Promise.resolve(new Map(Array.isArray(keys) ? keys.filter((k: string) => k in cache).map((k: string) => [k, cache[k]]) : [])));
+    const room = new HitsterRoom(mockRoom as any);
+    const conn = makeConn();
+    await send(room, conn, { type: "LOAD_PLAYLIST", hostId: "host-uuid", playlistUrl: "PLtest", gameMode: "lyrics" });
+    await new Promise<void>((resolve) => setTimeout(resolve, 0));
+    const previews = (conn.send as ReturnType<typeof vi.fn>).mock.calls.map((c) => JSON.parse(c[0] as string))
+      .filter((m: { type: string }) => m.type === "LYRICS_PREVIEW");
+    expect(previews.at(-1)?.rounds.map((r: { videoId: string }) => r.videoId)).toEqual(["v2"]);
+  });
+
   it("broadcasts LYRICS_PREVIEW with loading:false after cached lyrics loaded", async () => {
     const TWO_TRACKS = [
       { videoId: "v1", title: "Song A", description: "", channelTitle: "Artist" },
