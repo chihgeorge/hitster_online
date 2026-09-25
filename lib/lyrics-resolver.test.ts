@@ -392,6 +392,30 @@ describe("structured outputs parsing + title guard", () => {
     expect(call[1].signal).toBeInstanceOf(AbortSignal);
   });
 
+  it("times out thinking (game) calls at 120s and Haiku calls at 30s", async () => {
+    const spy = vi.spyOn(AbortSignal, "timeout");
+    routeFetch(anthropicResponse([]));
+    await resolveLyricsForTracks([TRACK], "key", undefined, "claude-sonnet-5");
+    await resolveLyricsForTracks([TRACK], "key");
+    // lrclib's own 4s timeouts are filtered out; order is game call, then bulk call.
+    expect(spy.mock.calls.map(([ms]) => ms).filter((ms) => ms !== 4000)).toEqual([120_000, 30_000]);
+    spy.mockRestore();
+  });
+
+  it("logs a non-end_turn stop_reason (truncated batch) but not end_turn", async () => {
+    const err = vi.spyOn(console, "error").mockImplementation(() => {});
+    const withStop = (stop_reason: string) =>
+      ({ ok: true, json: () => Promise.resolve({ stop_reason, content: [{ type: "text", text: '{"items":[' }] }) }) as Response;
+    routeFetch(withStop("max_tokens"));
+    expect((await resolveLyricsForTracks([TRACK], "key", undefined, "claude-sonnet-5")).size).toBe(0);
+    expect(err).toHaveBeenCalledWith("[lyrics-resolver] claude-sonnet-5 stopped with max_tokens");
+    err.mockClear();
+    routeFetch({ ok: true, json: () => Promise.resolve({ stop_reason: "end_turn", content: [{ type: "text", text: '{"items":[]}' }] }) } as Response);
+    await resolveLyricsForTracks([TRACK], "key");
+    expect(err.mock.calls.some(([m]) => String(m).includes("stopped with"))).toBe(false);
+    err.mockRestore();
+  });
+
   it("fails open on malformed JSON, missing items, non-array items, and a thinking-only response", async () => {
     const replies = [
       rawAnthropic([{ type: "text", text: "not json" }]),
