@@ -41,7 +41,8 @@ const words = (s: string) =>
 /**
  * Players see the title during the round, so an answer built from it gives itself away.
  * A CJK answer to a CJK title is compared as text: CJK titles are a few short words that
- * reappear in the lyric line, so any part of the title counts. Otherwise (including mixed
+ * reappear in the lyric line, so any part of the title counts — the answer contains, sits
+ * inside, or shares any two adjacent CJK characters with it (幸運的 for 小幸運). Otherwise (including mixed
  * lines like "good 같아" against the title "Go") answers are compared word by word:
  * they give it away by containing the whole title, or by using only title words
  * ("let it be"), never by sharing letters ("all" in "Wonderwall", "someone" vs "One").
@@ -50,7 +51,11 @@ export function givesAwayTitle(blank: string, title: string): boolean {
   const nb = normGuess(blank);
   const nt = normGuess(title);
   if (!nb || !nt) return false;
-  if (isCJKText(blank) && isCJKText(title)) return nb.includes(nt) || nt.includes(nb);
+  if (isCJKText(blank) && isCJKText(title)) {
+    if (nb.includes(nt) || nt.includes(nb)) return true;
+    const t = [...nt];
+    return t.some((c, i) => i + 1 < t.length && isCJKText(c) && isCJKText(t[i + 1]) && nb.includes(c + t[i + 1]));
+  }
   const bw = words(blank);
   const tw = words(title);
   return ` ${bw.join(" ")} `.includes(` ${tw.join(" ")} `) || bw.every((w) => tw.includes(w));
