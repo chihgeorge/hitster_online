@@ -264,9 +264,8 @@ describe("HostPage: screen link edges", () => {
     render(<HostPage />);
     await waitFor(() => screen.getByAltText("大螢幕 QR"));
     expect(spy.mock.calls.map((c) => c[0])).toContain(`${window.location.origin}/room/ABCD/screen`);
-    expect(spy.mock.calls.map((c) => c[0])).not.toContain("/room/ABCD/screen"); // never an origin-less QR
+    expect(spy.mock.calls.every((c) => String(c[0]).startsWith(window.location.origin))).toBe(true); // never "" or a bare path
     expect(screen.getByTestId("screen-link").getAttribute("rel")).toBe("noopener");
-    spy.mockRestore();
   });
 
   it("server render has no origin: placeholder instead of QR, link text is the bare path (hydration-safe)", async () => {
