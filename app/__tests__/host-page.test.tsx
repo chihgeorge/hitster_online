@@ -321,3 +321,22 @@ describe("HostPage: screen link when popups are blocked", () => {
     expect(tab.focus).toHaveBeenCalled();
   });
 });
+
+describe("HostPage: screen link edge clicks", () => {
+  it("leaves modified clicks (Cmd/Ctrl/Shift) to the browser", async () => {
+    const open = vi.spyOn(window, "open");
+    render(<HostPage />);
+    fireEvent.click(await waitFor(() => screen.getByTestId("screen-link")), { metaKey: true });
+    expect(open).not.toHaveBeenCalled();
+  });
+
+  it("re-points a screen tab that moved to another origin instead of doing nothing", async () => {
+    const tab = { focus: vi.fn(), location: { href: "https://www.youtube.com/watch" } };
+    Object.defineProperty(tab.location, "pathname", { get: () => { throw new DOMException("cross-origin", "SecurityError"); } });
+    vi.spyOn(window, "open").mockReturnValue(tab as unknown as Window);
+    render(<HostPage />);
+    fireEvent.click(await waitFor(() => screen.getByTestId("screen-link")));
+    expect(tab.location.href).toBe("/room/ABCD/screen");
+    expect(tab.focus).toHaveBeenCalled();
+  });
+});

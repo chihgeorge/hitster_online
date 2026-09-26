@@ -212,7 +212,7 @@ _Surfaced by adversarial review on feat/lyrics-api 2026-09-17_
 
 **Why:** A cross-origin frame on the screen page could, in theory, redirect the host tab (reverse tabnabbing).
 
-**Context:** The link uses a named target (`hitster-screen-<code>`) so repeat taps reuse one tab. Both `rel="noopener"` and `window.opener = null` on the screen page make WebKit open a new tab on every tap (verified with Playwright), so neither is used. The only cross-origin code on /screen is YouTube's official embed. Revisit if another third-party frame is added, or with a `postMessage`/BroadcastChannel handshake that doesn't need the opener. _Accepted tradeoff from /ship on feat/host-screen-link, 2026-09-26._
+**Context:** The link uses a named target (`hitster-screen-<code>`) so repeat taps reuse one tab. Both `rel="noopener"` and `window.opener = null` on the screen page make WebKit open a new tab on every tap (verified with Playwright), so neither is used. The only cross-origin code on /screen is YouTube's official embed. The same opener link is also how the host finds the tab: if the host page is closed and reopened (or the tab is discarded and restored), `window.open("", name)` can't find the existing screen tab and a second one opens, playing audio twice. Revisit both with a BroadcastChannel handshake (the screen page answers a ping) that doesn't need the opener, or if another third-party frame is added. _Accepted tradeoff from /ship on feat/host-screen-link, 2026-09-26._
 
 **Effort:** M
 **Priority:** P3

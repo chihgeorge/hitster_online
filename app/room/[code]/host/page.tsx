@@ -490,7 +490,7 @@ export default function HostPage() {
           </div>
           {/* Big screen: open on a TV/projector. Never shown to players — the code above is the
               only thing they need, this link is host-only setup. Scan the QR, or tap/click the whole
-              card (a touch-sized target) to open the same URL in a new tab. */}
+              card (a touch-sized target) to open the same URL in the screen tab (reused and focused if already open). */}
           <a
             data-testid="screen-link"
             href={screenPath}
@@ -500,12 +500,20 @@ export default function HostPage() {
             // YouTube embed, which could in theory reach this tab through top.opener (TODOS.md P3).
             target={screenTab}
             onClick={(e) => {
+              // Cmd/Ctrl/Shift/Alt-click keep the browser's own meaning (background tab, new window).
+              if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || e.button !== 0) return;
               // An already-open screen tab is focused, not reloaded: re-following the link would
               // restart the music mid-round. Popup blocked → fall back to the plain link.
               const tab = window.open("", screenTab);
               if (!tab) return;
               e.preventDefault();
-              if (tab.location.pathname !== screenPath) tab.location.href = screenPath;
+              let onScreen = false;
+              try {
+                onScreen = tab.location.pathname === screenPath;
+              } catch {
+                // The tab moved to another origin (e.g. clicked through from the YouTube embed).
+              }
+              if (!onScreen) tab.location.href = screenPath;
               tab.focus();
             }}
             // An empty touch listener lets iOS Safari apply :active (pressed feedback).
