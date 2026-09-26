@@ -246,11 +246,11 @@ describe("HostPage: Guess Mode start", () => {
 });
 
 describe("HostPage: screen link", () => {
-  it("shows the full screen URL as a new-tab link, and keeps it after the game starts", async () => {
+  it("shows the full screen URL as a link to one named screen tab, and keeps it after the game starts", async () => {
     render(<HostPage />);
     const link = await waitFor(() => screen.getByTestId("screen-link"));
     expect(link.getAttribute("href")).toBe("/room/ABCD/screen");
-    expect(link.getAttribute("target")).toBe("_blank");
+    expect(link.getAttribute("target")).toBe("hitster-screen-ABCD"); // named: repeat taps reuse one tab
     await waitFor(() => expect(link.textContent).toContain(`${window.location.origin}/room/ABCD/screen`));
     serverSends({ type: "STATE", state: { ...lobbyStateWithPlayer, phase: "guessing" } });
     expect(screen.getByTestId("screen-link").getAttribute("href")).toBe("/room/ABCD/screen");

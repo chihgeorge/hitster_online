@@ -493,7 +493,8 @@ export default function HostPage() {
           <a
             data-testid="screen-link"
             href={screenPath}
-            target="_blank"
+            // Named target: repeat taps reuse one screen tab instead of opening a second player.
+            target={`hitster-screen-${params.code}`}
             rel="noopener"
             style={{ display: "flex", alignItems: "center", gap: 10, background: "var(--surface2)", borderRadius: 16, padding: "10px 14px", border: "2px solid rgba(255,107,53,.15)", textDecoration: "none" }}
           >
