@@ -79,9 +79,11 @@ test.describe("Host screen link", () => {
     const [screenTab] = await Promise.all([context.waitForEvent("page"), link.click()]);
     await screenTab.waitForURL(new RegExp(`/room/${code}/screen$`));
     await expect(screenTab.getByText("掃描加入 · Scan to join")).toBeVisible({ timeout: 10_000 });
-    // A second tap reuses the same named tab: never two screen players.
+    // A second tap focuses the same tab: no second screen player, no reload mid-round.
+    await screenTab.evaluate(() => { (window as unknown as { __kept: boolean }).__kept = true; });
     const newTab = context.waitForEvent("page", { timeout: 2000 });
     await link.click();
     await expect(newTab).rejects.toThrow();
+    expect(await screenTab.evaluate(() => (window as unknown as { __kept?: boolean }).__kept)).toBe(true);
   });
 });

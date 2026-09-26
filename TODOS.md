@@ -206,6 +206,18 @@ _Surfaced by adversarial review on feat/lyrics-api 2026-09-17_
 
 ## Host & Screen
 
+### The screen tab opened from the host link keeps a reference to the host tab
+
+**What:** A screen tab opened from the host header link has `window.opener` pointing at the host tab.
+
+**Why:** A cross-origin frame on the screen page could, in theory, redirect the host tab (reverse tabnabbing).
+
+**Context:** The link uses a named target (`hitster-screen-<code>`) so repeat taps reuse one tab. Both `rel="noopener"` and `window.opener = null` on the screen page make WebKit open a new tab on every tap (verified with Playwright), so neither is used. The only cross-origin code on /screen is YouTube's official embed. Revisit if another third-party frame is added, or with a `postMessage`/BroadcastChannel handshake that doesn't need the opener. _Accepted tradeoff from /ship on feat/host-screen-link, 2026-09-26._
+
+**Effort:** M
+**Priority:** P3
+**Depends on:** None
+
 ### Host setup says "N 首歌曲有確認年份" in Guess/Lyrics mode
 
 **What:** Host setup says "N 首歌曲有確認年份" in Guess/Lyrics mode.

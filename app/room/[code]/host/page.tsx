@@ -33,6 +33,7 @@ export default function HostPage() {
   const [origin, setOrigin] = useState("");
   useEffect(() => setOrigin(window.location.origin), []);
   const screenPath = `/room/${params.code}/screen`;
+  const screenTab = `hitster-screen-${params.code}`;
   const [state, setState] = useState<GameState | null>(null);
   const [playlistUrl, setPlaylistUrl] = useState("");
   const [targetCount, setTargetCount] = useState(10);
@@ -494,12 +495,24 @@ export default function HostPage() {
             data-testid="screen-link"
             href={screenPath}
             // Named target: repeat taps reuse one screen tab instead of opening a second player.
-            // No rel="noopener": browsers treat a noopener named target like _blank (a new tab
-            // every tap). The link is same-origin and relative, so noopener protects nothing here.
-            target={`hitster-screen-${params.code}`}
+            // No rel="noopener" (and the screen page keeps window.opener): either one makes WebKit
+            // open a new tab every tap. Accepted: the screen tab's only cross-origin code is the
+            // YouTube embed, which could in theory reach this tab through top.opener (TODOS.md P3).
+            target={screenTab}
+            onClick={(e) => {
+              // An already-open screen tab is focused, not reloaded: re-following the link would
+              // restart the music mid-round. Popup blocked → fall back to the plain link.
+              const tab = window.open("", screenTab);
+              if (!tab) return;
+              e.preventDefault();
+              if (tab.location.pathname !== screenPath) tab.location.href = screenPath;
+              tab.focus();
+            }}
+            // An empty touch listener lets iOS Safari apply :active (pressed feedback).
+            onTouchStart={() => {}}
             className="tap-card"
-            // One clear name for screen readers instead of QR alt + emoji + caption + URL + "↗".
-            aria-label={`開啟大螢幕（新分頁）：${origin + screenPath}`}
+            // One clear name for screen readers, starting with the visible caption (WCAG label-in-name).
+            aria-label={`在電視掃描，或點此開啟大螢幕：${origin + screenPath}`}
             style={{ display: "flex", alignItems: "center", gap: 10, background: "var(--surface2)", borderRadius: 16, padding: "10px 14px", border: "2px solid rgba(255,107,53,.15)", textDecoration: "none" }}
           >
             <Qr text={origin && origin + screenPath} size={64} alt="大螢幕 QR" />

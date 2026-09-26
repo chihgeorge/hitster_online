@@ -251,7 +251,7 @@ describe("HostPage: screen link", () => {
     const link = await waitFor(() => screen.getByTestId("screen-link"));
     expect(link.getAttribute("href")).toBe("/room/ABCD/screen");
     expect(link.getAttribute("target")).toBe("hitster-screen-ABCD"); // named: repeat taps reuse one tab
-    await waitFor(() => expect(link.getAttribute("aria-label")).toBe(`開啟大螢幕（新分頁）：${window.location.origin}/room/ABCD/screen`));
+    await waitFor(() => expect(link.getAttribute("aria-label")).toBe(`在電視掃描，或點此開啟大螢幕：${window.location.origin}/room/ABCD/screen`));
     await waitFor(() => expect(link.textContent).toContain(`${window.location.origin}/room/ABCD/screen`));
     serverSends({ type: "STATE", state: { ...lobbyStateWithPlayer, phase: "guessing" } });
     expect(screen.getByTestId("screen-link").getAttribute("href")).toBe("/room/ABCD/screen");
@@ -275,5 +275,25 @@ describe("HostPage: screen link edges", () => {
     expect(html).not.toContain("大螢幕 QR");
     expect(html).not.toContain(window.location.origin);
     expect(html).toMatch(/data-testid="screen-link"[^>]*>[\s\S]*>\/room\/ABCD\/screen(<!-- -->)? <span[^>]*>↗</);
+  });
+});
+
+describe("HostPage: screen link reuses an open screen tab", () => {
+  it("focuses an already-open screen tab instead of reloading it", async () => {
+    const tab = { location: { pathname: "/room/ABCD/screen", href: "keep" }, focus: vi.fn() };
+    vi.spyOn(window, "open").mockReturnValue(tab as unknown as Window);
+    render(<HostPage />);
+    fireEvent.click(await waitFor(() => screen.getByTestId("screen-link")));
+    expect(window.open).toHaveBeenCalledWith("", "hitster-screen-ABCD");
+    expect(tab.location.href).toBe("keep"); // not navigated again
+    expect(tab.focus).toHaveBeenCalled();
+  });
+
+  it("points a fresh tab at the screen page", async () => {
+    const tab = { location: { pathname: "blank", href: "about:blank" }, focus: vi.fn() };
+    vi.spyOn(window, "open").mockReturnValue(tab as unknown as Window);
+    render(<HostPage />);
+    fireEvent.click(await waitFor(() => screen.getByTestId("screen-link")));
+    expect(tab.location.href).toBe("/room/ABCD/screen");
   });
 });
