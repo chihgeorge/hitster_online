@@ -273,6 +273,6 @@ describe("HostPage: screen link edges", () => {
     const html = renderToString(<HostPage />);
     expect(html).not.toContain("大螢幕 QR");
     expect(html).not.toContain(window.location.origin);
-    expect(html).toMatch(/data-testid="screen-link"[^>]*>[\s\S]*>\/room\/ABCD\/screen(<!-- -->)? ↗</);
+    expect(html).toMatch(/data-testid="screen-link"[^>]*>[\s\S]*>\/room\/ABCD\/screen(<!-- -->)? <span[^>]*>↗</);
   });
 });

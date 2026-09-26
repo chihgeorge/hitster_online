@@ -496,13 +496,17 @@ export default function HostPage() {
             // Named target: repeat taps reuse one screen tab instead of opening a second player.
             target={`hitster-screen-${params.code}`}
             rel="noopener"
+            className="tap-card"
             style={{ display: "flex", alignItems: "center", gap: 10, background: "var(--surface2)", borderRadius: 16, padding: "10px 14px", border: "2px solid rgba(255,107,53,.15)", textDecoration: "none" }}
           >
             <Qr text={origin && origin + screenPath} size={64} alt="大螢幕 QR" />
             <div style={{ fontSize: 11, color: "var(--text2)", maxWidth: 160, lineHeight: 1.4 }}>
-              📺 在電視或投影機掃描開啟大螢幕
-              <span style={{ display: "block", marginTop: 4, color: "var(--orange)", fontWeight: 700, wordBreak: "break-all" }}>
-                {origin + screenPath} ↗
+              📺 在電視掃描，或點此開啟大螢幕
+              {/* Ink, not orange: small orange on the card is too low-contrast for a URL someone
+                  reads out or types. Room for three lines so the card doesn't grow when the origin
+                  arrives after mount. */}
+              <span style={{ display: "block", marginTop: 4, minHeight: "4.2em", color: "var(--ink)", fontWeight: 700, wordBreak: "break-all" }}>
+                {origin + screenPath} <span style={{ color: "var(--orange)" }}>↗</span>
               </span>
             </div>
           </a>
