@@ -244,3 +244,15 @@ describe("HostPage: Guess Mode start", () => {
     expect((screen.getByTestId("start-game-btn") as HTMLButtonElement).disabled).toBe(false);
   });
 });
+
+describe("HostPage: screen link", () => {
+  it("shows the full screen URL as a new-tab link, in every phase", async () => {
+    render(<HostPage />);
+    const link = await waitFor(() => screen.getByTestId("screen-link"));
+    expect(link.getAttribute("href")).toBe("/room/ABCD/screen");
+    expect(link.getAttribute("target")).toBe("_blank");
+    await waitFor(() => expect(link.textContent).toContain(`${window.location.origin}/room/ABCD/screen`));
+    serverSends({ type: "STATE", state: { ...lobbyStateWithPlayer, phase: "guessing" } });
+    expect(screen.getByTestId("screen-link")).toBeTruthy();
+  });
+});

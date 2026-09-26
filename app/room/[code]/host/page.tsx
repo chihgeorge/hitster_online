@@ -29,6 +29,10 @@ type LoadStatus = "idle" | "loading" | "ready" | "error";
 
 export default function HostPage() {
   const params = useParams<{ code: string }>();
+  // Read after mount so server and client render the same text (no hydration mismatch).
+  const [origin, setOrigin] = useState("");
+  useEffect(() => setOrigin(window.location.origin), []);
+  const screenPath = `/room/${params.code}/screen`;
   const [state, setState] = useState<GameState | null>(null);
   const [playlistUrl, setPlaylistUrl] = useState("");
   const [targetCount, setTargetCount] = useState(10);
@@ -486,9 +490,19 @@ export default function HostPage() {
           {/* Big screen: open on a TV/projector. Never shown to players — the code above is the
               only thing they need, this link is host-only setup. */}
           <div style={{ display: "flex", alignItems: "center", gap: 10, background: "var(--surface2)", borderRadius: 16, padding: "10px 14px", border: "2px solid rgba(255,107,53,.15)" }}>
-            <Qr text={typeof window !== "undefined" ? `${window.location.origin}/room/${params.code}/screen` : ""} size={64} alt="大螢幕 QR" />
-            <div style={{ fontSize: 11, color: "var(--text2)", maxWidth: 120, lineHeight: 1.4 }}>
+            {origin ? <Qr text={origin + screenPath} size={64} alt="大螢幕 QR" /> : <div style={{ width: 64, height: 64 }} />}
+            <div style={{ fontSize: 11, color: "var(--text2)", maxWidth: 160, lineHeight: 1.4 }}>
               📺 在電視或投影機掃描開啟大螢幕
+              {/* Same URL as the QR, for a laptop/TV browser that can't scan it. */}
+              <a
+                data-testid="screen-link"
+                href={screenPath}
+                target="_blank"
+                rel="noopener"
+                style={{ display: "block", marginTop: 4, color: "var(--orange)", fontWeight: 700, wordBreak: "break-all" }}
+              >
+                {origin + screenPath} ↗
+              </a>
             </div>
           </div>
         </div>
