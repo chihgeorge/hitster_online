@@ -297,3 +297,27 @@ describe("HostPage: screen link reuses an open screen tab", () => {
     expect(tab.location.href).toBe("/room/ABCD/screen");
   });
 });
+
+describe("HostPage: screen link when popups are blocked", () => {
+  it("falls back to the plain link (default not prevented) when window.open returns null", async () => {
+    vi.spyOn(window, "open").mockReturnValue(null);
+    render(<HostPage />);
+    let prevented: boolean | undefined;
+    // Bubble listener runs after React's handler: record, then stop happy-dom actually navigating.
+    const spyNav = (e: Event) => { prevented = e.defaultPrevented; e.preventDefault(); };
+    document.addEventListener("click", spyNav);
+    fireEvent.click(await waitFor(() => screen.getByTestId("screen-link")));
+    document.removeEventListener("click", spyNav);
+    expect(window.open).toHaveBeenCalledWith("", "hitster-screen-ABCD");
+    expect(prevented).toBe(false); // browser follows href/target itself
+  });
+
+  it("prevents the default navigation when it handled the tab itself", async () => {
+    const tab = { location: { pathname: "blank", href: "about:blank" }, focus: vi.fn() };
+    vi.spyOn(window, "open").mockReturnValue(tab as unknown as Window);
+    render(<HostPage />);
+    const notPrevented = fireEvent.click(await waitFor(() => screen.getByTestId("screen-link")));
+    expect(notPrevented).toBe(false);
+    expect(tab.focus).toHaveBeenCalled();
+  });
+});

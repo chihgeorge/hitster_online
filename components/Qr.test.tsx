@@ -28,4 +28,12 @@ describe("Qr", () => {
     render(<Qr text="" alt="qr" />);
     expect(spy).not.toHaveBeenCalled();
   });
+
+  it("never shows an image drawn at the old size after size changes", async () => {
+    const { rerender } = render(<Qr text="https://a.test/one" size={64} alt="qr" />);
+    await waitFor(() => screen.getByAltText("qr"));
+    vi.spyOn(QRCode, "toDataURL").mockReturnValue(new Promise(() => {}) as never);
+    rerender(<Qr text="https://a.test/one" size={96} alt="qr" />);
+    expect(screen.queryByAltText("qr")).toBeNull();
+  });
 });
