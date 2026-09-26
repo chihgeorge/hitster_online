@@ -40,7 +40,7 @@ beforeEach(() => {
   vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, json: () => Promise.resolve({ entries: [] }) }));
   localStorage.clear();
 });
-afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
+afterEach(() => { cleanup(); vi.unstubAllGlobals(); vi.restoreAllMocks(); });
 
 const lobbyStateEmpty: GameState = { ...lobbyStateWithPlayer, players: {} };
 
@@ -246,14 +246,14 @@ describe("HostPage: Guess Mode start", () => {
 });
 
 describe("HostPage: screen link", () => {
-  it("shows the full screen URL as a new-tab link, in every phase", async () => {
+  it("shows the full screen URL as a new-tab link, and keeps it after the game starts", async () => {
     render(<HostPage />);
     const link = await waitFor(() => screen.getByTestId("screen-link"));
     expect(link.getAttribute("href")).toBe("/room/ABCD/screen");
     expect(link.getAttribute("target")).toBe("_blank");
     await waitFor(() => expect(link.textContent).toContain(`${window.location.origin}/room/ABCD/screen`));
     serverSends({ type: "STATE", state: { ...lobbyStateWithPlayer, phase: "guessing" } });
-    expect(screen.getByTestId("screen-link")).toBeTruthy();
+    expect(screen.getByTestId("screen-link").getAttribute("href")).toBe("/room/ABCD/screen");
   });
 });
 
@@ -274,7 +274,6 @@ describe("HostPage: screen link edges", () => {
     const html = renderToString(<HostPage />);
     expect(html).not.toContain("大螢幕 QR");
     expect(html).not.toContain(window.location.origin);
-    expect(html).toMatch(/data-testid="screen-link"[^>]*>\/room\/ABCD\/screen(<!-- -->)? ↗<\/a>/);
-    expect(html).toContain("width:64px;height:64px");
+    expect(html).toMatch(/data-testid="screen-link"[^>]*>[\s\S]*>\/room\/ABCD\/screen(<!-- -->)? ↗</);
   });
 });

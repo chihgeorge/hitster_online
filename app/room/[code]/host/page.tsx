@@ -488,23 +488,23 @@ export default function HostPage() {
             </p>
           </div>
           {/* Big screen: open on a TV/projector. Never shown to players — the code above is the
-              only thing they need, this link is host-only setup. */}
-          <div style={{ display: "flex", alignItems: "center", gap: 10, background: "var(--surface2)", borderRadius: 16, padding: "10px 14px", border: "2px solid rgba(255,107,53,.15)" }}>
-            {origin ? <Qr text={origin + screenPath} size={64} alt="大螢幕 QR" /> : <div style={{ width: 64, height: 64 }} />}
+              only thing they need, this link is host-only setup. Scan the QR, or tap/click the whole
+              card (a touch-sized target) to open the same URL in a new tab. */}
+          <a
+            data-testid="screen-link"
+            href={screenPath}
+            target="_blank"
+            rel="noopener"
+            style={{ display: "flex", alignItems: "center", gap: 10, background: "var(--surface2)", borderRadius: 16, padding: "10px 14px", border: "2px solid rgba(255,107,53,.15)", textDecoration: "none" }}
+          >
+            <Qr text={origin && origin + screenPath} size={64} alt="大螢幕 QR" />
             <div style={{ fontSize: 11, color: "var(--text2)", maxWidth: 160, lineHeight: 1.4 }}>
               📺 在電視或投影機掃描開啟大螢幕
-              {/* Same URL as the QR, for a laptop/TV browser that can't scan it. */}
-              <a
-                data-testid="screen-link"
-                href={screenPath}
-                target="_blank"
-                rel="noopener"
-                style={{ display: "block", marginTop: 4, color: "var(--orange)", fontWeight: 700, wordBreak: "break-all" }}
-              >
+              <span style={{ display: "block", marginTop: 4, color: "var(--orange)", fontWeight: 700, wordBreak: "break-all" }}>
                 {origin + screenPath} ↗
-              </a>
+              </span>
             </div>
-          </div>
+          </a>
         </div>
         <div style={{ textAlign: "right", fontSize: 13, display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 3, flexShrink: 1, minWidth: 0 }}>
           {Object.values(state?.players ?? {}).length === 0 ? (
