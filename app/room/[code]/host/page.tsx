@@ -494,8 +494,9 @@ export default function HostPage() {
             data-testid="screen-link"
             href={screenPath}
             // Named target: repeat taps reuse one screen tab instead of opening a second player.
+            // No rel="noopener": browsers treat a noopener named target like _blank (a new tab
+            // every tap). The link is same-origin and relative, so noopener protects nothing here.
             target={`hitster-screen-${params.code}`}
-            rel="noopener"
             className="tap-card"
             // One clear name for screen readers instead of QR alt + emoji + caption + URL + "↗".
             aria-label={`開啟大螢幕（新分頁）：${origin + screenPath}`}

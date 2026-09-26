@@ -16,8 +16,9 @@ describe("Qr", () => {
 
   it("keeps the blank box when the text can't be encoded", async () => {
     const spy = vi.spyOn(QRCode, "toDataURL").mockRejectedValue(new Error("too big") as never);
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     const { container } = render(<Qr text={"x".repeat(5000)} size={64} alt="qr" />);
-    await waitFor(() => expect(spy).toHaveBeenCalled());
+    await waitFor(() => expect(warn).toHaveBeenCalled()); // failure is logged, not silent
     expect(screen.queryByAltText("qr")).toBeNull();
     expect(container.querySelector("div")?.getAttribute("style")).toContain("64px");
   });

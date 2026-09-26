@@ -14,8 +14,9 @@ export function Qr({ text, size = 88, alt = "掃描開啟" }: { text: string; si
     // a real color string, not a CSS custom property it can't resolve outside the DOM style system.
     QRCode.toDataURL(text, { width: size, margin: 1, color: { dark: "#1A1A2E", light: "#FFFFFF" } }).then((url) => {
       if (live) setDrawn({ text, src: url });
-    }).catch(() => {
-      // Too much data for a QR (e.g. a hand-typed, very long room code): keep the blank box.
+    }).catch((err) => {
+      // E.g. too much data for a QR (a hand-typed, very long room code): keep the blank box.
+      console.warn("[Qr] could not draw QR code", err);
     });
     return () => {
       live = false;
