@@ -256,3 +256,25 @@ describe("HostPage: screen link", () => {
     expect(screen.getByTestId("screen-link")).toBeTruthy();
   });
 });
+
+describe("HostPage: screen link edges", () => {
+  it("QR encodes the same full screen URL as the link, once origin is known", async () => {
+    const QRCode = (await import("qrcode")).default;
+    const spy = vi.spyOn(QRCode, "toDataURL");
+    render(<HostPage />);
+    await waitFor(() => screen.getByAltText("大螢幕 QR"));
+    expect(spy.mock.calls.map((c) => c[0])).toContain(`${window.location.origin}/room/ABCD/screen`);
+    expect(spy.mock.calls.map((c) => c[0])).not.toContain("/room/ABCD/screen"); // never an origin-less QR
+    expect(screen.getByTestId("screen-link").getAttribute("rel")).toBe("noopener");
+    spy.mockRestore();
+  });
+
+  it("server render has no origin: placeholder instead of QR, link text is the bare path (hydration-safe)", async () => {
+    const { renderToString } = await import("react-dom/server");
+    const html = renderToString(<HostPage />);
+    expect(html).not.toContain("大螢幕 QR");
+    expect(html).not.toContain(window.location.origin);
+    expect(html).toMatch(/data-testid="screen-link"[^>]*>\/room\/ABCD\/screen(<!-- -->)? ↗<\/a>/);
+    expect(html).toContain("width:64px;height:64px");
+  });
+});

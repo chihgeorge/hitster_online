@@ -70,3 +70,14 @@ test.describe("Mobile player view", () => {
     await expect(page.locator("[data-testid='join-room-btn']")).toBeVisible();
   });
 });
+
+test.describe("Host screen link", () => {
+  test("the host can open the TV screen page from the link in the header", async ({ page, context }) => {
+    const code = await createRoomAsHost(page);
+    const link = page.getByTestId("screen-link");
+    await expect(link).toContainText(`/room/${code}/screen`);
+    const [screenTab] = await Promise.all([context.waitForEvent("page"), link.click()]);
+    await screenTab.waitForURL(new RegExp(`/room/${code}/screen$`));
+    await expect(screenTab.getByText("掃描加入 · Scan to join")).toBeVisible({ timeout: 10_000 });
+  });
+});
