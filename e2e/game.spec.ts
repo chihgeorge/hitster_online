@@ -80,8 +80,8 @@ test.describe("Host screen link", () => {
     await screenTab.waitForURL(new RegExp(`/room/${code}/screen$`));
     await expect(screenTab.getByText("掃描加入 · Scan to join")).toBeVisible({ timeout: 10_000 });
     // A second tap reuses the same named tab: never two screen players.
+    const newTab = context.waitForEvent("page", { timeout: 2000 });
     await link.click();
-    await page.waitForTimeout(1000);
-    expect(context.pages().filter((p) => /\/screen$/.test(p.url()))).toHaveLength(1);
+    await expect(newTab).rejects.toThrow();
   });
 });
