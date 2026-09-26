@@ -25,6 +25,7 @@ Fields:
 - v: the track's video ID, copied from the input.
 - t: clean song name, strip suffixes (Official MV, Audio, Lyric Video, Live, HD, 4K, etc.)
 - a: primary artist only, no ft./feat.
+- If you can't identify a track, use empty strings for t and a rather than a guess like "Unknown".
 - y: original studio/single release year as integer. Best estimate — prefer a number over null. null only for truly unidentifiable tracks.
 - Preserve CJK characters exactly.`;
 

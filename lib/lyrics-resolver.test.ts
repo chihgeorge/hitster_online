@@ -477,10 +477,12 @@ describe("structured outputs parsing + title guard", () => {
     expect(givesAwayTitle("愛情", "Love Story 愛情故事")).toBe(true);
   });
 
-  it("givesAwayTitle: a CJK answer sharing two adjacent title characters gives it away", () => {
-    expect(givesAwayTitle("幸運的", "小幸運")).toBe(true);
-    expect(givesAwayTitle("氣球飛走", "告白氣球")).toBe(true);
-    expect(givesAwayTitle("故事書", "Love Story 愛情故事")).toBe(true);
+  it("givesAwayTitle: CJK drops only clear-cut cases, never a partial overlap or across words", () => {
+    expect(givesAwayTitle("幸運的", "小幸運")).toBe(false);
+    expect(givesAwayTitle("氣球飛走", "告白氣球")).toBe(false);
+    expect(givesAwayTitle("故事", "Love Story 愛情故事")).toBe(true);
+    expect(givesAwayTitle("天雨", "晴天/雨天")).toBe(false);
+    expect(givesAwayTitle("天雨", "晴天(雨天)")).toBe(false);
     expect(givesAwayTitle("放晴的那天", "晴天")).toBe(false);
     expect(givesAwayTitle("靠得那麼近", "小幸運")).toBe(false);
     expect(givesAwayTitle("絕對不放", "倔強")).toBe(false);
