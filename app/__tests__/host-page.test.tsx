@@ -251,6 +251,7 @@ describe("HostPage: screen link", () => {
     const link = await waitFor(() => screen.getByTestId("screen-link"));
     expect(link.getAttribute("href")).toBe("/room/ABCD/screen");
     expect(link.getAttribute("target")).toBe("hitster-screen-ABCD"); // named: repeat taps reuse one tab
+    await waitFor(() => expect(link.getAttribute("aria-label")).toBe(`開啟大螢幕（新分頁）：${window.location.origin}/room/ABCD/screen`));
     await waitFor(() => expect(link.textContent).toContain(`${window.location.origin}/room/ABCD/screen`));
     serverSends({ type: "STATE", state: { ...lobbyStateWithPlayer, phase: "guessing" } });
     expect(screen.getByTestId("screen-link").getAttribute("href")).toBe("/room/ABCD/screen");

@@ -497,6 +497,8 @@ export default function HostPage() {
             target={`hitster-screen-${params.code}`}
             rel="noopener"
             className="tap-card"
+            // One clear name for screen readers instead of QR alt + emoji + caption + URL + "↗".
+            aria-label={`開啟大螢幕（新分頁）：${origin + screenPath}`}
             style={{ display: "flex", alignItems: "center", gap: 10, background: "var(--surface2)", borderRadius: 16, padding: "10px 14px", border: "2px solid rgba(255,107,53,.15)", textDecoration: "none" }}
           >
             <Qr text={origin && origin + screenPath} size={64} alt="大螢幕 QR" />
@@ -505,7 +507,7 @@ export default function HostPage() {
               {/* Ink, not orange: small orange on the card is too low-contrast for a URL someone
                   reads out or types. Room for three lines so the card doesn't grow when the origin
                   arrives after mount. */}
-              <span style={{ display: "block", marginTop: 4, minHeight: "4.2em", color: "var(--ink)", fontWeight: 700, wordBreak: "break-all" }}>
+              <span style={{ display: "block", marginTop: 4, minHeight: "4.2em", fontSize: 13, color: "var(--ink)", fontWeight: 700, wordBreak: "break-all" }}>
                 {origin + screenPath} <span style={{ color: "var(--orange)" }}>↗</span>
               </span>
             </div>
