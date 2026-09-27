@@ -323,12 +323,22 @@ describe("HostPage: screen link when popups are blocked", () => {
 });
 
 describe("HostPage: screen link edge clicks", () => {
-  it("leaves modified clicks (Cmd/Ctrl/Shift) to the browser", async () => {
-    const open = vi.spyOn(window, "open");
-    render(<HostPage />);
-    fireEvent.click(await waitFor(() => screen.getByTestId("screen-link")), { metaKey: true });
-    expect(open).not.toHaveBeenCalled();
-  });
+  it.each([{ metaKey: true }, { ctrlKey: true }, { shiftKey: true }, { altKey: true }])(
+    "leaves a modified click (%o) to the browser",
+    async (mod) => {
+      const open = vi.spyOn(window, "open");
+      render(<HostPage />);
+      const link = await waitFor(() => screen.getByTestId("screen-link"));
+      // Stop happy-dom from actually navigating; record whether the page cancelled the default.
+      let prevented: boolean | undefined;
+      const stop = (e: Event) => { prevented = e.defaultPrevented; e.preventDefault(); };
+      document.addEventListener("click", stop);
+      fireEvent.click(link, mod);
+      document.removeEventListener("click", stop);
+      expect(open).not.toHaveBeenCalled();
+      expect(prevented).toBe(false);
+    },
+  );
 
   it("re-points a screen tab that moved to another origin instead of doing nothing", async () => {
     const tab = { focus: vi.fn(), location: { href: "https://www.youtube.com/watch" } };
