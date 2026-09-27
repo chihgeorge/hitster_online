@@ -101,6 +101,13 @@ test.describe("Guess Mode", () => {
       await expect(video).toHaveAttribute("aria-hidden", "false");
       const [vBox, slotBox] = await Promise.all([video.boundingBox(), screen.locator("[data-testid='guess-video-slot']").boundingBox()]);
       expect(vBox && slotBox && [vBox.x - slotBox.x, vBox.y - slotBox.y, vBox.width - slotBox.width, vBox.height - slotBox.height].every((d) => Math.abs(d) < 2)).toBe(true);
+      // The answer card sits under the video, on screen, with the title and artist fully shown.
+      const card = screen.locator("[data-testid='guess-answer-card']");
+      const cardBox = await card.boundingBox();
+      const viewport = screen.viewportSize()!;
+      expect(cardBox && vBox && cardBox.y >= vBox.y + vBox.height && cardBox.y + cardBox.height <= viewport.height).toBe(true);
+      expect(await card.evaluate((el) => el.scrollHeight <= el.clientHeight + 1)).toBe(true);
+      await expect(card).toContainText(title);
 
       // ── Next round, then quit ─────────────────────────────────────────────
       await hostTap(host, "guess-next-btn");

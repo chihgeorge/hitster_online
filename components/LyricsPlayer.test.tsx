@@ -284,6 +284,18 @@ describe("LyricsPlayer: can't-play notice and fallback button", () => {
     expect(screen.queryByTestId("lyrics-audio-error")).toBeNull();
   });
 
+  it("puts the notice over the framed video, not over the content beside it", () => {
+    const frame = { top: 70, right: 32, width: 480, height: 270 };
+    render(<LyricsPlayer videoId="vid-1" playing frame={frame} />);
+    player().ready();
+    act(() => { player().events.onError?.({ data: 101 }); });
+    const region = screen.getByRole("status");
+    expect(region.style.top).toBe("94px");
+    expect(region.style.right).toBe("56px");
+    expect(region.style.width).toBe("432px");
+    expect(region.style.bottom).toBe("");
+  });
+
   it("keeps the fallback button visible via a fixed status region", () => {
     render(<LyricsPlayer videoId="vid-1" playing />);
     player().ready();

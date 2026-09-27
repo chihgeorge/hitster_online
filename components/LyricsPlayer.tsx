@@ -154,7 +154,10 @@ export default function LyricsPlayer({ videoId, playing, frame = null }: Props) 
       {failed || showBlocked ? (
         <div
           role="status"
-          style={{ position: "fixed", left: "50%", bottom: 16, transform: "translateX(-50%)", zIndex: 50, width: "min(92vw, 420px)" }}
+          // With a frame, sit over the (dead or paused) video rather than over the content beside it.
+          style={frame
+            ? { position: "fixed", top: frame.top + 24, right: frame.right + 24, width: frame.width - 48, zIndex: 50 }
+            : { position: "fixed", left: "50%", bottom: 16, transform: "translateX(-50%)", zIndex: 50, width: "min(92vw, 420px)" }}
         >
           {failed ? (
             <div data-testid="lyrics-audio-error" style={{ background: "var(--surface2)", border: "2px solid rgba(255,59,92,.4)", borderRadius: 14, padding: "12px 16px", fontSize: 14, fontWeight: 700, color: "var(--ink)", textAlign: "center", fontFamily: "var(--font-zh)", boxShadow: "0 6px 20px rgba(0,0,0,.15)" }}>

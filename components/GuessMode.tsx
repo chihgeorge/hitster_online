@@ -304,8 +304,8 @@ export function GuessScreen({ state }: { state: PublicGuessGameState }) {
             with the answer under it; the left side keeps its full height for up to 8 player rows. */}
         <div data-testid="guess-video-slot" aria-hidden style={{ position: "fixed", ...REVEAL_VIDEO, borderRadius: 16, background: "var(--ink)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 40 }}>🎬</div>
         <div data-testid="guess-answer-card" style={{ position: "fixed", top: REVEAL_VIDEO.top + REVEAL_VIDEO.height + 16, right: REVEAL_VIDEO.right, width: REVEAL_VIDEO.width, bottom: 32, boxSizing: "border-box", background: "var(--surface2)", borderRadius: 16, padding: "14px 24px", textAlign: "center", display: "flex", flexDirection: "column", justifyContent: "center", overflow: "hidden" }}>
-          <p style={{ fontSize: 30, fontWeight: 900, color: "var(--orange)", overflowWrap: "anywhere", display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }}>{show(r.title)}</p>
-          {r.hasArtist && <p style={{ fontSize: 18, fontWeight: 700, color: "var(--text2)", marginTop: 2, overflowWrap: "anywhere", display: "-webkit-box", WebkitLineClamp: 1, WebkitBoxOrient: "vertical", overflow: "hidden" }}>{show(r.artist)}</p>}
+          <p style={{ fontSize: 30, fontWeight: 900, color: "var(--orange)", flexShrink: 0, overflowWrap: "anywhere", display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }}>{show(r.title)}</p>
+          {r.hasArtist && <p style={{ fontSize: 18, fontWeight: 700, color: "var(--text2)", marginTop: 2, flexShrink: 0, overflowWrap: "anywhere", display: "-webkit-box", WebkitLineClamp: 1, WebkitBoxOrient: "vertical", overflow: "hidden" }}>{show(r.artist)}</p>}
         </div>
         <p style={label}>{roundLabel(state)} · 結果</p>
         <div style={{ flex: 1, overflowY: "auto", display: "flex", flexDirection: "column", gap: 6 }}>
