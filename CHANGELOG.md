@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.14.3.0] — 2026-09-26
+
+### Added
+- **See the song's music video at the Guess reveal:** when the host shows a round's results, the TV now plays the song's YouTube video next to the players' results, with the song title and artist underneath. It stays hidden while everyone is guessing, so it never gives the answer away, and the song keeps playing without restarting
+
+### Changed
+- The Guess results screen on the TV fits all 8 players next to the video: long player names are shortened with "…", and long song titles wrap to at most two lines
+- When a song can't be played, the TV's notice now appears over the video area instead of covering the answer
+
 ## [0.14.2.0] — 2026-09-26
 
 ### Changed
