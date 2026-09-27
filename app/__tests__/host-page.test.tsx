@@ -12,8 +12,9 @@ vi.mock("partysocket/react", () => ({
     return { send: sendSpy };
   },
 }));
+const params = vi.hoisted(() => ({ code: "ABCD" }));
 vi.mock("next/navigation", () => ({
-  useParams: () => ({ code: "ABCD" }),
+  useParams: () => params,
 }));
 
 import HostPage from "@/app/room/[code]/host/page";
@@ -287,6 +288,20 @@ describe("HostPage: screen link reuses an open screen tab", () => {
     expect(window.open).toHaveBeenCalledWith("", "hitster-screen-ABCD");
     expect(tab.location.href).toBe("keep"); // not navigated again
     expect(tab.focus).toHaveBeenCalled();
+  });
+
+  it("focuses, not reloads, when the room code is percent-encoded in the tab's pathname", async () => {
+    params.code = "AB C";
+    try {
+      const tab = { location: { pathname: "/room/AB%20C/screen", href: "keep" }, focus: vi.fn() };
+      vi.spyOn(window, "open").mockReturnValue(tab as unknown as Window);
+      render(<HostPage />);
+      fireEvent.click(await waitFor(() => screen.getByTestId("screen-link")));
+      expect(tab.location.href).toBe("keep");
+      expect(tab.focus).toHaveBeenCalled();
+    } finally {
+      params.code = "ABCD";
+    }
   });
 
   it("points a fresh tab at the screen page", async () => {

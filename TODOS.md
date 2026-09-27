@@ -216,6 +216,17 @@ _Surfaced by adversarial review on feat/lyrics-api 2026-09-17_
 
 **Effort:** M
 **Priority:** P3
+
+### Check the screen link inside LINE / Instagram / Facebook in-app browsers
+
+**What:** Tap the host page's screen link from a host page opened inside LINE's (and IG/FB's) in-app browser.
+
+**Why:** The click handler calls `window.open("", name)` and prevents the default link when it gets a window back. An in-app webview that returns a window object without opening a real tab would make the tap do nothing, with no plain-link fallback.
+
+**Context:** Room links are likely shared over LINE. No spec covers webview `window.open`. If a webview misbehaves, detect it (UA or `tab.closed` right after open) and let the plain link through. _From /ship adversarial review on feat/host-screen-link, 2026-09-26._
+
+**Effort:** S
+**Priority:** P3
 **Depends on:** None
 
 ### Host setup says "N 首歌曲有確認年份" in Guess/Lyrics mode

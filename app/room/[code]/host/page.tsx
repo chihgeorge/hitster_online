@@ -509,7 +509,8 @@ export default function HostPage() {
               e.preventDefault();
               let onScreen = false;
               try {
-                onScreen = tab.location.pathname === screenPath;
+                // pathname comes back percent-encoded; normalise ours the same way.
+                onScreen = tab.location.pathname === new URL(screenPath, location.href).pathname;
               } catch {
                 // The tab moved to another origin (e.g. clicked through from the YouTube embed).
               }
