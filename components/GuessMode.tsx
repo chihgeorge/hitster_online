@@ -13,9 +13,9 @@ import type { GuessAnswer, PublicGuessGameState } from "@/lib/game";
 type AudioReply = { videoId: string | null; roundIndex: number };
 
 /** Where the TV shows the song's video at the reveal (canvas units); GuessScreen reserves the same spot. */
-// top lines the video up with the answer card beside it. 480×270 is YouTube's recommended minimum
-// for a 16:9 embed (the hard floor is 200×200); YouTube sees these canvas units, not the scaled size.
-export const REVEAL_VIDEO: VideoFrame = { top: 103, right: 32, width: 480, height: 270 };
+// top lines the video up with the round label; the answer card sits under it. 480×270 is YouTube's
+// recommended minimum for a 16:9 embed (the hard floor is 200×200); YouTube sees canvas units.
+export const REVEAL_VIDEO: VideoFrame = { top: 70, right: 32, width: 480, height: 270 };
 
 /**
  * Unlike Lyrics (audible, then cut for guessing), Guess plays the song WHILE players guess:
@@ -300,15 +300,15 @@ export function GuessScreen({ state }: { state: PublicGuessGameState }) {
     const r = state.currentRound;
     return (
       <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 16, minHeight: 0, marginRight: REVEAL_VIDEO.width + 24 }}>
-        {/* The screen's player shows the song's video on top of this spot (see guessAudioProps) */}
+        {/* Right side: the screen's player shows the song's video over this slot (see guessAudioProps),
+            with the answer under it; the left side keeps its full height for up to 8 player rows. */}
         <div data-testid="guess-video-slot" aria-hidden style={{ position: "fixed", ...REVEAL_VIDEO, borderRadius: 16, background: "var(--ink)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 40 }}>🎬</div>
-        <p style={label}>{roundLabel(state)} · 結果</p>
-        <div style={{ background: "var(--surface2)", borderRadius: 16, padding: "18px 24px", textAlign: "center" }}>
-          {/* Beside the video the card is ~344 wide: wrap anywhere, at most 2 lines, so the list stays visible */}
+        <div data-testid="guess-answer-card" style={{ position: "fixed", top: REVEAL_VIDEO.top + REVEAL_VIDEO.height + 16, right: REVEAL_VIDEO.right, width: REVEAL_VIDEO.width, bottom: 32, boxSizing: "border-box", background: "var(--surface2)", borderRadius: 16, padding: "14px 24px", textAlign: "center", display: "flex", flexDirection: "column", justifyContent: "center", overflow: "hidden" }}>
           <p style={{ fontSize: 30, fontWeight: 900, color: "var(--orange)", overflowWrap: "anywhere", display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }}>{show(r.title)}</p>
-          {r.hasArtist && <p style={{ fontSize: 18, fontWeight: 700, color: "var(--text2)", marginTop: 2 }}>{show(r.artist)}</p>}
+          {r.hasArtist && <p style={{ fontSize: 18, fontWeight: 700, color: "var(--text2)", marginTop: 2, overflowWrap: "anywhere", display: "-webkit-box", WebkitLineClamp: 1, WebkitBoxOrient: "vertical", overflow: "hidden" }}>{show(r.artist)}</p>}
         </div>
-        <div style={{ flex: 1, overflowY: "auto", display: "flex", flexDirection: "column", gap: 8 }}>
+        <p style={label}>{roundLabel(state)} · 結果</p>
+        <div style={{ flex: 1, overflowY: "auto", display: "flex", flexDirection: "column", gap: 6 }}>
           {ranked(state).map(([id, p]) => {
             const a = state.answers[id];
             return (

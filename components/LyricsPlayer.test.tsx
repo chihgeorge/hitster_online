@@ -69,7 +69,7 @@ describe("LyricsPlayer", () => {
   });
 
   it("stays hidden by default, then shows the same player in a frame without reloading the song", () => {
-    const frame = { top: 103, right: 32, width: 352, height: 198 };
+    const frame = { top: 70, right: 32, width: 352, height: 198 };
     const { rerender } = render(<LyricsPlayer videoId="vid-1" playing />);
     player().ready();
     const box = screen.getByTestId("lyrics-player-frame");
@@ -78,7 +78,7 @@ describe("LyricsPlayer", () => {
     rerender(<LyricsPlayer videoId="vid-1" playing frame={frame} />);
     expect(box.style.opacity).toBe("");
     expect(box.style.width).toBe("352px");
-    expect(box.style.top).toBe("103px");
+    expect(box.style.top).toBe("70px");
     expect(box.style.zIndex).toBe("1"); // above the results slot whatever the render order
     expect(box.getAttribute("aria-hidden")).toBe("false");
     expect(player().setSize).toHaveBeenLastCalledWith(352, 198);
