@@ -1818,6 +1818,10 @@ describe("Lyrics Mode: START_LYRICS_GAME", () => {
     const [tracksArg] = vi.mocked(resolveLyricsForTracks).mock.calls.at(-1)!;
     expect(tracksArg.map((t) => t.videoId)).toEqual(["vid1"]);
     expect(room.lyricsState?.rounds.map((r) => r.blankSentence)).toEqual([CACHED_LYRICS.blankSentence]);
+    // The regenerated round replaces the giveaway in the cache, so it isn't paid for again.
+    const putCalls = (mockRoom.storage.put as ReturnType<typeof vi.fn>).mock.calls;
+    expect(putCalls.some((c: any[]) =>
+      (c[0] as Record<string, { blankSentence?: string }>)["lyrics-sonnet:vid1"]?.blankSentence === CACHED_LYRICS.blankSentence)).toBe(true);
     delete process.env.ANTHROPIC_API_KEY;
   });
 

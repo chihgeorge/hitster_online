@@ -166,13 +166,13 @@ Also tracked earlier as "Player shows "Submitted!" before the server acknowledge
 
 ## Lyrics Mode
 
-### Songs whose Lyrics round is dropped are re-resolved on every preview and game start
+### Songs whose Lyrics round or metadata comes back empty are re-resolved on every load
 
-**What:** Cache a "no usable round" marker for songs whose generated round is dropped (title giveaway, low confidence).
+**What:** Cache a "no usable result" marker for songs whose generated Lyrics round is dropped (title giveaway, low confidence), and for tracks the metadata call leaves empty (it now returns empty title/artist instead of guessing "Unknown").
 
 **Why:** Each preview and game start re-sends those songs to Haiku/Sonnet, paying again for a round that is often dropped again.
 
-**Context:** `party/index.ts` only caches non-empty results under `lyrics:` / `lyrics-sonnet:`, and `fairRounds()` treats a cached giveaway as uncached so it gets regenerated. Live runs showed a title-giveaway round in about 1 of 3 Sonnet batches. Needs a versioned marker (or TTL) so a prompt change can retry. _Deferred from /ship review on refactor/prompt-structured-outputs, 2026-09-24._
+**Context:** `party/index.ts` only caches non-empty results under `lyrics:` / `lyrics-sonnet:`, and `fairRounds()` treats a cached giveaway as uncached so it gets regenerated. Live runs showed a title-giveaway round in about 1 of 3 Sonnet batches. The metadata side is the same: `resolveBatch` drops empty t/a and `resolveAIWithCache` caches only hits, so a non-song video goes back to Haiku on every playlist load and preview; `aiMeta:` entries cached before the prompt change may still hold "Unknown"-style guesses. Needs a versioned marker (or TTL) so a prompt change can retry. _Deferred from /ship review on refactor/prompt-structured-outputs, 2026-09-24._
 
 **Effort:** S
 **Priority:** P2

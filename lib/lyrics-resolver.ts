@@ -274,6 +274,9 @@ export async function resolveLyricsForTracks(
       if (r.status === "fulfilled") {
         r.value.forEach((meta, id) => combined.set(id, meta));
         onBatchDone?.(combined);
+      } else {
+        // A timeout or network error rejects the fetch: the batch yields no rounds, so say why.
+        console.error(`[lyrics-resolver] ${model} batch failed: ${r.reason}`);
       }
     }
   });

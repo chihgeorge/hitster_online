@@ -382,7 +382,8 @@ describe("structured outputs parsing + title guard", () => {
   }
   afterEach(() => mockFetch.mockReset());
 
-  it("sends a timeout signal, and a timed-out call just yields no rounds", async () => {
+  it("sends a timeout signal, and a timed-out call yields no rounds and is logged", async () => {
+    const err = vi.spyOn(console, "error").mockImplementation(() => {});
     mockFetch.mockImplementation((url: string) => String(url).includes("anthropic")
       ? Promise.reject(new DOMException("timed out", "TimeoutError"))
       : Promise.resolve(miss()));
@@ -390,6 +391,8 @@ describe("structured outputs parsing + title guard", () => {
     expect(result.size).toBe(0);
     const call = mockFetch.mock.calls.find(([url]) => String(url).includes("anthropic"))!;
     expect(call[1].signal).toBeInstanceOf(AbortSignal);
+    expect(err.mock.calls.some(([m]) => String(m).startsWith("[lyrics-resolver] claude-sonnet-5 batch failed: TimeoutError"))).toBe(true);
+    err.mockRestore();
   });
 
   it("times out thinking (game) calls at 120s and Haiku calls at 30s", async () => {
