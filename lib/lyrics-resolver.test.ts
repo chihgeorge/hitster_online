@@ -448,6 +448,15 @@ describe("structured outputs parsing + title guard", () => {
     v, language, lyricContext: "line ___", blankSentence, acceptableVariants: [],
   });
 
+  it("reads the answer from the text block after a thinking block (the game model's real reply shape)", async () => {
+    routeFetch(rawAnthropic([
+      { type: "thinking", thinking: "..." },
+      { type: "text", text: JSON.stringify({ items: [round(TRACK.videoId, "anybody")] }) },
+    ]));
+    const result = await resolveLyricsForTracks([TRACK], "key", undefined, "claude-sonnet-5");
+    expect(result.get(TRACK.videoId)?.blankSentence).toBe("anybody");
+  });
+
   it("drops a blank that contains the title; keeps one that only shares letters with it", async () => {
     routeFetch(anthropicResponse([round("v1", "my Wonderwall"), round("v2", "all"), round("v3", "anybody feels")]));
     const tracks = ["v1", "v2", "v3"].map((videoId) => ({ ...TRACK, videoId }));
