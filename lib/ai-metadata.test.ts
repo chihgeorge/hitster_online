@@ -75,6 +75,12 @@ describe("proposeEdits", () => {
     expect(diff).toEqual([{ videoId: "v2", field: "artist", oldValue: "The Beatles", newValue: "The Beatles (remastered)" }]);
   });
 
+  it("keeps an all-digit title the model sends as an integer", async () => {
+    mockFetch.mockResolvedValueOnce(anthropicResponse(`[{"v":"v1","f":"title","n":1989}]`));
+    const diff = await proposeEdits("the first song is actually 1989", songs, "fake-key");
+    expect(diff).toEqual([{ videoId: "v1", field: "title", oldValue: "Wonderwall", newValue: "1989" }]);
+  });
+
   it("drops a no-op change (new value equals current value)", async () => {
     mockFetch.mockResolvedValueOnce(anthropicResponse(`[{"v":"v1","f":"year","n":1994}]`));
     const diff = await proposeEdits("check the year", songs, "fake-key");

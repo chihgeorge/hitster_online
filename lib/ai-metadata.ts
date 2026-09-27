@@ -251,7 +251,8 @@ export async function proposeEdits(
       if (n === song.year) continue;
       diffs.push({ videoId, field, oldValue: song.year, newValue: n });
     } else {
-      const n = typeof item.n === "string" ? item.n.trim() : "";
+      // The schema allows an integer n (for years), so an all-digit title like "1989" may arrive as one.
+      const n = typeof item.n === "string" || typeof item.n === "number" ? String(item.n).trim() : "";
       if (!n || n === song[field]) continue;
       diffs.push({ videoId, field, oldValue: song[field], newValue: n });
     }

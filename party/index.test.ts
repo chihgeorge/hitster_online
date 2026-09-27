@@ -2393,6 +2393,39 @@ describe("Lyrics Mode: generateLyricsPreview broadcasts LYRICS_PREVIEW", () => {
     expect(previews.at(-1)?.rounds.map((r: { videoId: string }) => r.videoId)).toEqual(["v2"]);
   });
 
+  it("regenerates a cached giveaway preview round and overwrites its cache entry", async () => {
+    vi.mocked(fetchPlaylistItems).mockResolvedValue([
+      { videoId: "v1", title: "Song A", description: "", channelTitle: "Artist" },
+      { videoId: "v2", title: "Song B", description: "", channelTitle: "Artist" },
+    ]);
+    vi.mocked(fetchEmbeddableVideoIds).mockResolvedValue(new Set(["v1", "v2"]));
+    vi.mocked(resolveTracksWithAI).mockResolvedValue(new Map());
+    const round = (title: string, blankSentence: string) =>
+      ({ title, artist: "Artist", language: "en" as const, lyricContext: "X ___", blankSentence, acceptableVariants: [] });
+    // The preview path collects rounds through the per-batch callback, as the real resolver reports them.
+    vi.mocked(resolveLyricsForTracks).mockImplementation(async (_tracks, _key, onBatchDone) => {
+      const fresh = new Map([["v1", round("Song A", "hello")]]);
+      onBatchDone?.(fresh);
+      return fresh;
+    });
+    const cache: Record<string, ReturnType<typeof round>> = { "lyrics:v1": round("Song A", "song a"), "lyrics:v2": round("Song B", "world") };
+    const mockRoom = makeRoom();
+    (mockRoom.storage.get as ReturnType<typeof vi.fn>).mockImplementation((keys: unknown) =>
+      Promise.resolve(new Map(Array.isArray(keys) ? keys.filter((k: string) => k in cache).map((k: string) => [k, cache[k]]) : [])));
+    const room = new HitsterRoom(mockRoom as any);
+    const conn = makeConn();
+    await send(room, conn, { type: "LOAD_PLAYLIST", hostId: "host-uuid", playlistUrl: "PLtest", gameMode: "lyrics" });
+    await new Promise<void>((resolve) => setTimeout(resolve, 0));
+    const [tracksArg] = vi.mocked(resolveLyricsForTracks).mock.calls.at(-1)!;
+    expect(tracksArg.map((t) => t.videoId)).toEqual(["v1"]);
+    const putCalls = (mockRoom.storage.put as ReturnType<typeof vi.fn>).mock.calls;
+    expect(putCalls.some((c: any[]) =>
+      (c[0] as Record<string, { blankSentence?: string }>)["lyrics:v1"]?.blankSentence === "hello")).toBe(true);
+    const previews = (conn.send as ReturnType<typeof vi.fn>).mock.calls.map((c) => JSON.parse(c[0] as string))
+      .filter((m: { type: string }) => m.type === "LYRICS_PREVIEW");
+    expect(previews.at(-1)?.rounds.map((r: { videoId: string }) => r.videoId).sort()).toEqual(["v1", "v2"]);
+  });
+
   it("broadcasts LYRICS_PREVIEW with loading:false after cached lyrics loaded", async () => {
     const TWO_TRACKS = [
       { videoId: "v1", title: "Song A", description: "", channelTitle: "Artist" },
