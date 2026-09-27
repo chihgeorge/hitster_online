@@ -230,6 +230,29 @@ _Surfaced by adversarial review on feat/lyrics-api 2026-09-17_
 
 ## Host & Screen
 
+### The screen tab opened from the host link keeps a reference to the host tab
+
+**What:** A screen tab opened from the host header link has `window.opener` pointing at the host tab.
+
+**Why:** A cross-origin frame on the screen page could, in theory, redirect the host tab (reverse tabnabbing).
+
+**Context:** The link uses a named target (`hitster-screen-<code>`) so repeat taps reuse one tab. Both `rel="noopener"` and `window.opener = null` on the screen page make WebKit open a new tab on every tap (verified with Playwright), so neither is used. The only cross-origin code on /screen is YouTube's official embed. The same opener link is also how the host finds the tab: if the host page is closed and reopened (or the tab is discarded and restored), `window.open("", name)` can't find the existing screen tab and a second one opens, playing audio twice. Revisit both with a BroadcastChannel handshake (the screen page answers a ping) that doesn't need the opener, or if another third-party frame is added. _Accepted tradeoff from /ship on feat/host-screen-link, 2026-09-26._
+
+**Effort:** M
+**Priority:** P3
+
+### Check the screen link inside LINE / Instagram / Facebook in-app browsers
+
+**What:** Tap the host page's screen link from a host page opened inside LINE's (and IG/FB's) in-app browser.
+
+**Why:** The click handler calls `window.open("", name)` and prevents the default link when it gets a window back. An in-app webview that returns a window object without opening a real tab would make the tap do nothing, with no plain-link fallback.
+
+**Context:** Room links are likely shared over LINE. No spec covers webview `window.open`. If a webview misbehaves, detect it (UA or `tab.closed` right after open) and let the plain link through. _From /ship adversarial review on feat/host-screen-link, 2026-09-26._
+
+**Effort:** S
+**Priority:** P3
+**Depends on:** None
+
 ### Host setup says "N 首歌曲有確認年份" in Guess/Lyrics mode
 
 **What:** Host setup says "N 首歌曲有確認年份" in Guess/Lyrics mode.

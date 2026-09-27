@@ -29,6 +29,11 @@ type LoadStatus = "idle" | "loading" | "ready" | "error";
 
 export default function HostPage() {
   const params = useParams<{ code: string }>();
+  // Read after mount so server and client render the same text (no hydration mismatch).
+  const [origin, setOrigin] = useState("");
+  useEffect(() => setOrigin(window.location.origin), []);
+  const screenPath = `/room/${params.code}/screen`;
+  const screenTab = `hitster-screen-${params.code}`;
   const [state, setState] = useState<GameState | null>(null);
   const [playlistUrl, setPlaylistUrl] = useState("");
   const [targetCount, setTargetCount] = useState(10);
@@ -484,13 +489,52 @@ export default function HostPage() {
             </p>
           </div>
           {/* Big screen: open on a TV/projector. Never shown to players — the code above is the
-              only thing they need, this link is host-only setup. */}
-          <div style={{ display: "flex", alignItems: "center", gap: 10, background: "var(--surface2)", borderRadius: 16, padding: "10px 14px", border: "2px solid rgba(255,107,53,.15)" }}>
-            <Qr text={typeof window !== "undefined" ? `${window.location.origin}/room/${params.code}/screen` : ""} size={64} alt="大螢幕 QR" />
-            <div style={{ fontSize: 11, color: "var(--text2)", maxWidth: 120, lineHeight: 1.4 }}>
-              📺 在電視或投影機掃描開啟大螢幕
+              only thing they need, this link is host-only setup. Scan the QR, or tap/click the whole
+              card (a touch-sized target) to open the same URL in the screen tab (reused and focused if already open). */}
+          <a
+            data-testid="screen-link"
+            href={screenPath}
+            // Named target: repeat taps reuse one screen tab instead of opening a second player.
+            // No rel="noopener" (and the screen page keeps window.opener): either one makes WebKit
+            // open a new tab every tap. Accepted: the screen tab's only cross-origin code is the
+            // YouTube embed, which could in theory reach this tab through top.opener (TODOS.md P3).
+            target={screenTab}
+            onClick={(e) => {
+              // Cmd/Ctrl/Shift/Alt-click keep the browser's own meaning (background tab, new window).
+              if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || e.button !== 0) return;
+              // An already-open screen tab is focused, not reloaded: re-following the link would
+              // restart the music mid-round. Popup blocked → fall back to the plain link.
+              const tab = window.open("", screenTab);
+              if (!tab) return;
+              e.preventDefault();
+              let onScreen = false;
+              try {
+                // pathname comes back percent-encoded; normalise ours the same way.
+                onScreen = tab.location.pathname === new URL(screenPath, location.href).pathname;
+              } catch {
+                // The tab moved to another origin (e.g. clicked through from the YouTube embed).
+              }
+              if (!onScreen) tab.location.href = screenPath;
+              tab.focus();
+            }}
+            // An empty touch listener lets iOS Safari apply :active (pressed feedback).
+            onTouchStart={() => {}}
+            className="tap-card"
+            // One clear name for screen readers, starting with the visible caption (WCAG label-in-name).
+            aria-label={`在電視掃描，或點此開啟大螢幕：${origin + screenPath}`}
+            style={{ display: "flex", alignItems: "center", gap: 10, background: "var(--surface2)", borderRadius: 16, padding: "10px 14px", border: "2px solid rgba(255,107,53,.15)", textDecoration: "none" }}
+          >
+            <Qr text={origin && origin + screenPath} size={64} alt="大螢幕 QR" />
+            <div style={{ fontSize: 11, color: "var(--text2)", maxWidth: 160, lineHeight: 1.4 }}>
+              📺 在電視掃描，或點此開啟大螢幕
+              {/* Ink, not orange: small orange on the card is too low-contrast for a URL someone
+                  reads out or types. Room for three lines so the card doesn't grow when the origin
+                  arrives after mount. */}
+              <span style={{ display: "block", marginTop: 4, minHeight: "4.2em", fontSize: 13, color: "var(--ink)", fontWeight: 700, wordBreak: "break-all" }}>
+                {origin + screenPath} <span style={{ color: "var(--orange)" }}>↗</span>
+              </span>
             </div>
-          </div>
+          </a>
         </div>
         <div style={{ textAlign: "right", fontSize: 13, display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 3, flexShrink: 1, minWidth: 0 }}>
           {Object.values(state?.players ?? {}).length === 0 ? (

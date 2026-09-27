@@ -13,6 +13,15 @@
 - The host's AI edit box keeps an all-digit title or artist (e.g. *1989*) instead of dropping the change
 - Local end-to-end test runs no longer time out at random
 
+## [0.14.1.0] — 2026-09-26
+
+### Added
+- **Open the TV screen from the host page any time:** the host header's TV card now shows the screen page's full address with its QR code, and tapping anywhere on the card opens the screen. Tapping it again brings back the screen tab you already opened instead of reloading it, so the song keeps playing mid-round. Cmd/Ctrl/Shift/middle-click still open it however your browser normally would
+
+### Fixed
+- The TV card's QR code no longer flashes a stale code or shifts the layout while it loads, and a QR that can't be drawn leaves a blank square instead of breaking the page
+- The TV card shows pressed feedback on tap (off with reduced motion) and reads its address out to screen readers
+
 ## [0.14.0.0] — 2026-09-24
 
 ### Added
