@@ -304,7 +304,8 @@ export function GuessScreen({ state }: { state: PublicGuessGameState }) {
         <div data-testid="guess-video-slot" aria-hidden style={{ position: "fixed", ...REVEAL_VIDEO, borderRadius: 16, background: "var(--ink)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 40 }}>🎬</div>
         <p style={label}>{roundLabel(state)} · 結果</p>
         <div style={{ background: "var(--surface2)", borderRadius: 16, padding: "18px 24px", textAlign: "center" }}>
-          <p style={{ fontSize: 30, fontWeight: 900, color: "var(--orange)" }}>{show(r.title)}</p>
+          {/* Beside the video the card is ~344 wide: wrap anywhere, at most 2 lines, so the list stays visible */}
+          <p style={{ fontSize: 30, fontWeight: 900, color: "var(--orange)", overflowWrap: "anywhere", display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }}>{show(r.title)}</p>
           {r.hasArtist && <p style={{ fontSize: 18, fontWeight: 700, color: "var(--text2)", marginTop: 2 }}>{show(r.artist)}</p>}
         </div>
         <div style={{ flex: 1, overflowY: "auto", display: "flex", flexDirection: "column", gap: 8 }}>
@@ -312,7 +313,7 @@ export function GuessScreen({ state }: { state: PublicGuessGameState }) {
             const a = state.answers[id];
             return (
               <div key={id} style={{ display: "flex", alignItems: "center", gap: 14, background: a && (a.titleCorrect || a.artistCorrect) ? "rgba(0,200,150,.08)" : "rgba(255,107,53,.04)", borderRadius: 12, padding: "10px 16px" }}>
-                <span style={{ fontWeight: 700, color: "var(--ink)", flex: 1 }}>{p.name}</span>
+                <span style={{ fontWeight: 700, color: "var(--ink)", flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{p.name}</span>
                 {a ? (
                   <>
                     <span style={{ fontSize: 13, color: "var(--text2)" }}>歌名 <Mark ok={a.titleCorrect} /></span>
