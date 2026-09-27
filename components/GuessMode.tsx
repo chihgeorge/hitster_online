@@ -13,7 +13,8 @@ import type { GuessAnswer, PublicGuessGameState } from "@/lib/game";
 type AudioReply = { videoId: string | null; roundIndex: number };
 
 /** Where the TV shows the song's video at the reveal (canvas units); GuessScreen reserves the same spot. */
-export const REVEAL_VIDEO: VideoFrame = { top: 99, right: 32, width: 352, height: 198 };
+// top lines the video up with the answer card beside it.
+export const REVEAL_VIDEO: VideoFrame = { top: 103, right: 32, width: 352, height: 198 };
 
 /**
  * Unlike Lyrics (audible, then cut for guessing), Guess plays the song WHILE players guess:
@@ -24,7 +25,7 @@ export function guessAudioProps(state: PublicGuessGameState | null, audio: Audio
   if (!state || !isAudioPhase(state) || !audio?.videoId || audio.roundIndex !== state.currentRoundIndex) {
     return { videoId: null, playing: false, frame: null };
   }
-  return { videoId: audio.videoId, playing: state.phase !== "playing", frame: state.phase === "results" ? REVEAL_VIDEO : null };
+  return { videoId: audio.videoId, playing: state.phase !== "playing", frame: state.phase === "results" && state.currentRound ? REVEAL_VIDEO : null };
 }
 
 /** Seconds left in the guessing phase, null outside it. */

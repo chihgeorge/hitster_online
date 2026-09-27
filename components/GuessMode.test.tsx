@@ -30,6 +30,8 @@ describe("guessAudioProps", () => {
   it("shows the video only at the reveal, never while players are still guessing", () => {
     expect(guessAudioProps(state({ phase: "guessing" }), audio).frame).toBeNull();
     expect(guessAudioProps(state({ phase: "results" }), audio).frame).toBe(REVEAL_VIDEO);
+    // No round info means no results layout (and no placeholder), so no floating video either.
+    expect(guessAudioProps(state({ phase: "results", currentRound: null }), audio).frame).toBeNull();
   });
   it("ignores a reply for a different round", () => {
     expect(guessAudioProps(state({ currentRoundIndex: 1 }), audio)).toEqual({ videoId: null, playing: false, frame: null });

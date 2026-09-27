@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { whenYouTubeApiReady } from "@/lib/youtube-iframe-api";
 
 /** A spot on the /screen canvas (960×540 units; the player sits inside the scaled Stage, so fixed = canvas). */
@@ -40,10 +40,13 @@ export function needsLyricsAudio(state: AudioState | null, audio: AudioReply | n
   return isAudioPhase(state) && audio?.roundIndex !== state!.currentRoundIndex;
 }
 
-// Host-side audio for Lyrics Mode. One persistent YouTube player (the host page keeps it mounted for the
-// whole game): it autoplays when a round starts, pauses on Cut, resumes on the results screen, and loads
+// Screen-side audio for Lyrics and Guess. One persistent YouTube player (the /screen page keeps it mounted
+// for the whole game): it autoplays when a round starts, pauses on Cut, resumes on the results screen, and loads
 // the next song each round. The video is
 // visually hidden so lyric videos don't show the answer on a shared screen, unless a frame reveals it.
+// 200px is the smallest size YouTube embeds reliably play at; the hidden wrapper clips it to 1px.
+const HIDDEN_SIZE = 200;
+
 export default function LyricsPlayer({ videoId, playing, frame = null }: Props) {
   const targetRef = useRef<HTMLDivElement>(null);
   const playerRef = useRef<YT.Player | null>(null);
@@ -57,7 +60,7 @@ export default function LyricsPlayer({ videoId, playing, frame = null }: Props) 
     const p = playerRef.current;
     if (typeof p?.setSize !== "function") return; // API not ready yet; onReady calls resize
     const f = wantRef.current.frame;
-    p.setSize(f?.width ?? 200, f?.height ?? 200);
+    p.setSize(f?.width ?? HIDDEN_SIZE, f?.height ?? HIDDEN_SIZE);
   }
 
   function sync() {
@@ -94,9 +97,9 @@ export default function LyricsPlayer({ videoId, playing, frame = null }: Props) 
       const el = document.createElement("div");
       targetRef.current.appendChild(el);
       playerRef.current = new window.YT.Player(el, {
-        // 200px is the smallest size YouTube embeds reliably play at; the wrapper below clips it to 1px
-        width: "200",
-        height: "200",
+        // Hidden size until a frame asks for more (resize matches the frame)
+        width: String(HIDDEN_SIZE),
+        height: String(HIDDEN_SIZE),
         playerVars: { autoplay: 1, controls: 0, playsinline: 1, rel: 0 },
         events: {
           onReady: () => { resize(); sync(); },
@@ -126,7 +129,8 @@ export default function LyricsPlayer({ videoId, playing, frame = null }: Props) 
     // eslint-disable-next-line react-hooks/exhaustive-deps -- sync reads the latest props via wantRef
   }, [videoId, playing]);
 
-  useEffect(() => {
+  // Layout effect: the wrapper grows in the same commit, so size the iframe before paint.
+  useLayoutEffect(() => {
     resize();
     // eslint-disable-next-line react-hooks/exhaustive-deps -- resize reads the latest frame via wantRef
   }, [frame?.width, frame?.height]);
