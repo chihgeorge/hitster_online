@@ -12,8 +12,9 @@ vi.mock("partysocket/react", () => ({
     return { send: sendSpy };
   },
 }));
+const params = vi.hoisted(() => ({ code: "ABCD" }));
 vi.mock("next/navigation", () => ({
-  useParams: () => ({ code: "ABCD" }),
+  useParams: () => params,
 }));
 
 import HostPage from "@/app/room/[code]/host/page";
@@ -40,7 +41,7 @@ beforeEach(() => {
   vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, json: () => Promise.resolve({ entries: [] }) }));
   localStorage.clear();
 });
-afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
+afterEach(() => { cleanup(); vi.unstubAllGlobals(); vi.restoreAllMocks(); });
 
 const lobbyStateEmpty: GameState = { ...lobbyStateWithPlayer, players: {} };
 
@@ -242,5 +243,125 @@ describe("HostPage: Guess Mode start", () => {
     expect((screen.getByTestId("start-game-btn") as HTMLButtonElement).disabled).toBe(true);
     serverSends({ type: "ERROR", error: "not_enough_songs" });
     expect((screen.getByTestId("start-game-btn") as HTMLButtonElement).disabled).toBe(false);
+  });
+});
+
+describe("HostPage: screen link", () => {
+  it("shows the full screen URL as a link to one named screen tab, and keeps it after the game starts", async () => {
+    render(<HostPage />);
+    const link = await waitFor(() => screen.getByTestId("screen-link"));
+    expect(link.getAttribute("href")).toBe("/room/ABCD/screen");
+    expect(link.getAttribute("target")).toBe("hitster-screen-ABCD"); // named: repeat taps reuse one tab
+    await waitFor(() => expect(link.getAttribute("aria-label")).toBe(`在電視掃描，或點此開啟大螢幕：${window.location.origin}/room/ABCD/screen`));
+    await waitFor(() => expect(link.textContent).toContain(`${window.location.origin}/room/ABCD/screen`));
+    serverSends({ type: "STATE", state: { ...lobbyStateWithPlayer, phase: "guessing" } });
+    expect(screen.getByTestId("screen-link").getAttribute("href")).toBe("/room/ABCD/screen");
+  });
+});
+
+describe("HostPage: screen link edges", () => {
+  it("QR encodes the same full screen URL as the link, once origin is known", async () => {
+    const QRCode = (await import("qrcode")).default;
+    const spy = vi.spyOn(QRCode, "toDataURL");
+    render(<HostPage />);
+    await waitFor(() => screen.getByAltText("大螢幕 QR"));
+    expect(spy.mock.calls.map((c) => c[0])).toContain(`${window.location.origin}/room/ABCD/screen`);
+    expect(spy.mock.calls.every((c) => String(c[0]).startsWith(window.location.origin))).toBe(true); // never "" or a bare path
+    expect(screen.getByTestId("screen-link").getAttribute("rel")).toBeNull(); // noopener would defeat the named tab
+  });
+
+  it("server render has no origin: placeholder instead of QR, link text is the bare path (hydration-safe)", async () => {
+    const { renderToString } = await import("react-dom/server");
+    const html = renderToString(<HostPage />);
+    expect(html).not.toContain("大螢幕 QR");
+    expect(html).not.toContain(window.location.origin);
+    expect(html).toMatch(/data-testid="screen-link"[^>]*>[\s\S]*>\/room\/ABCD\/screen(<!-- -->)? <span[^>]*>↗</);
+  });
+});
+
+describe("HostPage: screen link reuses an open screen tab", () => {
+  it("focuses an already-open screen tab instead of reloading it", async () => {
+    const tab = { location: { pathname: "/room/ABCD/screen", href: "keep" }, focus: vi.fn() };
+    vi.spyOn(window, "open").mockReturnValue(tab as unknown as Window);
+    render(<HostPage />);
+    fireEvent.click(await waitFor(() => screen.getByTestId("screen-link")));
+    expect(window.open).toHaveBeenCalledWith("", "hitster-screen-ABCD");
+    expect(tab.location.href).toBe("keep"); // not navigated again
+    expect(tab.focus).toHaveBeenCalled();
+  });
+
+  it("focuses, not reloads, when the room code is percent-encoded in the tab's pathname", async () => {
+    params.code = "AB C";
+    try {
+      const tab = { location: { pathname: "/room/AB%20C/screen", href: "keep" }, focus: vi.fn() };
+      vi.spyOn(window, "open").mockReturnValue(tab as unknown as Window);
+      render(<HostPage />);
+      fireEvent.click(await waitFor(() => screen.getByTestId("screen-link")));
+      expect(tab.location.href).toBe("keep");
+      expect(tab.focus).toHaveBeenCalled();
+    } finally {
+      params.code = "ABCD";
+    }
+  });
+
+  it("points a fresh tab at the screen page", async () => {
+    const tab = { location: { pathname: "blank", href: "about:blank" }, focus: vi.fn() };
+    vi.spyOn(window, "open").mockReturnValue(tab as unknown as Window);
+    render(<HostPage />);
+    fireEvent.click(await waitFor(() => screen.getByTestId("screen-link")));
+    expect(tab.location.href).toBe("/room/ABCD/screen");
+  });
+});
+
+describe("HostPage: screen link when popups are blocked", () => {
+  it("falls back to the plain link (default not prevented) when window.open returns null", async () => {
+    vi.spyOn(window, "open").mockReturnValue(null);
+    render(<HostPage />);
+    let prevented: boolean | undefined;
+    // Bubble listener runs after React's handler: record, then stop happy-dom actually navigating.
+    const spyNav = (e: Event) => { prevented = e.defaultPrevented; e.preventDefault(); };
+    document.addEventListener("click", spyNav);
+    fireEvent.click(await waitFor(() => screen.getByTestId("screen-link")));
+    document.removeEventListener("click", spyNav);
+    expect(window.open).toHaveBeenCalledWith("", "hitster-screen-ABCD");
+    expect(prevented).toBe(false); // browser follows href/target itself
+  });
+
+  it("prevents the default navigation when it handled the tab itself", async () => {
+    const tab = { location: { pathname: "blank", href: "about:blank" }, focus: vi.fn() };
+    vi.spyOn(window, "open").mockReturnValue(tab as unknown as Window);
+    render(<HostPage />);
+    const notPrevented = fireEvent.click(await waitFor(() => screen.getByTestId("screen-link")));
+    expect(notPrevented).toBe(false);
+    expect(tab.focus).toHaveBeenCalled();
+  });
+});
+
+describe("HostPage: screen link edge clicks", () => {
+  it.each([{ metaKey: true }, { ctrlKey: true }, { shiftKey: true }, { altKey: true }])(
+    "leaves a modified click (%o) to the browser",
+    async (mod) => {
+      const open = vi.spyOn(window, "open");
+      render(<HostPage />);
+      const link = await waitFor(() => screen.getByTestId("screen-link"));
+      // Stop happy-dom from actually navigating; record whether the page cancelled the default.
+      let prevented: boolean | undefined;
+      const stop = (e: Event) => { prevented = e.defaultPrevented; e.preventDefault(); };
+      document.addEventListener("click", stop);
+      fireEvent.click(link, mod);
+      document.removeEventListener("click", stop);
+      expect(open).not.toHaveBeenCalled();
+      expect(prevented).toBe(false);
+    },
+  );
+
+  it("re-points a screen tab that moved to another origin instead of doing nothing", async () => {
+    const tab = { focus: vi.fn(), location: { href: "https://www.youtube.com/watch" } };
+    Object.defineProperty(tab.location, "pathname", { get: () => { throw new DOMException("cross-origin", "SecurityError"); } });
+    vi.spyOn(window, "open").mockReturnValue(tab as unknown as Window);
+    render(<HostPage />);
+    fireEvent.click(await waitFor(() => screen.getByTestId("screen-link")));
+    expect(tab.location.href).toBe("/room/ABCD/screen");
+    expect(tab.focus).toHaveBeenCalled();
   });
 });

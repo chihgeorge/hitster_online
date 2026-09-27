@@ -80,6 +80,12 @@ body {
 /* ── form controls ── */
 input[type="range"] { accent-color: var(--orange); }
 
+/* Pressed feedback for a whole-card tap target (inline background wins over a class, so
+   darken with filter instead). */
+.tap-card { transition: transform .1s, filter .1s; }
+.tap-card:active { transform: scale(.98); filter: brightness(.95); }
+@media (prefers-reduced-motion: reduce) { .tap-card:active { transform: none; } }
+
 /* ── responsive utils ── */
 @media (max-width: 479px) {
   .hide-xs { display: none !important; }
