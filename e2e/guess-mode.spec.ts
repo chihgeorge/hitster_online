@@ -42,6 +42,9 @@ test.describe("Guess Mode", () => {
     // The TV tab shares the creator's browser, as when opened from the host page's screen link:
     // the room creator's device holds the screen role, which the video needs (see TODOS P2).
     const screen = await ctx[0].newPage();
+    // Now that the TV holds the screen role it gets the video: block YouTube so a real stream
+    // doesn't starve the specs running in parallel. The reveal checks only need the frame boxes.
+    await ctx[0].route(/youtube\.com|ytimg\.com|googlevideo\.com/, (route) => route.abort());
 
     try {
       const code = await createRoomAsHost(host);

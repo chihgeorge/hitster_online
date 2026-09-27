@@ -368,17 +368,6 @@ _Surfaced by /cso on 2026-09-16_
 
 ## Testing
 
-### Mobile Safari e2e flake still recurs with 2 local workers
-
-**What:** A full `npm run test:e2e` still fails one random Mobile Safari spec about half the time (2 of 4 runs on 2026-09-26): `playlist.spec.ts:145` (player join not seen within 5s) and `two-player-game.spec.ts:151` (120s timeout at `browserContext.close`). Each passes alone (`--repeat-each`), and the next full run was 40/40.
-
-**Why:** The v0.14.2.0 worker cap (5 → 2) cut the flake rate but didn't remove it; a red run still doesn't mean much.
-
-**Context:** Same WebKit-under-load pattern as the completed P0 entry below. Next things to try: a longer per-test timeout for the Mobile Safari project, `retries: 1` locally, or running the WebKit project with 1 worker. _Found by /review on feat/guess-reveal-video, 2026-09-26._
-
-**Effort:** S
-**Priority:** P1
-
 
 ### e2e coverage for the host/screen split (3-role flows)
 
