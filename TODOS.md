@@ -334,18 +334,6 @@ _Surfaced by /cso on 2026-09-16_
 
 ## Testing
 
-### Mobile Safari e2e specs time out at random under full-suite load
-
-**What:** One or two Mobile Safari specs fail on each full `npm run test:e2e` run with `browserContext.close: Test ended` / 120s test timeout.
-
-**Why:** A flaky suite hides real regressions: a red run stops meaning anything.
-
-**Context:** A different spec fails each run (seen: `guess-mode.spec.ts:38`, `two-player-game.spec.ts:151`, `cpop-multiplayer.spec.ts:57`); every one passes in isolation (`--repeat-each=2`), and `main` shows the same flake, so it is WebKit timing under load, not any one change. Start by checking the Playwright worker count and per-test timeouts for the Mobile Safari project. _Found by /ship on refactor/prompt-structured-outputs, 2026-09-24._
-
-**Effort:** M
-**Priority:** P0
-**Depends on:** None
-
 ### e2e coverage for the host/screen split (3-role flows)
 
 **What:** e2e coverage for the host/screen split (3-role flows).
@@ -400,6 +388,20 @@ _Deferred from plan: foamy-crafting-bonbon.md_
 **Depends on:** None
 
 ## Completed
+
+### Mobile Safari e2e specs time out at random under full-suite load
+
+**What:** One or two Mobile Safari specs fail on each full `npm run test:e2e` run with `browserContext.close: Test ended` / 120s test timeout.
+
+**Why:** A flaky suite hides real regressions: a red run stops meaning anything.
+
+**Context:** A different spec fails each run (seen: `guess-mode.spec.ts:38`, `two-player-game.spec.ts:151`, `cpop-multiplayer.spec.ts:57`); every one passes in isolation (`--repeat-each=2`), and `main` shows the same flake, so it is WebKit timing under load, not any one change. Start by checking the Playwright worker count and per-test timeouts for the Mobile Safari project. _Found by /ship on refactor/prompt-structured-outputs, 2026-09-24._
+
+**Effort:** M
+**Priority:** P0
+**Depends on:** None
+
+**Completed:** v0.14.2.0 (2026-09-26) — local Playwright workers capped at 2 (`playwright.config.ts`); every full run on this branch since has been green (38/38, four runs on 2026-09-26).
 
 ### `WRONG_PHASE` vs `too_late` error key mismatch
 

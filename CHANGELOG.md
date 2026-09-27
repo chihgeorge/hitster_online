@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.14.2.0] — 2026-09-26
+
+### Changed
+- **Better Lyrics questions:** the game deck is now written by Claude with a short thinking step, so it picks lines fans recognise more often. A 10-song batch still takes about 10 seconds
+- **More reliable AI replies:** song lookup, Lyrics questions and the host's AI edit box now ask Claude for a fixed reply format, so a stray code fence or extra text no longer throws away a whole batch
+- Songs the AI can't identify (vlogs, non-music videos) keep their YouTube title instead of showing a guessed "Unknown" artist
+
+### Fixed
+- **Lyrics answers that give the song title away are dropped:** players see the title during the round, so an answer like "Wonderwall" for *Wonderwall* was a free point. This also applies to questions saved from earlier games, which are regenerated instead
+- A stuck AI call can no longer hold a Lyrics game start forever: it gives up after 2 minutes (30 seconds for the preview), keeps the questions it has, and logs why a batch was lost
+- The host's AI edit box keeps an all-digit title or artist (e.g. *1989*) instead of dropping the change
+- Local end-to-end test runs no longer time out at random
+
 ## [0.14.0.0] — 2026-09-24
 
 ### Added
