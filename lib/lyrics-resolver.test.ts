@@ -498,6 +498,16 @@ describe("structured outputs parsing + title guard", () => {
     expect((await resolveLyricsForTracks([zh], "key")).size).toBe(0);
   });
 
+  it("falls back to en for a language outside the enum", async () => {
+    routeFetch(anthropicResponse([round("v1", "anybody", "fr")]));
+    expect((await resolveLyricsForTracks([TRACK], "key")).get("v1")?.language).toBe("en");
+  });
+
+  it("givesAwayTitle: an empty or punctuation-only answer never counts as a giveaway", () => {
+    expect(givesAwayTitle("", "Wonderwall")).toBe(false);
+    expect(givesAwayTitle("...", "Wonderwall")).toBe(false);
+  });
+
   it("skips the guard when the title normalizes to empty (no letters/digits)", async () => {
     routeFetch(anthropicResponse([round("v1", "anything at all")]));
     const result = await resolveLyricsForTracks([{ ...TRACK, title: "★☆!" }], "key");
