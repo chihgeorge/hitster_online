@@ -13,8 +13,9 @@ import type { GuessAnswer, PublicGuessGameState } from "@/lib/game";
 type AudioReply = { videoId: string | null; roundIndex: number };
 
 /** Where the TV shows the song's video at the reveal (canvas units); GuessScreen reserves the same spot. */
-// top lines the video up with the answer card beside it.
-export const REVEAL_VIDEO: VideoFrame = { top: 103, right: 32, width: 352, height: 198 };
+// top lines the video up with the answer card beside it. 480×270 is YouTube's recommended minimum
+// for a 16:9 embed (the hard floor is 200×200); YouTube sees these canvas units, not the scaled size.
+export const REVEAL_VIDEO: VideoFrame = { top: 103, right: 32, width: 480, height: 270 };
 
 /**
  * Unlike Lyrics (audible, then cut for guessing), Guess plays the song WHILE players guess:

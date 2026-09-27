@@ -243,9 +243,9 @@ _Surfaced by adversarial review on feat/lyrics-api 2026-09-17_
 
 ### Check the Guess reveal video's sharpness on a real TV
 
-**What:** Play a Guess round on a 1080p or 4K TV and look at the reveal video from the couch.
+**What:** Play a Guess round on a 1080p or 4K TV and look at the reveal video from the couch. Also check that the video's corners are rounded on the TV's browser (some WebKit/Tizen/webOS builds don't clip an iframe under a scaled ancestor).
 
-**Why:** `/screen` is a 960×540 canvas scaled up with CSS, and the reveal player is 352×198 in canvas units. YouTube picks stream quality from that pre-scale size, so a big TV may get a stretched 240p-360p picture.
+**Why:** `/screen` is a 960×540 canvas scaled up with CSS, and the reveal player is 480×270 in canvas units (YouTube's recommended minimum). YouTube picks stream quality from that pre-scale size, so a big TV may get a stretched 240p-360p picture.
 
 **Context:** If it's visibly soft, size the iframe at physical pixels (frame × Stage scale via `setSize`) and scale the wrapper back down with CSS. YouTube's end-screen suggestions after the song finishes stay visible in the frame by choice (2026-09-26). _From /review on feat/guess-reveal-video, 2026-09-26._
 
