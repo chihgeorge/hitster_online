@@ -24,7 +24,7 @@ import {
 } from "../lib/game";
 import { isValidYear, sanitizeText, decodeEntities, shuffle } from "../lib/utils";
 import { proposeEdits, proposeLyricEdits, type AITrackMeta } from "../lib/ai-metadata";
-import { resolveLyricsForTracks, MODEL_GAME, type LyricsResult } from "../lib/lyrics-resolver";
+import { resolveLyricsForTracks, givesAwayTitle, MODEL_GAME, type LyricsResult } from "../lib/lyrics-resolver";
 import { fetchPopularitySummaries } from "../lib/lyrics-popularity";
 import * as timedRound from "./timed-round";
 import { scoreGuess, normGuess } from "../lib/guess-scoring";
@@ -79,6 +79,17 @@ type PendingPlaylist = {
   allSongs: EditableSong[];
   diagnostics: SongDiagnostic[];
 };
+
+/**
+ * Cached Lyrics rounds keyed by video id (the storage key minus `prefix`).
+ * Rounds whose answer gives the visible title away are left out: entries cached before that
+ * check existed count as uncached, so they're regenerated (and the cache overwritten).
+ */
+function fairRounds(raw: Map<string, LyricsResult>, prefix: string): Map<string, LyricsResult> {
+  return new Map([...raw]
+    .filter(([, l]) => !givesAwayTitle(l.blankSentence, l.title))
+    .map(([k, l]) => [k.slice(prefix.length), l]));
+}
 
 export default class HitsterRoom implements Party.Server {
   state: GameState;
@@ -654,9 +665,7 @@ export default class HitsterRoom implements Party.Server {
     const lyricsCacheRaw = await storageBatchGet<LyricsResult>(this.room.storage,
       enrichedTracks.map((t) => `lyrics:${t.videoId}`)
     );
-    const cachedLyrics = new Map<string, LyricsResult>(
-      [...lyricsCacheRaw].map(([k, v]) => [k.slice(7), v])
-    );
+    const cachedLyrics = fairRounds(lyricsCacheRaw, "lyrics:");
     const uncachedTracks = enrichedTracks.filter((t) => !cachedLyrics.has(t.videoId));
 
     // If we have cached results, broadcast them immediately so the table is not empty.
@@ -1168,9 +1177,7 @@ export default class HitsterRoom implements Party.Server {
       const lyricsCacheRaw = await storageBatchGet<LyricsResult>(this.room.storage,
         enrichedTracks.map((t) => `lyrics:${t.videoId}`)
       );
-      const cachedLyrics = new Map<string, LyricsResult>(
-        [...lyricsCacheRaw].map(([k, v]) => [k.slice(7), v])
-      );
+      const cachedLyrics = fairRounds(lyricsCacheRaw, "lyrics:");
       const uncachedTracks = enrichedTracks.filter((t) => !cachedLyrics.has(t.videoId));
 
       // Use preloaded Haiku preview as the candidate pool.
@@ -1191,9 +1198,7 @@ export default class HitsterRoom implements Party.Server {
       const sonnetCacheRaw = await storageBatchGet<LyricsResult>(this.room.storage,
         deckCandidates.map((t) => `lyrics-sonnet:${t.videoId}`)
       );
-      const sonnetCached = new Map<string, LyricsResult>(
-        [...sonnetCacheRaw].map(([k, v]) => [k.slice(14), v])
-      );
+      const sonnetCached = fairRounds(sonnetCacheRaw, "lyrics-sonnet:");
       const sonnetUncached = deckCandidates.filter((t) => !sonnetCached.has(t.videoId));
 
       // Popularity grounding (docs/designs/lyrics-question-search-grounding.md, Approach C):

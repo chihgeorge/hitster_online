@@ -66,3 +66,23 @@ export async function mapWithConcurrency<T, R>(
   }
   return all;
 }
+
+// Structured outputs (output_config.format): the response is {"items": [...]}, one object per
+// item matching `item`. Schemas need an object root, hence the wrapper.
+export function itemsSchema(item: Record<string, unknown>) {
+  return {
+    type: "json_schema",
+    schema: {
+      type: "object",
+      properties: { items: { type: "array", items: { type: "object", additionalProperties: false, ...item } } },
+      required: ["items"],
+      additionalProperties: false,
+    },
+  };
+}
+
+/** The items of an itemsSchema response. Untyped: each caller validates its own item shape. Throws on malformed JSON. */
+export function parseItems(text: string): unknown[] {
+  const items = (JSON.parse(text) as { items?: unknown }).items;
+  return Array.isArray(items) ? items : [];
+}
