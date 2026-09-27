@@ -136,7 +136,7 @@ async function resolveBatch(
  * batches in parallel.
  *
  * @param onBatchDone  Called after each batch resolves — use for progressive DIAGNOSTIC updates.
- * @returns Map<videoId, AITrackMeta>. Missing entries mean the batch failed; fall back to parsing.
+ * @returns Map<videoId, AITrackMeta>. Missing entries mean the batch failed or the track wasn't identified (empty t/a); fall back to parsing.
  */
 export async function resolveTracksWithAI(
   tracks: { videoId: string; title: string; description: string; channelTitle: string }[],
