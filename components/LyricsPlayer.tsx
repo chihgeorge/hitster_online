@@ -3,11 +3,16 @@
 import { useEffect, useRef, useState } from "react";
 import { whenYouTubeApiReady } from "@/lib/youtube-iframe-api";
 
+/** A spot on the /screen canvas (960×540 units; the player sits inside the scaled Stage, so fixed = canvas). */
+export type VideoFrame = { top: number; right: number; width: number; height: number };
+
 interface Props {
   /** Video for the current round, or null when nothing should be loaded (lobby, preview, ended). */
   videoId: string | null;
   /** true = audible (round start and results), false = paused (host has cut the song). */
   playing: boolean;
+  /** Show the video here instead of hiding it (e.g. the Guess reveal). Same player, so nothing reloads. */
+  frame?: VideoFrame | null;
 }
 
 type AudioReply = { videoId: string | null; roundIndex: number };
@@ -38,15 +43,22 @@ export function needsLyricsAudio(state: AudioState | null, audio: AudioReply | n
 // Host-side audio for Lyrics Mode. One persistent YouTube player (the host page keeps it mounted for the
 // whole game): it autoplays when a round starts, pauses on Cut, resumes on the results screen, and loads
 // the next song each round. The video is
-// visually hidden so lyric videos don't show the answer on a shared screen.
-export default function LyricsPlayer({ videoId, playing }: Props) {
+// visually hidden so lyric videos don't show the answer on a shared screen, unless a frame reveals it.
+export default function LyricsPlayer({ videoId, playing, frame = null }: Props) {
   const targetRef = useRef<HTMLDivElement>(null);
   const playerRef = useRef<YT.Player | null>(null);
   const loadedRef = useRef<string | null>(null);
-  const wantRef = useRef({ videoId, playing });
-  wantRef.current = { videoId, playing };
+  const wantRef = useRef({ videoId, playing, frame });
+  wantRef.current = { videoId, playing, frame };
   const [blocked, setBlocked] = useState(false);
   const [failedId, setFailedId] = useState<string | null>(null); // video the embed refused to play
+
+  function resize() {
+    const p = playerRef.current;
+    if (typeof p?.setSize !== "function") return; // API not ready yet; onReady calls resize
+    const f = wantRef.current.frame;
+    p.setSize(f?.width ?? 200, f?.height ?? 200);
+  }
 
   function sync() {
     const p = playerRef.current;
@@ -87,7 +99,7 @@ export default function LyricsPlayer({ videoId, playing }: Props) {
         height: "200",
         playerVars: { autoplay: 1, controls: 0, playsinline: 1, rel: 0 },
         events: {
-          onReady: () => sync(),
+          onReady: () => { resize(); sync(); },
           onAutoplayBlocked: () => setBlocked(true),
           onStateChange: (e: { data: number }) => { if (e.data === 1) setBlocked(false); }, // 1 = playing
           // Embedding blocked, video removed or age-restricted: the round continues, just without audio
@@ -114,15 +126,23 @@ export default function LyricsPlayer({ videoId, playing }: Props) {
     // eslint-disable-next-line react-hooks/exhaustive-deps -- sync reads the latest props via wantRef
   }, [videoId, playing]);
 
+  useEffect(() => {
+    resize();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- resize reads the latest frame via wantRef
+  }, [frame?.width, frame?.height]);
+
   const failed = !!videoId && failedId === videoId;
   const showBlocked = !failed && blocked && playing && !!videoId;
 
   return (
     <>
-      {/* Kept in the layout (not display:none) so the browser still lets it play */}
+      {/* Kept in the layout (not display:none) so the browser still lets it play; a frame reveals it in place */}
       <div
-        aria-hidden
-        style={{ position: "fixed", bottom: 0, left: 0, width: 1, height: 1, opacity: 0, overflow: "hidden", pointerEvents: "none" }}
+        data-testid="lyrics-player-frame"
+        aria-hidden={!frame}
+        style={frame
+          ? { position: "fixed", top: frame.top, right: frame.right, width: frame.width, height: frame.height, borderRadius: 16, overflow: "hidden", pointerEvents: "none" }
+          : { position: "fixed", bottom: 0, left: 0, width: 1, height: 1, opacity: 0, overflow: "hidden", pointerEvents: "none" }}
       >
         <div ref={targetRef} />
       </div>

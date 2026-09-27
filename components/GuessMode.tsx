@@ -6,21 +6,25 @@
 
 import { useEffect, useRef, useState } from "react";
 import Vinyl from "@/components/Vinyl";
-import { isAudioPhase } from "@/components/LyricsPlayer";
+import { isAudioPhase, type VideoFrame } from "@/components/LyricsPlayer";
 import { decodeEntities } from "@/lib/utils";
 import type { GuessAnswer, PublicGuessGameState } from "@/lib/game";
 
 type AudioReply = { videoId: string | null; roundIndex: number };
 
+/** Where the TV shows the song's video at the reveal (canvas units); GuessScreen reserves the same spot. */
+export const REVEAL_VIDEO: VideoFrame = { top: 99, right: 32, width: 352, height: 198 };
+
 /**
  * Unlike Lyrics (audible, then cut for guessing), Guess plays the song WHILE players guess:
  * silent (cued) until the host starts the round, audible through guessing and the reveal.
+ * The video stays hidden until the reveal, where it would no longer give the answer away.
  */
 export function guessAudioProps(state: PublicGuessGameState | null, audio: AudioReply | null) {
   if (!state || !isAudioPhase(state) || !audio?.videoId || audio.roundIndex !== state.currentRoundIndex) {
-    return { videoId: null, playing: false };
+    return { videoId: null, playing: false, frame: null };
   }
-  return { videoId: audio.videoId, playing: state.phase !== "playing" };
+  return { videoId: audio.videoId, playing: state.phase !== "playing", frame: state.phase === "results" ? REVEAL_VIDEO : null };
 }
 
 /** Seconds left in the guessing phase, null outside it. */
@@ -293,7 +297,9 @@ export function GuessScreen({ state }: { state: PublicGuessGameState }) {
   if (state.phase === "results" && state.currentRound) {
     const r = state.currentRound;
     return (
-      <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 16, minHeight: 0 }}>
+      <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 16, minHeight: 0, marginRight: REVEAL_VIDEO.width + 24 }}>
+        {/* The screen's player shows the song's video on top of this spot (see guessAudioProps) */}
+        <div data-testid="guess-video-slot" aria-hidden style={{ position: "fixed", ...REVEAL_VIDEO, borderRadius: 16, background: "var(--ink)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 40 }}>🎬</div>
         <p style={label}>{roundLabel(state)} · 結果</p>
         <div style={{ background: "var(--surface2)", borderRadius: 16, padding: "18px 24px", textAlign: "center" }}>
           <p style={{ fontSize: 30, fontWeight: 900, color: "var(--orange)" }}>{show(r.title)}</p>
