@@ -100,8 +100,7 @@ test.describe("Guess Mode", () => {
       const video = screen.locator("[data-testid='lyrics-player-frame']");
       await expect(video).toHaveAttribute("aria-hidden", "false");
       const [vBox, slotBox] = await Promise.all([video.boundingBox(), screen.locator("[data-testid='guess-video-slot']").boundingBox()]);
-      expect(vBox && slotBox && Math.abs(vBox.x - slotBox.x) < 2 && Math.abs(vBox.width - slotBox.width) < 2).toBe(true);
-      if (process.env.GUESS_SHOT) await screen.screenshot({ path: process.env.GUESS_SHOT });
+      expect(vBox && slotBox && [vBox.x - slotBox.x, vBox.y - slotBox.y, vBox.width - slotBox.width, vBox.height - slotBox.height].every((d) => Math.abs(d) < 2)).toBe(true);
 
       // ── Next round, then quit ─────────────────────────────────────────────
       await hostTap(host, "guess-next-btn");

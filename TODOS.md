@@ -368,7 +368,6 @@ _Surfaced by /cso on 2026-09-16_
 
 ## Testing
 
-
 ### e2e coverage for the host/screen split (3-role flows)
 
 **What:** e2e coverage for the host/screen split (3-role flows).

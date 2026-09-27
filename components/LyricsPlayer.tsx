@@ -145,7 +145,7 @@ export default function LyricsPlayer({ videoId, playing, frame = null }: Props) 
         data-testid="lyrics-player-frame"
         aria-hidden={!frame}
         style={frame
-          ? { position: "fixed", top: frame.top, right: frame.right, width: frame.width, height: frame.height, borderRadius: 16, overflow: "hidden", pointerEvents: "none" }
+          ? { position: "fixed", top: frame.top, right: frame.right, width: frame.width, height: frame.height, zIndex: 1, borderRadius: 16, overflow: "hidden", pointerEvents: "none" }
           : { position: "fixed", bottom: 0, left: 0, width: 1, height: 1, opacity: 0, overflow: "hidden", pointerEvents: "none" }}
       >
         <div ref={targetRef} />

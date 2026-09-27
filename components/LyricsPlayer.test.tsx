@@ -79,6 +79,7 @@ describe("LyricsPlayer", () => {
     expect(box.style.opacity).toBe("");
     expect(box.style.width).toBe("352px");
     expect(box.style.top).toBe("103px");
+    expect(box.style.zIndex).toBe("1"); // above the results slot whatever the render order
     expect(box.getAttribute("aria-hidden")).toBe("false");
     expect(player().setSize).toHaveBeenLastCalledWith(352, 198);
     expect(FakePlayer.instances).toHaveLength(1);
