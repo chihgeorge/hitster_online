@@ -16,6 +16,7 @@ class FakePlayer {
   cueVideoById!: ReturnType<typeof vi.fn>;
   playVideo!: ReturnType<typeof vi.fn>;
   pauseVideo!: ReturnType<typeof vi.fn>;
+  setSize!: ReturnType<typeof vi.fn>;
   destroy = vi.fn();
   constructor(_el: unknown, opts: { events: Events }) {
     this.events = opts.events;
@@ -26,6 +27,7 @@ class FakePlayer {
     this.cueVideoById = vi.fn();
     this.playVideo = vi.fn();
     this.pauseVideo = vi.fn();
+    this.setSize = vi.fn();
     act(() => { this.events.onReady?.(); });
   }
 }
@@ -64,6 +66,33 @@ describe("LyricsPlayer", () => {
     player().ready();
     rerender(<LyricsPlayer videoId="vid-2" playing />);
     expect(player().loadVideoById).toHaveBeenLastCalledWith("vid-2");
+  });
+
+  it("stays hidden by default, then shows the same player in a frame without reloading the song", () => {
+    const frame = { top: 70, right: 32, width: 352, height: 198 };
+    const { rerender } = render(<LyricsPlayer videoId="vid-1" playing />);
+    player().ready();
+    const box = screen.getByTestId("lyrics-player-frame");
+    expect(box.style.opacity).toBe("0");
+    expect(player().setSize).toHaveBeenLastCalledWith(200, 200);
+    rerender(<LyricsPlayer videoId="vid-1" playing frame={frame} />);
+    expect(box.style.opacity).toBe("");
+    expect(box.style.width).toBe("352px");
+    expect(box.style.top).toBe("70px");
+    expect(box.style.zIndex).toBe("1"); // above the results slot whatever the render order
+    expect(box.getAttribute("aria-hidden")).toBe("false");
+    expect(player().setSize).toHaveBeenLastCalledWith(352, 198);
+    expect(FakePlayer.instances).toHaveLength(1);
+    expect(player().loadVideoById).toHaveBeenCalledTimes(1);
+    rerender(<LyricsPlayer videoId="vid-2" playing />); // next round: hidden again
+    expect(box.style.opacity).toBe("0");
+    expect(player().setSize).toHaveBeenLastCalledWith(200, 200);
+  });
+
+  it("sizes a player that becomes ready while a frame is already set", () => {
+    render(<LyricsPlayer videoId="vid-1" playing frame={{ top: 0, right: 0, width: 320, height: 180 }} />);
+    player().ready();
+    expect(player().setSize).toHaveBeenCalledWith(320, 180);
   });
 
   it("pauses when there is no video (lobby, preview, ended)", () => {
@@ -253,6 +282,18 @@ describe("LyricsPlayer: can't-play notice and fallback button", () => {
     expect(screen.getByTestId("lyrics-audio-error")).toBeTruthy();
     rerender(<LyricsPlayer videoId="vid-2" playing />);
     expect(screen.queryByTestId("lyrics-audio-error")).toBeNull();
+  });
+
+  it("puts the notice over the framed video, not over the content beside it", () => {
+    const frame = { top: 70, right: 32, width: 480, height: 270 };
+    render(<LyricsPlayer videoId="vid-1" playing frame={frame} />);
+    player().ready();
+    act(() => { player().events.onError?.({ data: 101 }); });
+    const region = screen.getByRole("status");
+    expect(region.style.top).toBe("94px");
+    expect(region.style.right).toBe("56px");
+    expect(region.style.width).toBe("432px");
+    expect(region.style.bottom).toBe("");
   });
 
   it("keeps the fallback button visible via a fixed status region", () => {

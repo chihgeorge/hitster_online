@@ -1,13 +1,18 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { whenYouTubeApiReady } from "@/lib/youtube-iframe-api";
+
+/** A spot on the /screen canvas (960×540 units; the player sits inside the scaled Stage, so fixed = canvas). */
+export type VideoFrame = { top: number; right: number; width: number; height: number };
 
 interface Props {
   /** Video for the current round, or null when nothing should be loaded (lobby, preview, ended). */
   videoId: string | null;
   /** true = audible (round start and results), false = paused (host has cut the song). */
   playing: boolean;
+  /** Show the video here instead of hiding it (e.g. the Guess reveal). Same player, so nothing reloads. */
+  frame?: VideoFrame | null;
 }
 
 type AudioReply = { videoId: string | null; roundIndex: number };
@@ -35,18 +40,28 @@ export function needsLyricsAudio(state: AudioState | null, audio: AudioReply | n
   return isAudioPhase(state) && audio?.roundIndex !== state!.currentRoundIndex;
 }
 
-// Host-side audio for Lyrics Mode. One persistent YouTube player (the host page keeps it mounted for the
-// whole game): it autoplays when a round starts, pauses on Cut, resumes on the results screen, and loads
+// Screen-side audio for Lyrics and Guess. One persistent YouTube player (the /screen page keeps it mounted
+// for the whole game): it autoplays when a round starts, pauses on Cut, resumes on the results screen, and loads
 // the next song each round. The video is
-// visually hidden so lyric videos don't show the answer on a shared screen.
-export default function LyricsPlayer({ videoId, playing }: Props) {
+// visually hidden so lyric videos don't show the answer on a shared screen, unless a frame reveals it.
+// 200px is the smallest size YouTube embeds reliably play at; the hidden wrapper clips it to 1px.
+const HIDDEN_SIZE = 200;
+
+export default function LyricsPlayer({ videoId, playing, frame = null }: Props) {
   const targetRef = useRef<HTMLDivElement>(null);
   const playerRef = useRef<YT.Player | null>(null);
   const loadedRef = useRef<string | null>(null);
-  const wantRef = useRef({ videoId, playing });
-  wantRef.current = { videoId, playing };
+  const wantRef = useRef({ videoId, playing, frame });
+  wantRef.current = { videoId, playing, frame };
   const [blocked, setBlocked] = useState(false);
   const [failedId, setFailedId] = useState<string | null>(null); // video the embed refused to play
+
+  function resize() {
+    const p = playerRef.current;
+    if (typeof p?.setSize !== "function") return; // API not ready yet; onReady calls resize
+    const f = wantRef.current.frame;
+    p.setSize(f?.width ?? HIDDEN_SIZE, f?.height ?? HIDDEN_SIZE);
+  }
 
   function sync() {
     const p = playerRef.current;
@@ -82,12 +97,12 @@ export default function LyricsPlayer({ videoId, playing }: Props) {
       const el = document.createElement("div");
       targetRef.current.appendChild(el);
       playerRef.current = new window.YT.Player(el, {
-        // 200px is the smallest size YouTube embeds reliably play at; the wrapper below clips it to 1px
-        width: "200",
-        height: "200",
+        // Hidden size until a frame asks for more (resize matches the frame)
+        width: String(HIDDEN_SIZE),
+        height: String(HIDDEN_SIZE),
         playerVars: { autoplay: 1, controls: 0, playsinline: 1, rel: 0 },
         events: {
-          onReady: () => sync(),
+          onReady: () => { resize(); sync(); },
           onAutoplayBlocked: () => setBlocked(true),
           onStateChange: (e: { data: number }) => { if (e.data === 1) setBlocked(false); }, // 1 = playing
           // Embedding blocked, video removed or age-restricted: the round continues, just without audio
@@ -114,15 +129,24 @@ export default function LyricsPlayer({ videoId, playing }: Props) {
     // eslint-disable-next-line react-hooks/exhaustive-deps -- sync reads the latest props via wantRef
   }, [videoId, playing]);
 
+  // Layout effect: the wrapper grows in the same commit, so size the iframe before paint.
+  useLayoutEffect(() => {
+    resize();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- resize reads the latest frame via wantRef
+  }, [frame?.width, frame?.height]);
+
   const failed = !!videoId && failedId === videoId;
   const showBlocked = !failed && blocked && playing && !!videoId;
 
   return (
     <>
-      {/* Kept in the layout (not display:none) so the browser still lets it play */}
+      {/* Kept in the layout (not display:none) so the browser still lets it play; a frame reveals it in place */}
       <div
-        aria-hidden
-        style={{ position: "fixed", bottom: 0, left: 0, width: 1, height: 1, opacity: 0, overflow: "hidden", pointerEvents: "none" }}
+        data-testid="lyrics-player-frame"
+        aria-hidden={!frame}
+        style={frame
+          ? { position: "fixed", top: frame.top, right: frame.right, width: frame.width, height: frame.height, zIndex: 1, borderRadius: 16, overflow: "hidden", pointerEvents: "none" }
+          : { position: "fixed", bottom: 0, left: 0, width: 1, height: 1, opacity: 0, overflow: "hidden", pointerEvents: "none" }}
       >
         <div ref={targetRef} />
       </div>
@@ -130,7 +154,10 @@ export default function LyricsPlayer({ videoId, playing }: Props) {
       {failed || showBlocked ? (
         <div
           role="status"
-          style={{ position: "fixed", left: "50%", bottom: 16, transform: "translateX(-50%)", zIndex: 50, width: "min(92vw, 420px)" }}
+          // With a frame, sit over the (dead or paused) video rather than over the content beside it.
+          style={frame
+            ? { position: "fixed", top: frame.top + 24, right: frame.right + 24, width: frame.width - 48, zIndex: 50 }
+            : { position: "fixed", left: "50%", bottom: 16, transform: "translateX(-50%)", zIndex: 50, width: "min(92vw, 420px)" }}
         >
           {failed ? (
             <div data-testid="lyrics-audio-error" style={{ background: "var(--surface2)", border: "2px solid rgba(255,59,92,.4)", borderRadius: 14, padding: "12px 16px", fontSize: 14, fontWeight: 700, color: "var(--ink)", textAlign: "center", fontFamily: "var(--font-zh)", boxShadow: "0 6px 20px rgba(0,0,0,.15)" }}>

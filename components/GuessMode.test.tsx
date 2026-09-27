@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
 import { render, screen, cleanup, fireEvent } from "@testing-library/react";
-import { GuessPlay, GuessScreen, GuessHostControls, guessAudioProps, isLeader } from "./GuessMode";
+import { GuessPlay, GuessScreen, GuessHostControls, guessAudioProps, isLeader, REVEAL_VIDEO } from "./GuessMode";
 import type { GuessAnswer, PublicGuessGameState } from "@/lib/game";
 
 afterEach(cleanup);
@@ -23,12 +23,18 @@ const answer = (over: Partial<GuessAnswer> = {}): GuessAnswer => ({
 describe("guessAudioProps", () => {
   const audio = { videoId: "abcdefghijk", roundIndex: 0 };
   it("is cued but silent before the round, audible while guessing and at results", () => {
-    expect(guessAudioProps(state({ phase: "playing" }), audio)).toEqual({ videoId: audio.videoId, playing: false });
-    expect(guessAudioProps(state({ phase: "guessing" }), audio)).toEqual({ videoId: audio.videoId, playing: true });
-    expect(guessAudioProps(state({ phase: "results" }), audio)).toEqual({ videoId: audio.videoId, playing: true });
+    expect(guessAudioProps(state({ phase: "playing" }), audio)).toEqual({ videoId: audio.videoId, playing: false, frame: null });
+    expect(guessAudioProps(state({ phase: "guessing" }), audio)).toEqual({ videoId: audio.videoId, playing: true, frame: null });
+    expect(guessAudioProps(state({ phase: "results" }), audio)).toEqual({ videoId: audio.videoId, playing: true, frame: REVEAL_VIDEO });
+  });
+  it("shows the video only at the reveal, never while players are still guessing", () => {
+    expect(guessAudioProps(state({ phase: "guessing" }), audio).frame).toBeNull();
+    expect(guessAudioProps(state({ phase: "results" }), audio).frame).toBe(REVEAL_VIDEO);
+    // No round info means no results layout (and no placeholder), so no floating video either.
+    expect(guessAudioProps(state({ phase: "results", currentRound: null }), audio).frame).toBeNull();
   });
   it("ignores a reply for a different round", () => {
-    expect(guessAudioProps(state({ currentRoundIndex: 1 }), audio)).toEqual({ videoId: null, playing: false });
+    expect(guessAudioProps(state({ currentRoundIndex: 1 }), audio)).toEqual({ videoId: null, playing: false, frame: null });
   });
 });
 
@@ -84,6 +90,14 @@ describe("GuessScreen", () => {
     expect(screen.getByText("1 / 2")).toBeTruthy();
     expect(screen.queryByText("晴天")).toBeNull();
     expect(screen.queryByText("周杰倫")).toBeNull();
+    expect(screen.queryByTestId("guess-video-slot")).toBeNull();
+  });
+
+  it("reserves the video spot at the reveal, where the screen's player shows the song", () => {
+    render(<GuessScreen state={state({ phase: "results", currentRound: { hasArtist: true, title: "晴天", artist: "周杰倫" } })} />);
+    const slot = screen.getByTestId("guess-video-slot");
+    expect(slot.style.top).toBe(`${REVEAL_VIDEO.top}px`);
+    expect(slot.style.width).toBe(`${REVEAL_VIDEO.width}px`);
   });
 
   it("results list each player's per-field marks", () => {
