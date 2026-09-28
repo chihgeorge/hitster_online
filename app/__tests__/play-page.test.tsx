@@ -77,24 +77,54 @@ describe("PlayPage: Lyrics Mode guessing", () => {
     expect(sendSpy.mock.calls.filter((c) => String(c[0]).includes("SUBMIT_LYRICS_ANSWER"))).toHaveLength(0);
   });
 
-  it("swaps Submitted for Time's up when the server answers TOO_LATE", () => {
-    render(<PlayPage />);
-    serverSends({ type: "LYRICS_STATE", state: lyricsState() });
+  function typeAndSubmit(text: string) {
     const input = screen.getByPlaceholderText(/Fill in the blank/);
-    act(() => { (input as HTMLInputElement).focus(); });
-    // type + submit via the same handler the button uses
     act(() => {
       const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!;
-      setter.call(input, "愛情");
+      setter.call(input, text);
       input.dispatchEvent(new Event("input", { bubbles: true }));
     });
     act(() => { screen.getByText(/送出/).closest("button")!.click(); });
-    expect(screen.getByText(/Submitted/)).toBeTruthy();
-    expect(sendSpy.mock.calls.filter((c) => String(c[0]).includes("SUBMIT_LYRICS_ANSWER"))).toHaveLength(1);
+  }
+  const submits = () => sendSpy.mock.calls.filter((c) => String(c[0]).includes("SUBMIT_LYRICS_ANSWER"));
+  const redacted = { text: "", ts: 0, correct: false, points: 0 };
 
-    serverSends({ type: "TOO_LATE" });
+  it("shows Sending… until the server's state carries the answer, then Submitted", () => {
+    render(<PlayPage />);
+    serverSends({ type: "LYRICS_STATE", state: lyricsState() });
+    typeAndSubmit("愛情");
+    expect(submits()).toHaveLength(1);
+    expect(screen.getByText(/Sending/)).toBeTruthy();
     expect(screen.queryByText(/Submitted/)).toBeNull();
+    serverSends({ type: "LYRICS_STATE", state: lyricsState({ answers: { [PLAYER]: redacted } }) });
+    expect(screen.getByText(/Submitted/)).toBeTruthy();
+  });
+
+  it("swaps Sending… for Time's up when the server answers TOO_LATE", () => {
+    render(<PlayPage />);
+    serverSends({ type: "LYRICS_STATE", state: lyricsState() });
+    typeAndSubmit("愛情");
+    serverSends({ type: "TOO_LATE" });
+    expect(screen.queryByText(/Sending|Submitted/)).toBeNull();
     expect(screen.getByText(/Time's up/)).toBeTruthy();
+  });
+
+  it("an answer the server never confirms reopens the input with a retry notice", () => {
+    render(<PlayPage />);
+    serverSends({ type: "LYRICS_STATE", state: lyricsState() });
+    typeAndSubmit("愛情");
+    act(() => { vi.advanceTimersByTime(5_000); });
+    expect(hasInput()).toBe(true);
+    expect(screen.getByText(/try again/)).toBeTruthy();
+    act(() => { screen.getByRole("button", { name: /Submit/ }).click(); });
+    expect(submits()).toHaveLength(2);
+  });
+
+  it("a reconnecting player who already answered sees Submitted, not the input", () => {
+    render(<PlayPage />);
+    serverSends({ type: "LYRICS_STATE", state: lyricsState({ answers: { [PLAYER]: redacted } }) });
+    expect(hasInput()).toBe(false);
+    expect(screen.getByText(/Submitted/)).toBeTruthy();
   });
 
   it("clears the too-late flag when the next round starts", () => {

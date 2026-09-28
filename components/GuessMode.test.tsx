@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
-import { render, screen, cleanup, fireEvent } from "@testing-library/react";
-import { GuessPlay, GuessScreen, GuessHostControls, guessAudioProps, isLeader, REVEAL_VIDEO } from "./GuessMode";
+import { render, screen, cleanup, fireEvent, act } from "@testing-library/react";
+import { GuessPlay, GuessScreen, GuessHostControls, guessAudioProps, isLeader, REVEAL_VIDEO, SUBMIT_ACK_TIMEOUT_MS } from "./GuessMode";
 import type { GuessAnswer, PublicGuessGameState } from "@/lib/game";
 
 afterEach(cleanup);
@@ -46,7 +46,37 @@ describe("GuessPlay", () => {
     fireEvent.change(screen.getByTestId("guess-artist-input"), { target: { value: "周杰倫" } });
     fireEvent.click(screen.getByTestId("guess-submit-btn"));
     expect(onSubmit).toHaveBeenCalledWith("晴天", "周杰倫");
+    // Not confirmed yet: "Sending…", no form to double-submit, and no premature ✓.
+    expect(screen.getByTestId("guess-sending")).toBeTruthy();
+    expect(screen.queryByText(/已送出/)).toBeNull();
+    expect(screen.queryByTestId("guess-title-input")).toBeNull();
+  });
+
+  it("shows 'submitted' only once the server's state carries the answer", () => {
+    const { rerender } = render(<GuessPlay state={state()} playerId={ME} playerName="Alice" tooLate={false} onSubmit={vi.fn()} />);
+    fireEvent.change(screen.getByTestId("guess-title-input"), { target: { value: "x" } });
+    fireEvent.click(screen.getByTestId("guess-submit-btn"));
+    rerender(<GuessPlay state={state({ answers: { [ME]: answer() } })} playerId={ME} playerName="Alice" tooLate={false} onSubmit={vi.fn()} />);
     expect(screen.getByText(/已送出/)).toBeTruthy();
+    expect(screen.queryByTestId("guess-sending")).toBeNull();
+  });
+
+  it("an answer the server never confirms reopens the form with a retry notice", () => {
+    vi.useFakeTimers();
+    try {
+      const onSubmit = vi.fn();
+      render(<GuessPlay state={state()} playerId={ME} playerName="Alice" tooLate={false} onSubmit={onSubmit} />);
+      fireEvent.change(screen.getByTestId("guess-title-input"), { target: { value: "x" } });
+      fireEvent.click(screen.getByTestId("guess-submit-btn"));
+      act(() => { vi.advanceTimersByTime(SUBMIT_ACK_TIMEOUT_MS); });
+      expect(screen.getByTestId("guess-send-failed")).toBeTruthy();
+      expect((screen.getByTestId("guess-title-input") as HTMLInputElement).value).toBe("x"); // typed text kept
+      fireEvent.click(screen.getByTestId("guess-submit-btn"));
+      expect(onSubmit).toHaveBeenCalledTimes(2);
+      expect(screen.queryByTestId("guess-send-failed")).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("title-only round has no artist input", () => {

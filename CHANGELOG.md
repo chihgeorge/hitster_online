@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.14.4.0] — 2026-09-28
+
+### Fixed
+- **Friends who join mid-game can play right away:** a player who joins during a Lyrics or Guess game is added to the scoreboard at 0 points, and their answers count from the current round on. Before, their answers were quietly thrown away until the next game. Someone who joins after the last round sees the final results unchanged
+- **"Submitted!" means the answer arrived:** in Lyrics and Guess, the phone shows "Sending…" until the server confirms it has your answer. If the answer doesn't arrive within 5 seconds, the input comes back with your text still in it and a "try again" message. Before, the phone showed ✓ right away, even when the answer never arrived
+- A Lyrics player who reconnects after answering sees "Submitted!" instead of an empty answer box
+
 ## [0.14.3.0] — 2026-09-26
 
 ### Added

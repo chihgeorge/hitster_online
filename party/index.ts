@@ -376,6 +376,15 @@ export default class HitsterRoom implements Party.Server {
     this.playerConnId[playerId] = conn.id;
 
     this.broadcastState();
+    this.syncTimedRoundPlayer(playerId);
+  }
+
+  /** Seats a (re)joining player in a running Lyrics/Guess game — see timedRound.upsertPlayer. */
+  private syncTimedRoundPlayer(playerId: string) {
+    const name = this.state.players[playerId]?.name;
+    if (!name) return;
+    if (this.lyricsState && timedRound.upsertPlayer(this.lyricsState, playerId, name)) this.broadcastLyricsState();
+    if (this.guessState && timedRound.upsertPlayer(this.guessState, playerId, name)) this.broadcastGuessState();
   }
 
   private handleRejoin(conn: Party.Connection, playerId: string, rawName: string) {
@@ -392,6 +401,7 @@ export default class HitsterRoom implements Party.Server {
     }
     this.sendTo(conn, { type: "STATE", state: this.sanitizedState() });
     this.broadcastState();
+    this.syncTimedRoundPlayer(playerId);
   }
 
   private handlePlace(conn: Party.Connection, playerId: string, position: number) {
