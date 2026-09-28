@@ -46,6 +46,25 @@ export function startRound<R, A extends { ts: number }>(s: State<R, A>, now: num
 }
 
 /**
+ * Seats a player who joined after the game started (score 0), or refreshes a returning player's
+ * name and connected flag. Players are snapshotted at game start, so without this a late joiner's
+ * answers would be dropped as "ignored". Nobody is added once the game has ended — the final
+ * standings stay as played. Returns whether anything changed.
+ */
+export function upsertPlayer<R, A extends { ts: number }>(s: State<R, A>, playerId: string, name: string): boolean {
+  const p = s.players[playerId];
+  if (p) {
+    if (p.name === name && p.connected) return false;
+    p.name = name;
+    p.connected = true;
+    return true;
+  }
+  if (s.phase === "ended") return false;
+  s.players[playerId] = { name, score: 0, connected: true };
+  return true;
+}
+
+/**
  * Records one player's answer, stamped with the server's `now`. "ignored" covers every silent
  * drop (wrong phase, unknown player, already answered); "too_late" is past timer + graceMs.
  */

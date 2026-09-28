@@ -6,7 +6,7 @@ import Link from "next/link";
 import usePartySocket from "partysocket/react";
 import Timeline from "@/components/Timeline";
 import Vinyl from "@/components/Vinyl";
-import { GuessPlay, isLeader } from "@/components/GuessMode";
+import { GuessPlay, isLeader, SUBMIT_ACK_TIMEOUT_MS } from "@/components/GuessMode";
 import type { GameState, ServerMessage, ClientMessage, Player, PublicLyricsGameState, PublicGuessGameState } from "@/lib/game";
 
 function getOrCreatePlayerId(): string {
@@ -27,7 +27,9 @@ export default function PlayPage() {
   const [state, setState] = useState<GameState | null>(null);
   const [lyricsState, setLyricsState] = useState<PublicLyricsGameState | null>(null);
   const [lyricsAnswer, setLyricsAnswer] = useState("");
+  // True from the click until the round resets; "Submitted!" itself waits for the server (see below).
   const [lyricsSubmitted, setLyricsSubmitted] = useState(false);
+  const [lyricsSendFailed, setLyricsSendFailed] = useState(false);
   const [lyricsTooLate, setLyricsTooLate] = useState(false);
   const [lyricsTimerLeft, setLyricsTimerLeft] = useState<number | null>(null);
   const [guessState, setGuessState] = useState<PublicGuessGameState | null>(null);
@@ -67,6 +69,7 @@ export default function PlayPage() {
     if (lyricsState?.phase === "playing" || lyricsState?.phase === "loading") {
       setLyricsAnswer("");
       setLyricsSubmitted(false);
+      setLyricsSendFailed(false);
       setLyricsTooLate(false);
       setLyricsTimerLeft(null);
     }
@@ -158,8 +161,9 @@ export default function PlayPage() {
 
   function handleSubmitLyricsAnswer() {
     const text = lyricsAnswer.trim();
-    if (!text || lyricsSubmitted || lyricsTimerLeft === 0) return;
+    if (!text || lyricsSubmitted || lyricsConfirmed || lyricsTimerLeft === 0) return;
     setLyricsSubmitted(true);
+    setLyricsSendFailed(false);
     send({ type: "SUBMIT_LYRICS_ANSWER", playerId: playerIdRef.current, text });
   }
 
@@ -170,6 +174,15 @@ export default function PlayPage() {
 
   const myLyricsPlayer = lyricsState?.players[playerIdRef.current] ?? null;
   const myLyricsAnswer = lyricsState?.answers[playerIdRef.current] ?? null;
+
+  // Same as GuessPlay: an answer counts as submitted once our (redacted) key is in LYRICS_STATE.
+  // If it never arrives the server dropped it — reopen the input so the player can retry.
+  const lyricsConfirmed = !!myLyricsAnswer;
+  useEffect(() => {
+    if (!lyricsSubmitted || lyricsConfirmed || lyricsTooLate) return;
+    const t = setTimeout(() => { setLyricsSubmitted(false); setLyricsSendFailed(true); }, SUBMIT_ACK_TIMEOUT_MS);
+    return () => clearTimeout(t);
+  }, [lyricsSubmitted, lyricsConfirmed, lyricsTooLate]);
 
   if (guessState) {
     return (
@@ -255,10 +268,14 @@ export default function PlayPage() {
         </div>
 
         {/* Answer input */}
-        {lyricsSubmitted ? (
+        {lyricsConfirmed ? (
           <div style={{ textAlign: "center", display: "flex", flexDirection: "column", gap: 6, alignItems: "center" }}>
             <p style={{ fontSize: 16, fontWeight: 900, color: "var(--mint)" }}>✓ 已送出 · Submitted!</p>
             <p style={{ fontSize: 12, color: "var(--text3)" }}>等待揭曉…</p>
+          </div>
+        ) : lyricsSubmitted && !lyricsTooLate ? (
+          <div style={{ textAlign: "center" }}>
+            <p style={{ fontSize: 16, fontWeight: 900, color: "var(--text3)" }}>送出中… · Sending…</p>
           </div>
         ) : lyricsTimerLeft === 0 || lyricsTooLate ? (
           <div style={{ textAlign: "center", display: "flex", flexDirection: "column", gap: 6, alignItems: "center" }}>
@@ -278,6 +295,11 @@ export default function PlayPage() {
               onKeyDown={(e) => { if (e.key === "Enter") handleSubmitLyricsAnswer(); }}
               style={{ background: "white", border: "2px solid rgba(255,107,53,.3)", borderRadius: 14, padding: "14px 16px", fontSize: 18, color: "var(--ink)", fontFamily: "var(--font-zh)", width: "100%", boxSizing: "border-box" }}
             />
+            {lyricsSendFailed && (
+              <p style={{ fontSize: 13, fontWeight: 700, color: "var(--red)", textAlign: "center" }}>
+                沒有送出，請再試一次 · Didn&apos;t go through — try again
+              </p>
+            )}
             <button onClick={handleSubmitLyricsAnswer} disabled={!lyricsAnswer.trim()}
               style={{ background: !lyricsAnswer.trim() ? "rgba(255,107,53,.35)" : "var(--orange)", color: "white", border: "none", borderRadius: 14, padding: "14px", fontSize: 16, fontWeight: 900, cursor: !lyricsAnswer.trim() ? "not-allowed" : "pointer", fontFamily: "var(--font-zh)", boxShadow: lyricsAnswer.trim() ? "0 4px 16px rgba(255,107,53,.3)" : "none" }}>
               送出 · Submit

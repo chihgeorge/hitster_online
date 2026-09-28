@@ -15,6 +15,9 @@ type AudioReply = { videoId: string | null; roundIndex: number };
 /** Where the TV shows the song's video at the reveal (canvas units); GuessScreen reserves the same spot. */
 // top lines the video up with the round label; the answer card sits under it. 480×270 is YouTube's
 // recommended minimum for a 16:9 embed (the hard floor is 200×200); YouTube sees canvas units.
+/** How long a phone waits for the server to confirm an answer before offering a retry. */
+export const SUBMIT_ACK_TIMEOUT_MS = 5000;
+
 export const REVEAL_VIDEO: VideoFrame = { top: 70, right: 32, width: 480, height: 270 };
 
 /**
@@ -80,6 +83,7 @@ export function GuessPlay({ state, playerId, playerName, tooLate, onSubmit }: Pl
   const [title, setTitle] = useState("");
   const [artist, setArtist] = useState("");
   const [sent, setSent] = useState(false);
+  const [sendFailed, setSendFailed] = useState(false);
   const left = useCountdown(state);
   const me = state.players[playerId] ?? null;
   const myAnswer = state.answers[playerId] ?? null;
@@ -88,8 +92,17 @@ export function GuessPlay({ state, playerId, playerName, tooLate, onSubmit }: Pl
   // New round, or a new game that restarts at round 0 (e.g. after a quit while this phone was offline).
   const roundKey = `${state.currentRoundIndex}:${state.phase === "playing"}`;
   useEffect(() => {
-    setTitle(""); setArtist(""); setSent(false);
+    setTitle(""); setArtist(""); setSent(false); setSendFailed(false);
   }, [roundKey]);
+
+  // "Submitted" comes from the server: our (redacted) answer key showing up in GUESS_STATE. If it
+  // never does, the server dropped the answer silently — reopen the form so the player can retry.
+  const confirmed = !!myAnswer;
+  useEffect(() => {
+    if (!sent || confirmed || tooLate) return;
+    const t = setTimeout(() => { setSent(false); setSendFailed(true); }, SUBMIT_ACK_TIMEOUT_MS);
+    return () => clearTimeout(t);
+  }, [sent, confirmed, tooLate]);
 
   const main = (children: React.ReactNode, center = false) => (
     <main className={`flex min-h-screen flex-col items-center ${center ? "justify-center" : ""} gap-6 px-5 py-12`} style={{ background: "var(--bg)" }}>
@@ -118,12 +131,13 @@ export function GuessPlay({ state, playerId, playerName, tooLate, onSubmit }: Pl
 
   if (state.phase === "guessing") {
     // A reconnecting player still sees "submitted": the redacted answer key survives on the wire.
-    const submitted = (sent && !tooLate) || !!myAnswer; // TOO_LATE means the server dropped it
+    const sending = sent && !confirmed && !tooLate; // TOO_LATE means the server dropped it
     const timeUp = left === 0 || tooLate;
-    const canSend = !submitted && !timeUp && (title.trim() !== "" || (hasArtist && artist.trim() !== ""));
+    const canSend = !confirmed && !sending && !timeUp && (title.trim() !== "" || (hasArtist && artist.trim() !== ""));
     const submit = () => {
       if (!canSend) return;
       setSent(true);
+      setSendFailed(false);
       onSubmit(title.trim(), hasArtist ? artist.trim() : "");
     };
     const input: React.CSSProperties = { background: "white", border: "2px solid rgba(255,107,53,.3)", borderRadius: 14, padding: "14px 16px", fontSize: 18, color: "var(--ink)", fontFamily: "var(--font-zh)", width: "100%", boxSizing: "border-box" };
@@ -137,10 +151,14 @@ export function GuessPlay({ state, playerId, playerName, tooLate, onSubmit }: Pl
         <p style={{ fontSize: 11, color: "var(--text3)", textTransform: "uppercase", letterSpacing: ".08em" }}>秒</p>
       </div>
       <p style={{ fontSize: 18, fontWeight: 900, color: "var(--ink)" }}>🎧 這是什麼歌？ · Name that song!</p>
-      {submitted ? (
+      {confirmed ? (
         <div style={{ textAlign: "center" }}>
           <p style={{ fontSize: 16, fontWeight: 900, color: "var(--mint)" }}>✓ 已送出 · Submitted!</p>
           <p style={{ fontSize: 12, color: "var(--text3)" }}>等待揭曉…</p>
+        </div>
+      ) : sending ? (
+        <div data-testid="guess-sending" style={{ textAlign: "center" }}>
+          <p style={{ fontSize: 16, fontWeight: 900, color: "var(--text3)" }}>送出中… · Sending…</p>
         </div>
       ) : timeUp ? (
         <div style={{ textAlign: "center" }}>
@@ -156,6 +174,11 @@ export function GuessPlay({ state, playerId, playerName, tooLate, onSubmit }: Pl
             <input data-testid="guess-artist-input" type="text" lang="zh-TW" placeholder="歌手 · Artist"
               value={artist} onChange={(e) => setArtist(e.target.value)}
               onKeyDown={(e) => { if (e.key === "Enter") submit(); }} style={input} />
+          )}
+          {sendFailed && (
+            <p data-testid="guess-send-failed" style={{ fontSize: 13, fontWeight: 700, color: "var(--red)", textAlign: "center" }}>
+              沒有送出，請再試一次 · Didn&apos;t go through — try again
+            </p>
           )}
           <button data-testid="guess-submit-btn" onClick={submit} disabled={!canSend}
             style={{ background: canSend ? "var(--orange)" : "rgba(255,107,53,.35)", color: "white", border: "none", borderRadius: 14, padding: "14px", fontSize: 16, fontWeight: 900, cursor: canSend ? "pointer" : "not-allowed", fontFamily: "var(--font-zh)" }}>

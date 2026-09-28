@@ -2940,6 +2940,53 @@ describe("Guess Mode: guards", () => {
   });
 });
 
+describe("Timed rounds: players who join mid-game", () => {
+  beforeEach(() => vi.clearAllMocks());
+  // setupLyricsGame narrows embeddable ids to "vid1" persistently; restore the all-embeddable default.
+  afterEach(() => {
+    vi.mocked(fetchEmbeddableVideoIds).mockImplementation((ids: string[]) => Promise.resolve(new Set(ids)));
+  });
+  const P3 = "00000000-0000-0000-0000-000000000003";
+
+  it("Guess: a late JOIN is seated at 0 points, broadcast, and can answer", async () => {
+    const { room, hostConn } = await setupGuessGame();
+    await send(room, hostConn, { type: "START_GUESS_ROUND", hostId: "host-uuid" });
+    const lateConn = makeConn("p3-conn");
+    await send(room, lateConn, { type: "JOIN", playerId: P3, name: "Carol" });
+    expect(lastBroadcast(room)).toMatchObject({ type: "GUESS_STATE", state: { players: { [P3]: { name: "Carol", score: 0 } } } });
+    await send(room, lateConn, { type: "SUBMIT_GUESS", playerId: P3, title: "x", artist: "y" });
+    expect(room.guessState!.answers[P3]).toBeDefined();
+  });
+
+  it("Lyrics: a late JOIN is seated and can answer", async () => {
+    const { room, hostConn } = await setupLyricsGame();
+    await send(room, hostConn, { type: "START_LYRICS_ROUND", hostId: "host-uuid" });
+    const lateConn = makeConn("p3-conn");
+    await send(room, lateConn, { type: "JOIN", playerId: P3, name: "Carol" });
+    expect(room.lyricsState!.players[P3]).toEqual({ name: "Carol", score: 0, connected: true });
+    await send(room, lateConn, { type: "SUBMIT_LYRICS_ANSWER", playerId: P3, text: "hi" });
+    expect(room.lyricsState!.answers[P3]?.text).toBe("hi");
+  });
+
+  it("a REJOIN keeps the player's score and does not duplicate them", async () => {
+    const { room } = await setupGuessGame();
+    room.guessState!.players[P1].score = 42;
+    await send(room, makeConn("p1-new"), { type: "REJOIN", playerId: P1, name: "Alice" });
+    expect(room.guessState!.players[P1]).toMatchObject({ name: "Alice", score: 42 });
+    expect(Object.keys(room.guessState!.players)).toHaveLength(2);
+  });
+
+  it("a JOIN after the game ended leaves the final standings alone", async () => {
+    const { room, hostConn } = await setupGuessGame({ timerSeconds: 60, totalRounds: 1, fuzzyEnabled: false });
+    await send(room, hostConn, { type: "START_GUESS_ROUND", hostId: "host-uuid" });
+    await send(room, hostConn, { type: "SHOW_GUESS_RESULTS", hostId: "host-uuid" });
+    await send(room, hostConn, { type: "NEXT_GUESS_ROUND", hostId: "host-uuid" });
+    expect(room.guessState!.phase).toBe("ended");
+    await send(room, makeConn("p3-conn"), { type: "JOIN", playerId: P3, name: "Carol" });
+    expect(room.guessState!.players[P3]).toBeUndefined();
+  });
+});
+
 describe("Guess Mode: review hardening", () => {
   beforeEach(() => vi.clearAllMocks());
 

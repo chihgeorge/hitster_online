@@ -86,3 +86,30 @@ describe("timed-round wrong-phase refusals", () => {
     expect(s.players.p1.score).toBe(0);
   });
 });
+
+describe("timed-round upsertPlayer (late joiners)", () => {
+  it("seats a new player at score 0 so their answer counts", () => {
+    const s = fresh();
+    tr.confirmPreview(s);
+    tr.startRound(s, 0);
+    expect(tr.acceptAnswer(s, "p3", 100, 500, build("x"))).toBe("ignored");
+    expect(tr.upsertPlayer(s, "p3", "c")).toBe(true);
+    expect(s.players.p3).toEqual({ name: "c", score: 0, connected: true });
+    expect(tr.acceptAnswer(s, "p3", 100, 500, build("x"))).toBe("ok");
+  });
+
+  it("refreshes a returning player's name/connected without touching the score", () => {
+    const s = fresh();
+    s.players.p1 = { name: "a", score: 9, connected: false };
+    expect(tr.upsertPlayer(s, "p1", "a2")).toBe(true);
+    expect(s.players.p1).toEqual({ name: "a2", score: 9, connected: true });
+    expect(tr.upsertPlayer(s, "p1", "a2")).toBe(false); // nothing changed
+  });
+
+  it("adds nobody once the game has ended", () => {
+    const s = fresh();
+    s.phase = "ended";
+    expect(tr.upsertPlayer(s, "p3", "c")).toBe(false);
+    expect(s.players.p3).toBeUndefined();
+  });
+});
