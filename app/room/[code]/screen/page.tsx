@@ -12,9 +12,10 @@ import VictoryPlayer from "@/components/VictoryPlayer";
 import { Qr } from "@/components/Qr";
 import { Stage } from "@/components/Stage";
 import { GuessScreen, guessAudioProps } from "@/components/GuessMode";
+import { useCountdown, TvScoreRow, TvFinal } from "@/components/TimedRound";
 import { getOrCreatePersistedId } from "@/lib/device-id";
-import { serverNow, syncServerClock } from "@/lib/server-clock";
-import { rankPlayers, wonOnTime, type GameState, type ServerMessage, type PublicLyricsGameState, type PublicGuessGameState } from "@/lib/game";
+import { syncServerClock } from "@/lib/server-clock";
+import { rankPlayers, type GameState, type ServerMessage, type PublicLyricsGameState, type PublicGuessGameState } from "@/lib/game";
 
 const VICTORY_VIDEO_ID: string | null = "bqon4TM2MgM";
 
@@ -30,7 +31,7 @@ export default function ScreenPage() {
   const [state, setState] = useState<GameState | null>(null);
   const [lyricsState, setLyricsState] = useState<PublicLyricsGameState | null>(null);
   const [lyricsAudio, setLyricsAudio] = useState<{ videoId: string | null; roundIndex: number } | null>(null);
-  const [lyricsTimerLeft, setLyricsTimerLeft] = useState<number | null>(null);
+  const lyricsTimerLeft = useCountdown(lyricsState);
   const [guessState, setGuessState] = useState<PublicGuessGameState | null>(null);
   const [guessAudio, setGuessAudio] = useState<{ videoId: string | null; roundIndex: number } | null>(null);
   const screenIdRef = useRef<string>("");
@@ -56,7 +57,6 @@ export default function ScreenPage() {
         syncServerClock(msg.serverNow);
         setLyricsState(msg.state);
         if (["loading", "preview", "ended"].includes(msg.state.phase)) setLyricsAudio(null);
-        if (msg.state.phase === "lobby" || msg.state.phase === "ended") setLyricsTimerLeft(null);
       }
       if (msg.type === "LYRICS_ABORTED") { setLyricsState(null); setLyricsAudio(null); }
       if (msg.type === "LYRICS_AUDIO") setLyricsAudio({ videoId: msg.videoId, roundIndex: msg.roundIndex });
@@ -100,27 +100,10 @@ export default function ScreenPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps -- socket is stable; re-run on new state or reply
   }, [guessState, guessAudio, notTheTv]);
 
-  useEffect(() => {
-    if (lyricsState?.phase !== "guessing" || lyricsState.roundStart === null) {
-      setLyricsTimerLeft(null);
-      return;
-    }
-    const deadline = lyricsState.roundStart + lyricsState.timerSeconds * 1000;
-    const tick = () => setLyricsTimerLeft(Math.max(0, Math.ceil((deadline - serverNow()) / 1000)));
-    tick();
-    const id = setInterval(tick, 200);
-    return () => clearInterval(id);
-  }, [lyricsState?.phase, lyricsState?.roundStart, lyricsState?.timerSeconds]);
 
   const phase = state?.phase ?? "lobby";
   const label: React.CSSProperties = { fontSize: 11, color: "var(--text3)", textTransform: "uppercase", letterSpacing: ".1em" };
-  const scoreRow = (players: Record<string, { name: string; score: number; timeMs?: number }>) => (
-    <div style={{ display: "flex", gap: 14, alignItems: "center", flexWrap: "wrap" }}>
-      {rankPlayers(players).map(([id, p]) => (
-        <span key={id} style={{ fontSize: 13, color: "var(--text2)", fontWeight: 600 }}>{p.name}: <span style={{ color: "var(--orange)" }}>{p.score}</span></span>
-      ))}
-    </div>
-  );
+
 
   return (
     <Stage>
@@ -241,7 +224,7 @@ export default function ScreenPage() {
             <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 20, minHeight: 0 }}>
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
                 <p style={label}>第 {lyricsState.currentRoundIndex + 1} / {lyricsState.totalRounds} 回合</p>
-                {scoreRow(lyricsState.players)}
+                <TvScoreRow players={lyricsState.players} />
               </div>
               <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 24 }}>
                 <p style={{ textAlign: "center", color: "var(--text2)", fontSize: 20, lineHeight: 1.6, maxWidth: 780, whiteSpace: "pre-wrap" }}>
@@ -276,24 +259,7 @@ export default function ScreenPage() {
               </div>
             </div>
           )}
-          {lyricsState?.phase === "ended" && (
-            <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 20 }}>
-              <p style={label}>歌詞模式結束 · Lyrics Mode Over!</p>
-              <h2 className="title-outlined" style={{ fontSize: 48 }}>
-                {rankPlayers(lyricsState.players)[0]?.[1]?.name ?? "?"}
-              </h2>
-              {wonOnTime(lyricsState.players) && <p data-testid="won-on-time" style={{ fontSize: 14, color: "var(--text2)", fontWeight: 700 }}>同分，答得較快的人獲勝 · Tied on points — faster answers won</p>}
-              <div style={{ width: "100%", maxWidth: 520, display: "flex", flexDirection: "column", gap: 8 }}>
-                {rankPlayers(lyricsState.players).map(([id, p], i) => (
-                  <div key={id} style={{ display: "flex", alignItems: "center", gap: 12, background: i === 0 ? "var(--ink)" : "white", border: "2px solid rgba(255,107,53,.15)", borderRadius: 14, padding: "10px 18px" }}>
-                    <span style={{ fontWeight: 900, color: i === 0 ? "var(--gold)" : "var(--text3)", minWidth: 28 }}>#{i + 1}</span>
-                    <span style={{ fontWeight: 700, color: i === 0 ? "var(--bg)" : "var(--ink)", flex: 1 }}>{p.name}</span>
-                    <span style={{ fontWeight: 900, color: i === 0 ? "var(--gold)" : "var(--orange)", fontFamily: "var(--font-mono)" }}>{p.score}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
+          {lyricsState?.phase === "ended" && <TvFinal players={lyricsState.players} title="歌詞模式結束 · Lyrics Mode Over!" />}
 
           {/* ── Guess mode ───────────────────────────────────────────────────── */}
           {guessState && <GuessScreen state={guessState} />}

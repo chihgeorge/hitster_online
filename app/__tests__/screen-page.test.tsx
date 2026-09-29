@@ -251,9 +251,10 @@ describe("ScreenPage: Lyrics mode", () => {
     expect(screen.getByText(/AI 正在準備歌詞/)).toBeTruthy();
   });
 
-  it("shows the lyric context and a live countdown during guessing", () => {
+  it("shows the lyric context and a live countdown during guessing", async () => {
     render(<ScreenPage />);
     serverSends({ type: "LYRICS_STATE", state: lyricsState({ phase: "guessing", roundStart: Date.now() - 15_000, timerSeconds: 20 }) });
+    await act(async () => {}); // the shared countdown's first tick runs in a microtask
     expect(screen.getByText(/那些年錯過的/)).toBeTruthy();
     expect(screen.getByText("05")).toBeTruthy(); // 20s timer, 15s elapsed -> 5 left, zero-padded
   });
