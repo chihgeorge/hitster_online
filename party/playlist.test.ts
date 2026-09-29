@@ -222,6 +222,43 @@ describe("PlaylistParty: POST action RESOLVE_FROM_URL (D1/D2)", () => {
 });
 
 describe("PlaylistParty: library sync on create/delete (D2a)", () => {
+  describe("keeps the library entry in sync with later edits", () => {
+    async function setup() {
+      const libraryFetch = makeLibraryFetchMock();
+      const party = new PlaylistParty(makeRoom("test-playlist-id", libraryFetch));
+      await createPlaylist(party, [song("vid00000001"), song("vid00000002"), song("vid00000003")], "Old Name");
+      libraryFetch.mockClear();
+      const put = (body: object) => party.onRequest(makeRequest("PUT", { ownerHostId: "host-1", ...body }));
+      const lastUpsert = () => JSON.parse(libraryFetch.mock.calls.at(-1)![1].body as string);
+      return { libraryFetch, put, lastUpsert };
+    }
+
+    it("a rename updates the library name", async () => {
+      const { put, lastUpsert } = await setup();
+      expect((await put({ name: "New Name" })).status).toBe(200);
+      expect(lastUpsert()).toEqual({ action: "UPSERT", entry: { id: "test-playlist-id", name: "New Name", songCount: 3 } });
+    });
+
+    it("removing a song updates the library count", async () => {
+      const { put, lastUpsert } = await setup();
+      expect((await put({ action: "DELETE_SONG", videoId: "vid00000002" })).status).toBe(200);
+      expect(lastUpsert()).toEqual({ action: "UPSERT", entry: { id: "test-playlist-id", name: "Old Name", songCount: 2 } });
+    });
+
+    it("replacing the song list updates the count", async () => {
+      const { put, lastUpsert } = await setup();
+      await put({ songs: [song("vid00000001"), song("vid00000004")] });
+      expect(lastUpsert().entry.songCount).toBe(2);
+    });
+
+    it("editing one song's title leaves the library alone, and a rejected edit never syncs", async () => {
+      const { put, libraryFetch } = await setup();
+      await put({ action: "UPDATE_SONG", videoId: "vid00000001", title: "Retitled" });
+      await put({ name: "   " }); // 400
+      expect(libraryFetch).not.toHaveBeenCalled();
+    });
+  });
+
   it("UPSERTs the library index on successful create, with the right owner/entry shape", async () => {
     const libraryFetch = makeLibraryFetchMock();
     const room = makeRoom("test-playlist-id", libraryFetch);

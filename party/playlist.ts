@@ -46,6 +46,11 @@ function validateSongs(songs: unknown): songs is EditableSong[] {
   );
 }
 
+/** The library's view of a playlist (party/library.ts LibraryEntry) — what UPSERT replaces. */
+function libraryEntry(p: SavedPlaylist) {
+  return { id: p.id, name: p.name, songCount: p.songs.length, ...(p.sourceUrl ? { sourceUrl: p.sourceUrl } : {}) };
+}
+
 function sanitizeSongs(songs: EditableSong[]): EditableSong[] {
   return songs.map((s) => ({
     videoId: s.videoId,
@@ -153,12 +158,7 @@ export default class PlaylistParty implements Party.Server {
       };
       await this.room.storage.put("playlist", playlist);
       await this.room.storage.put("ownerHostId", ownerHostId.trim());
-      await this.syncLibrary("UPSERT", ownerHostId.trim(), {
-        id: playlist.id,
-        name: playlist.name,
-        songCount: playlist.songs.length,
-        ...(playlist.sourceUrl ? { sourceUrl: playlist.sourceUrl } : {}),
-      });
+      await this.syncLibrary("UPSERT", ownerHostId.trim(), libraryEntry(playlist));
       return json({ playlistId: playlist.id }, 201);
     }
 
@@ -214,6 +214,7 @@ export default class PlaylistParty implements Party.Server {
         if (stored.songs.length < 2) return err("Cannot delete — playlist must keep at least 2 songs", 400);
         stored.updatedAt = Date.now();
         await this.room.storage.put("playlist", stored);
+        if (storedOwner) await this.syncLibrary("UPSERT", storedOwner, libraryEntry(stored)); // song count changed
         return json({ ok: true });
       }
 
@@ -249,6 +250,10 @@ export default class PlaylistParty implements Party.Server {
       }
       stored.updatedAt = Date.now();
       await this.room.storage.put("playlist", stored);
+      // Name and/or song count may have changed; the library entry mirrors both.
+      if (storedOwner && (name !== undefined || songs !== undefined)) {
+        await this.syncLibrary("UPSERT", storedOwner, libraryEntry(stored));
+      }
       return json({ ok: true });
     }
 
