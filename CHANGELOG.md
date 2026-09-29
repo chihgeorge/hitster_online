@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.14.13.0] — 2026-09-29
+
+### Fixed
+- **The playlist library stays up to date:** renaming a saved playlist or removing songs from it now updates its name and song count in your library list. Before, the list kept the old name and count forever
+
 ## [0.14.12.0] — 2026-09-29
 
 ### Fixed

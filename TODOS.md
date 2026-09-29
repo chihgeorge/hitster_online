@@ -79,18 +79,6 @@ _Deferred from /qa on feat/lyrics-api 2026-09-17_
 
 ## Playlists & Library
 
-### Library index drifts on playlist rename or song add/remove via PUT
-
-**What:** Library index drifts on playlist rename or song add/remove via PUT.
-
-**Why:** Renamed or edited playlists show stale names/counts in the library.
-
-**Context:** `party/library.ts`'s entry ({id, name, songCount}) is only synced from `party/playlist.ts` on create (POST) and delete (DELETE) — decision D2a in `docs/designs/decouple-quiz-bank.md` scoped it to those two, not every PUT sub-action (rename, UPDATE_SONG, DELETE_SONG). A renamed playlist or one with songs added/removed keeps showing its old name/count in the library list until... never, there's no other sync trigger. Low-severity (stale display only, the playlist itself is correct) but worth fixing by calling `syncLibrary("UPSERT", ...)` from the same PUT branches that change `name` or `songs.length`. Found during T4 implementation (docs/designs/decouple-quiz-bank.md), 2026-09-22.
-
-**Effort:** S
-**Priority:** P3
-**Depends on:** None
-
 ## Infrastructure
 
 ### Room state is in memory only: a PartyKit reload or eviction wipes the game and leaves host/player pages stale
@@ -187,6 +175,20 @@ _Deferred from plan: foamy-crafting-bonbon.md_
 **Depends on:** None
 
 ## Completed
+
+### Library index drifts on playlist rename or song add/remove via PUT
+
+**What:** Library index drifts on playlist rename or song add/remove via PUT.
+
+**Why:** Renamed or edited playlists show stale names/counts in the library.
+
+**Context:** `party/library.ts`'s entry ({id, name, songCount}) is only synced from `party/playlist.ts` on create (POST) and delete (DELETE) — decision D2a in `docs/designs/decouple-quiz-bank.md` scoped it to those two, not every PUT sub-action (rename, UPDATE_SONG, DELETE_SONG). A renamed playlist or one with songs added/removed keeps showing its old name/count in the library list until... never, there's no other sync trigger. Low-severity (stale display only, the playlist itself is correct) but worth fixing by calling `syncLibrary("UPSERT", ...)` from the same PUT branches that change `name` or `songs.length`. Found during T4 implementation (docs/designs/decouple-quiz-bank.md), 2026-09-22.
+
+**Effort:** S
+**Priority:** P3
+**Depends on:** None
+
+**Completed:** v0.14.13.0 (2026-09-29) — `party/playlist.ts` also UPSERTs the library entry (`libraryEntry()`, shared with create) after DELETE_SONG and after a default PUT that sets `name` or `songs`. UPDATE_SONG leaves the name and count alone, so it doesn't sync.
 
 ### Timeline: skip a song whose video can't be played
 
