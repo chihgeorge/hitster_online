@@ -71,6 +71,35 @@ function loadLyricsPlaylistWithPlayer() {
   serverSends({ type: "STATE", state: lobbyStateWithPlayer });
 }
 
+describe("HostPage: loaded-playlist line matches the game mode", () => {
+  const load = (modeLabel: string | null) => {
+    render(<HostPage />);
+    serverSends({ type: "STATE", state: lobbyStateEmpty });
+    if (modeLabel) fireEvent.click(screen.getByText(modeLabel));
+    fireEvent.change(screen.getByPlaceholderText(/youtube.com\/playlist/), { target: { value: "hitster://cpop-test" } });
+    fireEvent.click(screen.getByText("載入 Load"));
+    serverSends({
+      type: "PLAYLIST_READY", songCount: 3,
+      songs: [
+        { videoId: "v1", title: "A", artist: "X", year: 2000 },
+        { videoId: "v2", title: "B", artist: "X", year: 2001 },
+        { videoId: "v3", title: "C", artist: "X", year: null },
+      ],
+    });
+  };
+
+  it("Timeline counts every song and says how many have a confirmed year", () => {
+    load(null);
+    expect(screen.getByText("已載入 — 3 首歌曲，2 首有確認年份")).toBeTruthy();
+  });
+
+  it("Lyrics mode doesn't talk about release years", () => {
+    load("🎵 歌詞模式");
+    expect(screen.getByText("已載入 — 3 首歌曲")).toBeTruthy();
+    expect(screen.queryByText(/確認年份/)).toBeNull();
+  });
+});
+
 describe("HostPage: Lyrics mode Start-Lyrics race (T2, docs/designs/full-page-focus-editor.md)", () => {
   it("hides the Ask AI box and makes fields read-only immediately after clicking Start, before lyricsState arrives", async () => {
     loadLyricsPlaylistWithPlayer();

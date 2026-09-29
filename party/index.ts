@@ -576,6 +576,22 @@ export default class HitsterRoom implements Party.Server {
     return s !== null && s.phase !== "preview" && s.phase !== "ended";
   }
 
+  /**
+   * Starting Timeline over a Lyrics/Guess game that's only in preview or ended (which
+   * timedRoundInPlay lets through): drop it and tell clients, or phones stay on its standings —
+   * the play page renders the timed game whenever one is set.
+   */
+  private clearIdleTimedGames() {
+    if (this.lyricsState) {
+      this.lyricsDeck = [];
+      this.abortLyricsStart();
+    }
+    if (this.guessState) {
+      this.guessState = null;
+      this.broadcast({ type: "GUESS_ABORTED" });
+    }
+  }
+
   private async handleLoadPlaylist(conn: Party.Connection, hostId: string, playlistUrl: string, gameMode?: GameMode) {
     if (this.state.phase !== "lobby" || this.timedRoundInPlay()) {
       this.sendTo(conn, { type: "PLAYLIST_LOAD_ERROR", error: "wrong_phase" });
@@ -912,6 +928,7 @@ export default class HitsterRoom implements Party.Server {
       this.sendTo(conn, { type: "ERROR", error: "unauthorized" });
       return;
     }
+    this.clearIdleTimedGames();
     if (typeof targetCardCount === "number") {
       this.state.targetCardCount = Math.max(1, Math.min(targetCardCount, MAX_TARGET_CARD_COUNT));
     }

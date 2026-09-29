@@ -34,6 +34,10 @@ export default function ScreenPage() {
   const [guessState, setGuessState] = useState<PublicGuessGameState | null>(null);
   const [guessAudio, setGuessAudio] = useState<{ videoId: string | null; roundIndex: number } | null>(null);
   const screenIdRef = useRef<string>("");
+  // The server refused this browser's screen claim: another device is the room's TV (or players
+  // joined before this one, see claimOrValidateScreen). Stop re-asking for audio on every state
+  // broadcast and say why the TV is silent; a reconnect tries once more.
+  const [notTheTv, setNotTheTv] = useState(false);
 
   useEffect(() => {
     screenIdRef.current = getOrCreatePersistedId("hitster_screen_id");
@@ -46,6 +50,8 @@ export default function ScreenPage() {
       let msg: ServerMessage;
       try { msg = JSON.parse(event.data as string) as ServerMessage; } catch { return; }
       if (msg.type === "STATE") setState(msg.state);
+      // This page only sends screen-claim messages, so any unauthorized error is about the claim.
+      if (msg.type === "ERROR" && msg.error === "unauthorized") setNotTheTv(true);
       if (msg.type === "LYRICS_STATE") {
         syncServerClock(msg.serverNow);
         setLyricsState(msg.state);
@@ -67,6 +73,7 @@ export default function ScreenPage() {
       // while we were offline): cached audio replies are only valid for this connection's games.
       setLyricsAudio(null);
       setGuessAudio(null);
+      setNotTheTv(false);
       // Claim the screen credential immediately (mode-independent) so Timeline mode's video id
       // starts flowing without needing a Lyrics-only GET_LYRICS_AUDIO — see handleJoinScreen.
       // The host's id, if this browser is also the host's: lets a TV opened after players joined
@@ -80,18 +87,18 @@ export default function ScreenPage() {
   // Same retry-safe request pattern as the host page used before the split: fires whenever
   // this round has no reply yet, including after a reconnect.
   useEffect(() => {
-    if (needsLyricsAudio(lyricsState, lyricsAudio)) {
+    if (!notTheTv && needsLyricsAudio(lyricsState, lyricsAudio)) {
       socket.send(JSON.stringify({ type: "GET_LYRICS_AUDIO", screenId: screenIdRef.current }));
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps -- socket is stable; re-run on new state or reply
-  }, [lyricsState, lyricsAudio]);
+  }, [lyricsState, lyricsAudio, notTheTv]);
 
   useEffect(() => {
-    if (needsLyricsAudio(guessState, guessAudio)) {
+    if (!notTheTv && needsLyricsAudio(guessState, guessAudio)) {
       socket.send(JSON.stringify({ type: "GET_GUESS_AUDIO", screenId: screenIdRef.current }));
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps -- socket is stable; re-run on new state or reply
-  }, [guessState, guessAudio]);
+  }, [guessState, guessAudio, notTheTv]);
 
   useEffect(() => {
     if (lyricsState?.phase !== "guessing" || lyricsState.roundStart === null) {
@@ -125,6 +132,12 @@ export default function ScreenPage() {
             房間 {params.code}
           </div>
         </div>
+        {notTheTv && (
+          <div role="status" data-testid="not-the-tv" style={{ margin: "12px 32px 0", background: "var(--surface2)", border: "2px solid rgba(255,59,92,.4)", borderRadius: 14, padding: "10px 16px", fontSize: 14, fontWeight: 700, color: "var(--ink)", textAlign: "center" }}>
+            ⚠️ 這個畫面不是本房間的電視，所以不會播放音樂。請用建立房間的裝置，或主持人的瀏覽器開啟。
+            <br />This screen isn&apos;t this room&apos;s TV, so it won&apos;t play music. Open it on the device that created the room, or in the host&apos;s browser.
+          </div>
+        )}
 
         <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden", padding: "16px 32px 32px" }}>
           {/* ── waiting for the host to start ───────────────────────────────── */}

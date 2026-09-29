@@ -273,7 +273,7 @@ describe("PlayPage: Guess Mode TOO_LATE resets on the next round", () => {
     serverSends({ type: "TOO_LATE" });
     expect(screen.getByText(/時間到/)).toBeTruthy();
     serverSends({ type: "GUESS_STATE", state: guess({ phase: "playing", currentRoundIndex: 1, roundStart: null }) });
-    serverSends({ type: "GUESS_STATE", state: guess({ currentRoundIndex: 1, roundStart: Date.now() }) });
+    serverSends({ type: "GUESS_STATE", state: guess({ currentRoundIndex: 1, roundStart: Date.now() + 90_000 }) });
     expect(screen.getByTestId("guess-title-input")).toBeTruthy();
   });
   it("sends SUBMIT_GUESS with both fields", () => {
@@ -304,8 +304,27 @@ describe("PlayPage: Guess TOO_LATE is per round (/ship adversarial #3)", () => {
     serverSends({ type: "GUESS_STATE", state: guess() });
     serverSends({ type: "TOO_LATE" });
     // No "playing" snapshot seen (phone was offline) — lands directly in round 1 guessing.
-    serverSends({ type: "GUESS_STATE", state: guess({ currentRoundIndex: 1 }) });
+    serverSends({ type: "GUESS_STATE", state: guess({ currentRoundIndex: 1, roundStart: Date.now() + 90_000 }) });
     expect(screen.getByTestId("guess-title-input")).toBeTruthy();
+  });
+
+  it("offline through a host reset (no GUESS_ABORTED), round 0 of the new game still shows the inputs", () => {
+    render(<PlayPage />);
+    serverSends({ type: "GUESS_STATE", state: guess() });
+    serverSends({ type: "TOO_LATE" });
+    expect(screen.getByText(/時間到/)).toBeTruthy();
+    // Reconnect snapshot: a brand-new game, same round index, a later round start.
+    serverSends({ type: "GUESS_STATE", state: guess({ roundStart: Date.now() + 120_000 }) });
+    expect(screen.getByTestId("guess-title-input")).toBeTruthy();
+  });
+
+  it("a snapshot of the same round keeps showing time's up", () => {
+    render(<PlayPage />);
+    const round = guess();
+    serverSends({ type: "GUESS_STATE", state: round });
+    serverSends({ type: "TOO_LATE" });
+    serverSends({ type: "GUESS_STATE", state: { ...round, answers: {} } });
+    expect(screen.getByText(/時間到/)).toBeTruthy();
   });
 });
 

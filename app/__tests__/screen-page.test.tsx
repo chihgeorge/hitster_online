@@ -317,6 +317,30 @@ describe("ScreenPage: audio request (needsLyricsAudio retry)", () => {
     expect(calls.some((m) => m.type === "GET_LYRICS_AUDIO")).toBe(true);
   });
 
+  it("after an unauthorized reply, stops re-requesting audio and says this isn't the room's TV", () => {
+    render(<ScreenPage />);
+    serverSends({ type: "LYRICS_STATE", state: lyricsState({ phase: "playing", currentRoundIndex: 0 }) });
+    expect(screen.queryByTestId("not-the-tv")).toBeNull();
+    serverSends({ type: "ERROR", error: "unauthorized" });
+    expect(screen.getByTestId("not-the-tv").textContent).toContain("isn't this room's TV");
+    sendSpy.mockClear();
+    serverSends({ type: "LYRICS_STATE", state: lyricsState({ phase: "playing", currentRoundIndex: 0, answers: {} }) });
+    serverSends({ type: "GUESS_STATE", state: { mode: "guess", phase: "playing", players: {}, currentRound: { hasArtist: true, title: null, artist: null }, roundStart: null, timerSeconds: 60, answers: {}, totalRounds: 3, currentRoundIndex: 0, consecutiveSkips: 0 }, serverNow: Date.now() });
+    expect(sendSpy.mock.calls.filter((c) => /GET_(LYRICS|GUESS)_AUDIO/.test(String(c[0])))).toHaveLength(0);
+  });
+
+  it("a reconnect clears the notice and tries the claim again", () => {
+    render(<ScreenPage />);
+    serverSends({ type: "LYRICS_STATE", state: lyricsState({ phase: "playing", currentRoundIndex: 0 }) });
+    serverSends({ type: "ERROR", error: "unauthorized" });
+    sendSpy.mockClear();
+    act(() => socketOpts.onOpen?.());
+    expect(screen.queryByTestId("not-the-tv")).toBeNull();
+    const types = sendSpy.mock.calls.map((c) => JSON.parse(c[0] as string).type);
+    expect(types).toContain("JOIN_SCREEN");
+    expect(types).toContain("GET_LYRICS_AUDIO");
+  });
+
   it("persists the same screenId across a request and a later reconnect-style remount", () => {
     const { unmount } = render(<ScreenPage />);
     serverSends({ type: "LYRICS_STATE", state: lyricsState({ phase: "playing" }) });

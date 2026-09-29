@@ -38,30 +38,6 @@
 **Priority:** P3
 **Depends on:** None
 
-### Timeline START_GAME isn't blocked by an *ended* Guess/Lyrics game
-
-**What:** Timeline START_GAME isn't blocked by an *ended* Guess/Lyrics game.
-
-**Why:** A stale host tab could leave every phone stuck on old standings.
-
-**Context:** `timedRoundInPlay()` treats "ended" as safe, so a stale host tab could start Timeline while `guessState` (ended) still exists — phones then stay on the Guess standings (play page renders GuessPlay whenever guessState is set). Clear ended timed states (+ ABORTED broadcast) in handleStartGame. _From /ship adversarial #6, 2026-09-24._
-
-**Effort:** S
-**Priority:** P3
-**Depends on:** None
-
-### Unauthorized TV retries GET_*_AUDIO on every state broadcast
-
-**What:** Unauthorized TV retries GET_*_AUDIO on every state broadcast.
-
-**Why:** A TV that lost the screen claim stays silent with no explanation.
-
-**Context:** If another connection claimed the screen id, each GUESS_STATE/LYRICS_STATE makes the TV resend GET_GUESS_AUDIO and get ERROR unauthorized, with no backoff and no visible reason. Stop retrying after unauthorized and show a message. _From /ship adversarial #7, 2026-09-24._
-
-**Effort:** S
-**Priority:** P3
-**Depends on:** None
-
 ### `consecutiveSkips` is a dead field in the timed-round state
 
 **What:** `consecutiveSkips` is a dead field in the timed-round state.
@@ -87,20 +63,6 @@
 **Effort:** S
 **Priority:** P3
 **Depends on:** None
-
-### A phone offline across a Guess reset can stay "too late" in the new game
-
-**What:** A phone's TOO_LATE flag can carry into a new Guess game if the phone missed `GUESS_ABORTED`.
-
-**Why:** That player is locked out of one round with no way to answer.
-
-**Context:** `app/room/[code]/play/page.tsx` clears `guessTooLateRound` only on `GUESS_ABORTED`. A phone disconnected while the host resets and starts a new game never gets it: on reconnect `sendSnapshot` sends `GUESS_ABORTED` only when no game exists, so it gets just the new `GUESS_STATE`. If that game is on the same round index, the stale flag matches. Fix: also clear it on `GUESS_STATE` when `phase` is `"playing"`, or key it on round start time instead of index. _Found by /land-and-deploy inline review, 2026-09-24._
-
-**Effort:** S
-**Priority:** P3
-**Depends on:** None
-
-## Lyrics Mode
 
 ### E2E: verify lrclib → Claude pipeline with a real player in the room
 
@@ -171,18 +133,6 @@ _Surfaced by adversarial review on feat/lyrics-api 2026-09-17_
 **Why:** The click handler calls `window.open("", name)` and prevents the default link when it gets a window back. An in-app webview that returns a window object without opening a real tab would make the tap do nothing, with no plain-link fallback.
 
 **Context:** Room links are likely shared over LINE. No spec covers webview `window.open`. If a webview misbehaves, detect it (UA or `tab.closed` right after open) and let the plain link through. _From /ship adversarial review on feat/host-screen-link, 2026-09-26._
-
-**Effort:** S
-**Priority:** P3
-**Depends on:** None
-
-### Host setup says "N 首歌曲有確認年份" in Guess/Lyrics mode
-
-**What:** Host setup says "N 首歌曲有確認年份" in Guess/Lyrics mode.
-
-**Why:** Guess/Lyrics hosts see Timeline-only copy about release years.
-
-**Context:** The load-success line (`app/room/[code]/host/page.tsx`, ready state) talks about confirmed release years, which only matter in Timeline. Make it mode-aware ("N 首歌曲已載入"). _Found by /qa ISSUE-002, 2026-09-24._
 
 **Effort:** S
 **Priority:** P3
@@ -334,6 +284,64 @@ _Deferred from plan: foamy-crafting-bonbon.md_
 **Depends on:** None
 
 ## Completed
+
+### Timeline START_GAME isn't blocked by an *ended* Guess/Lyrics game
+
+**What:** Timeline START_GAME isn't blocked by an *ended* Guess/Lyrics game.
+
+**Why:** A stale host tab could leave every phone stuck on old standings.
+
+**Context:** `timedRoundInPlay()` treats "ended" as safe, so a stale host tab could start Timeline while `guessState` (ended) still exists — phones then stay on the Guess standings (play page renders GuessPlay whenever guessState is set). Clear ended timed states (+ ABORTED broadcast) in handleStartGame. _From /ship adversarial #6, 2026-09-24._
+
+**Effort:** S
+**Priority:** P3
+**Depends on:** None
+
+**Completed:** v0.14.7.0 (2026-09-29) — `handleStartGame` calls `clearIdleTimedGames()` after the host check: a Lyrics/Guess game in preview or ended is dropped and `LYRICS_ABORTED`/`GUESS_ABORTED` broadcast.
+
+### Unauthorized TV retries GET_*_AUDIO on every state broadcast
+
+**What:** Unauthorized TV retries GET_*_AUDIO on every state broadcast.
+
+**Why:** A TV that lost the screen claim stays silent with no explanation.
+
+**Context:** If another connection claimed the screen id, each GUESS_STATE/LYRICS_STATE makes the TV resend GET_GUESS_AUDIO and get ERROR unauthorized, with no backoff and no visible reason. Stop retrying after unauthorized and show a message. _From /ship adversarial #7, 2026-09-24._
+
+**Effort:** S
+**Priority:** P3
+**Depends on:** None
+
+**Completed:** v0.14.7.0 (2026-09-29) — the TV remembers an `unauthorized` reply, stops sending `GET_*_AUDIO`, and shows a notice (`not-the-tv`); a reconnect tries once more.
+
+### A phone offline across a Guess reset can stay "too late" in the new game
+
+**What:** A phone's TOO_LATE flag can carry into a new Guess game if the phone missed `GUESS_ABORTED`.
+
+**Why:** That player is locked out of one round with no way to answer.
+
+**Context:** `app/room/[code]/play/page.tsx` clears `guessTooLateRound` only on `GUESS_ABORTED`. A phone disconnected while the host resets and starts a new game never gets it: on reconnect `sendSnapshot` sends `GUESS_ABORTED` only when no game exists, so it gets just the new `GUESS_STATE`. If that game is on the same round index, the stale flag matches. Fix: also clear it on `GUESS_STATE` when `phase` is `"playing"`, or key it on round start time instead of index. _Found by /land-and-deploy inline review, 2026-09-24._
+
+**Effort:** S
+**Priority:** P3
+**Depends on:** None
+
+## Lyrics Mode
+
+**Completed:** v0.14.7.0 (2026-09-29) — the play page keys the Guess TOO_LATE flag on the round's `roundStart` (server time) instead of its index.
+
+### Host setup says "N 首歌曲有確認年份" in Guess/Lyrics mode
+
+**What:** Host setup says "N 首歌曲有確認年份" in Guess/Lyrics mode.
+
+**Why:** Guess/Lyrics hosts see Timeline-only copy about release years.
+
+**Context:** The load-success line (`app/room/[code]/host/page.tsx`, ready state) talks about confirmed release years, which only matter in Timeline. Make it mode-aware ("N 首歌曲已載入"). _Found by /qa ISSUE-002, 2026-09-24._
+
+**Effort:** S
+**Priority:** P3
+**Depends on:** None
+
+**Completed:** v0.14.7.0 (2026-09-29) — Guess/Lyrics show "已載入 — N 首歌曲"; Timeline shows the total and how many have a confirmed year (the old N counted every song).
 
 ### A Lyrics round the host fills in by hand is dropped at game start
 

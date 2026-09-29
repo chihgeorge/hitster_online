@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.14.7.0] — 2026-09-29
+
+### Fixed
+- **A phone that was offline when the host restarted a Guess game can answer again:** it used to stay on "Time's up" for the first round of the new game
+- **Starting a Timeline game clears a finished Lyrics or Guess game:** phones used to stay stuck on the old standings
+- **A TV that isn't this room's screen now says so:** it used to stay silent with no explanation. It now shows a notice saying to open it on the device that created the room, or in the host's browser
+- **The host's "loaded" line fits the game mode:** Guess and Lyrics no longer mention release years, and Timeline now says how many of the loaded songs actually have a confirmed year
+
 ## [0.14.6.0] — 2026-09-29
 
 ### Fixed
