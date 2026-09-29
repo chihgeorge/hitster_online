@@ -8,6 +8,7 @@ import { useEffect, useRef, useState } from "react";
 import Vinyl from "@/components/Vinyl";
 import { isAudioPhase, type VideoFrame } from "@/components/LyricsPlayer";
 import { decodeEntities } from "@/lib/utils";
+import { serverNow } from "@/lib/server-clock";
 import type { GuessAnswer, PublicGuessGameState } from "@/lib/game";
 
 type AudioReply = { videoId: string | null; roundIndex: number };
@@ -42,7 +43,7 @@ export function useCountdown(state: PublicGuessGameState | null): number | null 
   useEffect(() => {
     if (!active) return;
     const deadline = roundStart + timerSeconds * 1000;
-    const tick = () => setLeft(Math.max(0, Math.ceil((deadline - Date.now()) / 1000)));
+    const tick = () => setLeft(Math.max(0, Math.ceil((deadline - serverNow()) / 1000)));
     const id = setInterval(tick, 200);
     queueMicrotask(tick);
     // Drop the old value on the way out, or the next round's first render shows last round's 0.

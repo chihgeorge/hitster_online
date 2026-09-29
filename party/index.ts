@@ -244,9 +244,9 @@ export default class HitsterRoom implements Party.Server {
       // connections; a fresh connect must too — this connection hasn't claimed host/screen yet
       // (that happens via a later message), so it's never privileged at this point.
       const forConn = this.privilegedConns.has(conn) ? ls : { ...ls, rounds: [] };
-      this.sendTo(conn, { type: "LYRICS_STATE", state: forConn });
+      this.sendTo(conn, { type: "LYRICS_STATE", state: forConn, serverNow: Date.now() });
     }
-    if (gs) this.sendTo(conn, { type: "GUESS_STATE", state: gs });
+    if (gs) this.sendTo(conn, { type: "GUESS_STATE", state: gs, serverNow: Date.now() });
   }
 
   async onMessage(message: string, sender: Party.Connection) {
@@ -1072,7 +1072,7 @@ export default class HitsterRoom implements Party.Server {
     if (!state) return;
     if (state.rounds.length === 0) {
       // Nothing secret in this payload (not preview, or nothing to reveal yet) — plain broadcast.
-      this.broadcast({ type: "LYRICS_STATE", state });
+      this.broadcast({ type: "LYRICS_STATE", state, serverNow: Date.now() });
       return;
     }
     // Preview phase: state.rounds carries the full deck with answers revealed, for the host/screen
@@ -1084,7 +1084,7 @@ export default class HitsterRoom implements Party.Server {
     // UI either way, so this changes nothing visible for them.
     const redacted: PublicLyricsGameState = { ...state, rounds: [] };
     for (const conn of this.allConns) {
-      this.sendTo(conn, { type: "LYRICS_STATE", state: this.privilegedConns.has(conn) ? state : redacted });
+      this.sendTo(conn, { type: "LYRICS_STATE", state: this.privilegedConns.has(conn) ? state : redacted, serverNow: Date.now() });
     }
   }
 
@@ -1440,7 +1440,7 @@ export default class HitsterRoom implements Party.Server {
 
   private broadcastGuessState() {
     const state = this.sanitizedGuessState();
-    if (state) this.broadcast({ type: "GUESS_STATE", state });
+    if (state) this.broadcast({ type: "GUESS_STATE", state, serverNow: Date.now() });
   }
 
   private handleStartGuessGame(conn: Party.Connection, hostId: string, config: GuessGameConfig, songOverrides?: EditableSong[]) {

@@ -2268,6 +2268,39 @@ describe("Lyrics Mode: onConnect sends LYRICS_STATE when active", () => {
   });
 });
 
+describe("Timed rounds: state messages carry the server clock", () => {
+  beforeEach(() => vi.clearAllMocks());
+  afterEach(() => {
+    vi.useRealTimers();
+    // setupLyricsGame narrows embeddable ids to "vid1" persistently; restore the all-embeddable default.
+    vi.mocked(fetchEmbeddableVideoIds).mockImplementation((ids: string[]) => Promise.resolve(new Set(ids)));
+  });
+
+  it("LYRICS_STATE broadcasts and the onConnect snapshot include serverNow", async () => {
+    const { room, hostConn } = await setupLyricsGame();
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(1_700_000_000_000);
+    await send(room, hostConn, { type: "START_LYRICS_ROUND", hostId: "host-uuid" });
+    expect(lastBroadcast(room)).toMatchObject({ type: "LYRICS_STATE", serverNow: 1_700_000_000_000 });
+    const newcomer = makeConn("new-conn");
+    await room.onConnect(newcomer);
+    const snap = (newcomer.send as ReturnType<typeof vi.fn>).mock.calls.map((c: any[]) => JSON.parse(c[0])).find((m: any) => m.type === "LYRICS_STATE");
+    expect(snap.serverNow).toBe(1_700_000_000_000);
+  });
+
+  it("GUESS_STATE broadcasts and the onConnect snapshot include serverNow", async () => {
+    const { room, hostConn } = await setupGuessGame();
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(1_700_000_000_000);
+    await send(room, hostConn, { type: "START_GUESS_ROUND", hostId: "host-uuid" });
+    expect(lastBroadcast(room)).toMatchObject({ type: "GUESS_STATE", serverNow: 1_700_000_000_000 });
+    const newcomer = makeConn("new-conn");
+    await room.onConnect(newcomer);
+    const snap = (newcomer.send as ReturnType<typeof vi.fn>).mock.calls.map((c: any[]) => JSON.parse(c[0])).find((m: any) => m.type === "GUESS_STATE");
+    expect(snap.serverNow).toBe(1_700_000_000_000);
+  });
+});
+
 describe("Lyrics Mode: CONFIRM_LYRICS_PREVIEW guards", () => {
   beforeEach(() => vi.clearAllMocks());
 

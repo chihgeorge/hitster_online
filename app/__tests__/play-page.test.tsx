@@ -17,6 +17,7 @@ vi.mock("next/navigation", () => ({
 }));
 
 import PlayPage from "@/app/room/[code]/play/page";
+import { resetServerClock } from "@/lib/server-clock";
 
 const PLAYER = "11111111-1111-4111-8111-111111111111";
 
@@ -49,7 +50,36 @@ beforeEach(() => {
   localStorage.setItem("hitster_player_id", PLAYER);
   sendSpy.mockClear();
 });
-afterEach(() => { cleanup(); vi.useRealTimers(); });
+afterEach(() => { cleanup(); vi.useRealTimers(); resetServerClock(); });
+
+describe("PlayPage: countdown follows the server clock", () => {
+  // The phone's clock is 90s fast. The round started on the server just now with 20s to go, which
+  // the phone's own clock would read as 70s past the deadline.
+  const serverTime = () => Date.now() - 90_000;
+
+  it("Lyrics: shows the input and the server's time left, not Time's up", () => {
+    render(<PlayPage />);
+    serverSends({ type: "LYRICS_STATE", state: lyricsState({ roundStart: serverTime() }), serverNow: serverTime() });
+    act(() => { vi.advanceTimersByTime(300); });
+    expect(hasInput()).toBe(true);
+    expect(screen.queryByText(/Time's up/)).toBeNull();
+    expect(screen.getByText("20")).toBeTruthy();
+  });
+
+  it("Guess: shows the form and the server's time left, not Time's up", () => {
+    render(<PlayPage />);
+    const guess = {
+      mode: "guess", phase: "guessing", players: { [PLAYER]: { name: "QA", score: 0, connected: true } },
+      currentRound: { hasArtist: true, title: null, artist: null }, roundStart: serverTime(), timerSeconds: 20,
+      answers: {}, totalRounds: 3, currentRoundIndex: 0, consecutiveSkips: 0,
+    };
+    serverSends({ type: "GUESS_STATE", state: guess, serverNow: serverTime() });
+    act(() => { vi.advanceTimersByTime(300); });
+    expect(screen.getByTestId("guess-title-input")).toBeTruthy();
+    expect(screen.queryByText(/Time's up/)).toBeNull();
+    expect(screen.getByText("20")).toBeTruthy();
+  });
+});
 
 describe("PlayPage: Lyrics Mode guessing", () => {
   it("shows the answer input while time remains", () => {

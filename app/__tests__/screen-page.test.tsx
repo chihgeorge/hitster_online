@@ -45,6 +45,7 @@ vi.mock("@/components/VictoryPlayer", () => ({
 }));
 
 import ScreenPage from "@/app/room/[code]/screen/page";
+import { resetServerClock } from "@/lib/server-clock";
 
 const P1 = "11111111-1111-4111-8111-111111111111";
 const P2 = "22222222-2222-4222-8222-222222222222";
@@ -85,7 +86,18 @@ beforeEach(() => {
   localStorage.clear();
   searchParamsValue = new URLSearchParams(""); // default: not the creator
 });
-afterEach(() => { cleanup(); vi.useRealTimers(); });
+afterEach(() => { cleanup(); vi.useRealTimers(); resetServerClock(); });
+
+describe("ScreenPage: countdown follows the server clock", () => {
+  it("a TV clock 90s fast still shows the server's time left, not 00", () => {
+    render(<ScreenPage />);
+    const serverTime = Date.now() - 90_000;
+    serverSends({ type: "LYRICS_STATE", state: lyricsState({ roundStart: serverTime }), serverNow: serverTime });
+    act(() => { vi.advanceTimersByTime(300); });
+    expect(screen.getByText("20")).toBeTruthy();
+    expect(screen.queryByText("00")).toBeNull();
+  });
+});
 
 describe("ScreenPage: waiting / lobby", () => {
   it("shows the join QR and room code before any game starts", () => {
