@@ -38,3 +38,16 @@ describe("shared timed-round UI", () => {
     expect(container.textContent).toBe("");
   });
 });
+
+describe("TV lists fit the 960×540 Stage", () => {
+  const many = (n: number) => Object.fromEntries(Array.from({ length: n }, (_, i) => [`p${i}`, { name: `P${i}`, score: n - i, connected: true }]));
+  it("TvFinal uses one column up to 4 players and two columns above that", () => {
+    const { unmount } = render(<TvFinal players={many(4)} title="Over" />);
+    expect(screen.getByTestId("tv-final-list").style.display).toBe("flex");
+    unmount();
+    render(<TvFinal players={many(8)} title="Over" />);
+    const list = screen.getByTestId("tv-final-list");
+    expect(list.style.display).toBe("grid");
+    expect(list.children).toHaveLength(8);
+  });
+});

@@ -292,7 +292,8 @@ export function GuessScreen({ state }: { state: PublicGuessGameState }) {
           {r.hasArtist && <p style={{ fontSize: 18, fontWeight: 700, color: "var(--text2)", marginTop: 2, flexShrink: 0, overflowWrap: "anywhere", display: "-webkit-box", WebkitLineClamp: 1, WebkitBoxOrient: "vertical", overflow: "hidden" }}>{show(r.artist)}</p>}
         </div>
         <p style={label}>{roundLabel(state)} · 結果</p>
-        <div style={{ flex: 1, overflowY: "auto", display: "flex", flexDirection: "column", gap: 6 }}>
+        {/* 8 rows (the room's cap) fit this column's height; a TV can't scroll. */}
+        <div style={{ flex: 1, minHeight: 0, overflow: "hidden", display: "flex", flexDirection: "column", gap: 6 }}>
           {ranked(state).map(([id, p]) => {
             const a = state.answers[id];
             return (

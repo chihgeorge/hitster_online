@@ -12,7 +12,7 @@ import VictoryPlayer from "@/components/VictoryPlayer";
 import { Qr } from "@/components/Qr";
 import { Stage } from "@/components/Stage";
 import { GuessScreen, guessAudioProps } from "@/components/GuessMode";
-import { useCountdown, TvScoreRow, TvFinal } from "@/components/TimedRound";
+import { useCountdown, TvScoreRow, TvFinal, tvListStyle } from "@/components/TimedRound";
 import { getOrCreatePersistedId } from "@/lib/device-id";
 import { syncServerClock } from "@/lib/server-clock";
 import { rankPlayers, type GameState, type ServerMessage, type PublicLyricsGameState, type PublicGuessGameState } from "@/lib/game";
@@ -245,12 +245,12 @@ export default function ScreenPage() {
                 <p style={{ fontSize: 13, color: "var(--text3)" }}>{lyricsState.currentRound.title} · {lyricsState.currentRound.artist}</p>
                 <p style={{ fontSize: 26, fontWeight: 900, color: "var(--orange)", marginTop: 4 }}>{lyricsState.currentRound.blankSentence ?? "（已揭曉）"}</p>
               </div>
-              <div style={{ flex: 1, overflowY: "auto", display: "flex", flexDirection: "column", gap: 8 }}>
+              <div data-testid="lyrics-results-list" style={{ flex: 1, minHeight: 0, overflow: "hidden", ...tvListStyle(Object.keys(lyricsState.players).length) }}>
                 {rankPlayers(lyricsState.players).map(([id, p]) => {
                   const ans = lyricsState.answers[id];
                   return (
                     <div key={id} style={{ display: "flex", alignItems: "center", gap: 12, background: ans?.correct ? "rgba(0,200,150,.08)" : "rgba(255,107,53,.04)", borderRadius: 12, padding: "10px 16px" }}>
-                      <span style={{ fontWeight: 700, color: "var(--ink)", flex: 1 }}>{p.name}</span>
+                      <span style={{ fontWeight: 700, color: "var(--ink)", flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{p.name}</span>
                       {ans ? <span style={{ fontWeight: 900, color: ans.correct ? "var(--mint)" : "var(--red)" }}>{ans.correct ? `+${ans.points}` : "✗"}</span> : <span style={{ color: "var(--text3)" }}>未作答</span>}
                       <span style={{ fontWeight: 900, color: "var(--orange)", minWidth: 40, textAlign: "right" }}>{p.score}</span>
                     </div>

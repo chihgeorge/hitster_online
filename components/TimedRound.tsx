@@ -10,6 +10,16 @@ import { serverNow } from "@/lib/server-clock";
 
 type Players = Record<string, { name: string; score: number; timeMs?: number }>;
 
+/**
+ * TV player lists: one column for up to 4 players, two above that. The 960×540 Stage can't
+ * scroll, and 8 full-width rows (the room's cap) don't fit under a heading or answer card.
+ */
+export function tvListStyle(count: number, gap = 8): React.CSSProperties {
+  return count > 4
+    ? { display: "grid", gridTemplateColumns: "1fr 1fr", gridAutoRows: "min-content", gap, alignContent: "start" }
+    : { display: "flex", flexDirection: "column", gap };
+}
+
 /** Seconds left in the guessing phase, null outside it. Counts against the server's clock. */
 export function useCountdown(state: { phase: string; roundStart: number | null; timerSeconds: number } | null): number | null {
   const [left, setLeft] = useState<number | null>(null);
@@ -81,11 +91,11 @@ export function TvFinal({ players, title }: { players: Players; title: string })
       <p style={{ fontSize: 11, color: "var(--text3)", textTransform: "uppercase", letterSpacing: ".1em" }}>{title}</p>
       <h2 className="title-outlined" style={{ fontSize: 48 }}>{sorted[0]?.[1]?.name ?? "?"}</h2>
       {wonOnTime(players) && <p data-testid="won-on-time" style={{ fontSize: 14, color: "var(--text2)", fontWeight: 700 }}>{TIE_NOTE}</p>}
-      <div style={{ width: "100%", maxWidth: 520, display: "flex", flexDirection: "column", gap: 8 }}>
+      <div data-testid="tv-final-list" style={{ width: "100%", maxWidth: sorted.length > 4 ? 860 : 520, ...tvListStyle(sorted.length) }}>
         {sorted.map(([id, p], i) => (
           <div key={id} style={{ display: "flex", alignItems: "center", gap: 12, background: i === 0 ? "var(--ink)" : "white", border: "2px solid rgba(255,107,53,.15)", borderRadius: 14, padding: "10px 18px" }}>
             <span style={{ fontWeight: 900, color: i === 0 ? "var(--gold)" : "var(--text3)", minWidth: 28 }}>#{i + 1}</span>
-            <span style={{ fontWeight: 700, color: i === 0 ? "var(--bg)" : "var(--ink)", flex: 1 }}>{p.name}</span>
+            <span style={{ fontWeight: 700, color: i === 0 ? "var(--bg)" : "var(--ink)", flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{p.name}</span>
             <span style={{ fontWeight: 900, color: i === 0 ? "var(--gold)" : "var(--orange)", fontFamily: "var(--font-mono)" }}>{p.score}</span>
           </div>
         ))}
