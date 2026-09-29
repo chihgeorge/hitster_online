@@ -22,7 +22,7 @@ import {
   type GameMode,
   type LyricOverride,
 } from "../lib/game";
-import { isValidYear, sanitizeText, decodeEntities, shuffle } from "../lib/utils";
+import { isValidYear, isValidVideoId, sanitizeText, decodeEntities, shuffle } from "../lib/utils";
 import { proposeEdits, proposeLyricEdits, type AITrackMeta } from "../lib/ai-metadata";
 import { resolveLyricsForTracks, givesAwayTitle, detectLanguageHint, MODEL_GAME, type LyricsResult } from "../lib/lyrics-resolver";
 import { fetchPopularitySummaries } from "../lib/lyrics-popularity";
@@ -609,7 +609,8 @@ export default class HitsterRoom implements Party.Server {
       const testSongs = playlistUrl === "hitster://cpop-test"
         ? CPOP_SEED
         : Array.from({ length: 20 }, (_, i) => ({
-            videoId: `dQw4w9WgXcQ_${i}`, title: `Test Song ${1960 + i * 3}`,
+            // Real-shaped 11-character ids, so a saved copy of this seed passes isValidVideoId.
+            videoId: `dQw4w9WgX${String(i).padStart(2, "0")}`, title: `Test Song ${1960 + i * 3}`,
             artist: "Test Artist", year: 1960 + i * 3,
           }));
       const seedCards: Card[] = testSongs.map((song, i) => ({ id: `seed-${i}`, ...song }));
@@ -801,8 +802,7 @@ export default class HitsterRoom implements Party.Server {
 
     const validSongs = songs.filter(
       (s) =>
-        typeof s.videoId === "string" &&
-        s.videoId.length > 0 &&
+        isValidVideoId(s.videoId) && // a malformed id must never reach the player
         typeof s.title === "string" &&
         s.title.trim().length > 0
     );

@@ -464,14 +464,20 @@ export default function HostPage() {
     boxShadow: "0 4px 24px rgba(255,107,53,.07), 0 1px 4px rgba(0,0,0,.04)",
   };
 
+  // The room phase stays "lobby" through Lyrics/Guess games, so the lobby look (DESIGN.md: the
+  // vinyl pattern is lobby-only) also ends once a timed game is past its setup (loading/preview).
+  const timedGameInPlay = !!guessState || (!!lyricsState && lyricsState.phase !== "loading" && lyricsState.phase !== "preview");
+  const lobbyLook = phase === "lobby" && !timedGameInPlay;
+
   return (
     <div
-      className={phase === "lobby" ? "bg-vinyl-pattern" : undefined}
+      className={lobbyLook ? "bg-vinyl-pattern" : undefined}
+      data-testid="host-root"
       style={{
         minHeight: "100vh",
         // Inline `background` beats the class's background-image (inline style always wins), so
-        // only set it here outside the lobby phase — .bg-vinyl-pattern supplies its own background-color.
-        ...(phase === "lobby" ? {} : { background: "var(--bg)" }),
+        // only set it here outside the lobby look — .bg-vinyl-pattern supplies its own background-color.
+        ...(lobbyLook ? {} : { background: "var(--bg)" }),
         display: "flex", flexDirection: "column", gap: 20, padding: 24, maxWidth: 960, margin: "0 auto",
       }}
     >

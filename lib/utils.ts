@@ -1,3 +1,8 @@
+/** A YouTube video id: exactly 11 of A-Z a-z 0-9 _ -. Anything else must never reach the player. */
+export function isValidVideoId(id: unknown): id is string {
+  return typeof id === "string" && /^[A-Za-z0-9_-]{11}$/.test(id);
+}
+
 export function isValidYear(year: number | null | undefined): boolean {
   if (year == null) return false;
   return year >= 1900 && year <= new Date().getFullYear() + 1;

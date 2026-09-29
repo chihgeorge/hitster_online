@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.14.10.0] — 2026-09-29
+
+### Fixed
+- **The TV shows every player in a full room:** with 7 or 8 players, the Lyrics results and the end-of-game rankings used to cut off the last players. With more than 4 players these lists now use two columns, and long names are shortened with "…"
+- **The host page no longer shows the lobby's vinyl background during a Lyrics or Guess game**, matching the TV and phones
+- **Saved playlists can't contain broken video links:** a song whose YouTube id isn't valid is rejected when a playlist is saved and skipped when it's loaded, so it never reaches the player
+- **Lyrics lookups cope with being rate-limited:** when the lyrics site asks us to slow down, the game waits and retries once, then stops asking for the rest of that batch instead of silently losing lookups. Those songs still get questions, just without the site's lyrics
+
 ## [0.14.9.0] — 2026-09-29
 
 ### Changed

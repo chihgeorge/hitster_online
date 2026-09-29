@@ -1,5 +1,5 @@
 import type * as Party from "partykit/server";
-import { isValidYear, sanitizeText } from "../lib/utils";
+import { isValidYear, isValidVideoId, sanitizeText } from "../lib/utils";
 import type { EditableSong, SavedPlaylist } from "../lib/game";
 import { extractPlaylistId } from "../lib/game";
 import {
@@ -37,8 +37,7 @@ function validateSongs(songs: unknown): songs is EditableSong[] {
     (s) =>
       typeof s === "object" &&
       s !== null &&
-      typeof (s as EditableSong).videoId === "string" &&
-      (s as EditableSong).videoId.length > 0 &&
+      isValidVideoId((s as EditableSong).videoId) &&
       typeof (s as EditableSong).title === "string" &&
       (s as EditableSong).title.trim().length > 0 &&
       typeof (s as EditableSong).artist === "string" &&
