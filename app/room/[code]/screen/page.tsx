@@ -69,7 +69,11 @@ export default function ScreenPage() {
       setGuessAudio(null);
       // Claim the screen credential immediately (mode-independent) so Timeline mode's video id
       // starts flowing without needing a Lyrics-only GET_LYRICS_AUDIO — see handleJoinScreen.
-      socket.send(JSON.stringify({ type: "JOIN_SCREEN", screenId: getOrCreatePersistedId("hitster_screen_id") }));
+      // The host's id, if this browser is also the host's: lets a TV opened after players joined
+      // claim the screen (see claimOrValidateScreen). Read only — never created here.
+      let hostId: string | undefined;
+      try { hostId = localStorage.getItem("hitster_host_id") ?? undefined; } catch { /* storage blocked */ }
+      socket.send(JSON.stringify({ type: "JOIN_SCREEN", screenId: getOrCreatePersistedId("hitster_screen_id"), hostId }));
     },
   });
 

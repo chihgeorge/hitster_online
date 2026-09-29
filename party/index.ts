@@ -45,6 +45,8 @@ import {
 } from "../lib/playlist-resolver";
 
 const DEFAULT_TARGET_CARD_COUNT = 10;
+// Room storage key for the TV's screen credential (see the screenId field).
+const SCREEN_ID_KEY = "screenId";
 const MAX_TARGET_CARD_COUNT = 20;
 const MAX_PLAYERS_SOFT = 8;
 
@@ -149,6 +151,12 @@ export default class HitsterRoom implements Party.Server {
   // that its hostId is never transmitted anywhere but the host's own device (see
   // app/room/[code]/screen/page.tsx's private, same-device-only "manage as host" link) — unlike
   // screenId, there's no QR/URL carrying it for a player to intercept in the first place.
+  //
+  // The screen credential matters more: in Guess mode the video id it receives IS the answer.
+  // Rooms are created by /screen, which claims on mount, before anyone has the room code. Two
+  // things keep a player from getting in first anyway (see claimOrValidateScreen): the claim is
+  // kept in room storage (SCREEN_ID_KEY), so a PartyKit restart doesn't reopen it while phones
+  // reconnect; and once players are in the room, an unclaimed screen needs the host's id.
   private screenId = "";
   // Connections that have proven themselves host or screen (see markPrivileged) — the only
   // ones that get the full preview-phase deck (see broadcastLyricsState and onConnect).
@@ -167,6 +175,12 @@ export default class HitsterRoom implements Party.Server {
 
   constructor(readonly room: Party.Room) {
     this.state = this.emptyState();
+  }
+
+  // Runs before any connection or message after a (re)start: restore the TV's claim.
+  async onStart() {
+    const saved = await this.room.storage.get<string>(SCREEN_ID_KEY).catch(() => undefined);
+    if (typeof saved === "string" && this.screenId === "") this.screenId = saved;
   }
 
   private emptyState(): GameState {
@@ -332,7 +346,7 @@ export default class HitsterRoom implements Party.Server {
         this.handleGetLyricsAudio(sender, msg.screenId);
         break;
       case "JOIN_SCREEN":
-        this.handleJoinScreen(sender, msg.screenId);
+        this.handleJoinScreen(sender, msg.screenId, msg.hostId);
         break;
       case "START_LYRICS_ROUND":
         this.handleStartLyricsRound(sender, msg.hostId);
@@ -517,15 +531,22 @@ export default class HitsterRoom implements Party.Server {
   }
 
   /**
-   * The room's screen credential works exactly like hostId, claimed lazily on first use — either
-   * from JOIN_SCREEN (sent once on mount, so Timeline mode's video id starts flowing right away)
-   * or GET_LYRICS_AUDIO (Lyrics mode's per-round request; claims it too if JOIN_SCREEN raced it).
+   * The room's screen credential works like hostId, claimed lazily on first use — either from
+   * JOIN_SCREEN (sent once on mount, so Timeline mode's video id starts flowing right away) or
+   * GET_*_AUDIO (per-round requests; claims it too if JOIN_SCREEN raced it). Two differences,
+   * because in Guess mode the screen receives the answer: once players have joined, an
+   * unclaimed screen can only be claimed with the host's id (the real TV claims before anyone
+   * has the room code), and the claim is saved so a restart doesn't reopen it.
    */
-  private claimOrValidateScreen(conn: Party.Connection, screenId: string): boolean {
+  private claimOrValidateScreen(conn: Party.Connection, screenId: string, hostId?: string): boolean {
+    if (this.screenId === "" && Object.keys(this.state.players).length > 0 && !this.isValidHostId(hostId ?? "")) return false;
     return this.claimOrValidateFirstClaim(
       this.screenId,
       screenId,
-      (v) => { this.screenId = v; },
+      (v) => {
+        this.screenId = v;
+        this.room.storage.put(SCREEN_ID_KEY, v).catch(() => {});
+      },
       conn
     );
   }
@@ -1346,8 +1367,8 @@ export default class HitsterRoom implements Party.Server {
   // Sent once by /screen on mount, independent of game mode — claims the screen credential right
   // away so Timeline mode's currentSong.videoId (see sanitizedState) starts flowing on the very
   // next broadcastState instead of waiting for a Lyrics-only GET_LYRICS_AUDIO that may never come.
-  private handleJoinScreen(conn: Party.Connection, screenId: string) {
-    if (!this.authorizeScreen(conn, screenId)) return;
+  private handleJoinScreen(conn: Party.Connection, screenId: string, hostId?: string) {
+    if (!this.authorizeScreen(conn, screenId, hostId)) return;
     // onConnect already sent this connection a redacted STATE (it wasn't privileged yet at that
     // point) — resend the real one now instead of leaving /screen stuck without video until the
     // next unrelated state change.
@@ -1355,8 +1376,8 @@ export default class HitsterRoom implements Party.Server {
   }
 
   /** Shared by JOIN_SCREEN and GET_LYRICS_AUDIO — see claimOrValidateScreen. */
-  private authorizeScreen(conn: Party.Connection, screenId: string): boolean {
-    if (this.claimOrValidateScreen(conn, screenId)) return true;
+  private authorizeScreen(conn: Party.Connection, screenId: string, hostId?: string): boolean {
+    if (this.claimOrValidateScreen(conn, screenId, hostId)) return true;
     this.sendTo(conn, { type: "ERROR", error: "unauthorized" });
     return false;
   }

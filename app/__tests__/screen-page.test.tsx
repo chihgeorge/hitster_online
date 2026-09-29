@@ -181,6 +181,17 @@ describe("ScreenPage: waiting / lobby", () => {
     expect(sent.screenId).toBe(localStorage.getItem("hitster_screen_id"));
     expect(sent.screenId).toBeTruthy();
   });
+
+  it("sends the host's id with the claim only when this browser has one, and never creates one", () => {
+    render(<ScreenPage />);
+    act(() => socketOpts.onOpen?.());
+    expect(JSON.parse(sendSpy.mock.calls.at(-1)?.[0] as string).hostId).toBeUndefined();
+    expect(localStorage.getItem("hitster_host_id")).toBeNull();
+
+    localStorage.setItem("hitster_host_id", "host-uuid");
+    act(() => socketOpts.onOpen?.());
+    expect(JSON.parse(sendSpy.mock.calls.at(-1)?.[0] as string)).toMatchObject({ type: "JOIN_SCREEN", hostId: "host-uuid" });
+  });
 });
 
 describe("ScreenPage: Timeline mode", () => {
