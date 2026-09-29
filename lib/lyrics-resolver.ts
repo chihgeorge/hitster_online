@@ -89,7 +89,8 @@ async function resolveLyricsBatch(
   apiKey: string,
   model: string = MODEL_BULK,
   fetchedLyrics: Map<string, string> = new Map(),
-  popularitySummaries: Map<string, string> = new Map()
+  popularitySummaries: Map<string, string> = new Map(),
+  unusable?: Set<string>
 ): Promise<Map<string, LyricsResult>> {
   const result = new Map<string, LyricsResult>();
   if (tracks.length === 0) return result;
@@ -192,11 +193,12 @@ Rules:
     if (!videoId) continue;
     const track = tracks.find((t) => t.videoId === videoId);
     if (!track) continue;
+    // From here on the model answered for this song: every drop below is "no usable round".
 
     const blankSentence = typeof item.blankSentence === "string" ? item.blankSentence.trim() : "";
-    if (!blankSentence) continue; // model signalled low confidence
+    if (!blankSentence) { unusable?.add(videoId); continue; } // model signalled low confidence
     // The prompt asks for this too, but the model occasionally slips.
-    if (givesAwayTitle(blankSentence, track.title)) continue;
+    if (givesAwayTitle(blankSentence, track.title)) { unusable?.add(videoId); continue; }
 
     const language = (LANGUAGES.includes(item.language as LyricsResult["language"])
       ? (item.language as LyricsResult["language"])
@@ -205,16 +207,16 @@ Rules:
     // Players see lyricContext verbatim: without a ___ it leaks the answer. Repair by
     // blanking the answer in place, or drop the song if it isn't in the context at all.
     if (!lyricContext.includes("___")) {
-      if (!lyricContext.includes(blankSentence)) continue;
+      if (!lyricContext.includes(blankSentence)) { unusable?.add(videoId); continue; }
       lyricContext = lyricContext.replace(blankSentence, "___");
     }
-    if (language === "zh-TW" && SIMPLIFIED_ONLY.test(lyricContext + blankSentence)) continue;
+    if (language === "zh-TW" && SIMPLIFIED_ONLY.test(lyricContext + blankSentence)) { unusable?.add(videoId); continue; }
     // Size the blank to the answer: one _ per letter/character, spaces kept, punctuation ignored.
     const blank = blankSentence.replace(/[\p{L}\p{N}]/gu, "_").replace(/[^_\s]/g, "").trim();
-    if (!blank) continue;
+    if (!blank) { unusable?.add(videoId); continue; }
     // CJK blanks must be 2-6 characters (English is left alone: words are long).
     const blankChars = blank.replace(/\s/g, "").length;
-    if (language !== "en" && (blankChars < 2 || blankChars > 6)) continue;
+    if (language !== "en" && (blankChars < 2 || blankChars > 6)) { unusable?.add(videoId); continue; }
     lyricContext = lyricContext.replace(/_{3,}(?:[ \t]+_{3,})*/, () => blank);
     const acceptableVariants = Array.isArray(item.acceptableVariants)
       ? (item.acceptableVariants as unknown[]).filter((v): v is string => typeof v === "string")
@@ -247,13 +249,16 @@ Rules:
  *   as the lyrics-sonnet:/lyrics: cache prefixes), since they cost real Anthropic calls and
  *   shouldn't be silently re-fetched here on every resolve. A song missing from this map just
  *   falls back to the existing ungrounded prompt for that song — never an error.
+ * @param unusable  If given, filled with the ids the model answered but whose round was dropped
+ *   (low confidence, title giveaway, bad blank). Ids from a failed or unparseable batch are never added.
  */
 export async function resolveLyricsForTracks(
   tracks: TrackInput[],
   apiKey: string,
   onBatchDone?: (partial: Map<string, LyricsResult>) => void,
   model: string = MODEL_BULK,
-  popularitySummaries: Map<string, string> = new Map()
+  popularitySummaries: Map<string, string> = new Map(),
+  unusable?: Set<string>
 ): Promise<Map<string, LyricsResult>> {
   const combined = new Map<string, LyricsResult>();
   if (!apiKey || tracks.length === 0) return combined;
@@ -269,7 +274,7 @@ export async function resolveLyricsForTracks(
     batches.push(tracks.slice(i, i + BATCH_SIZE));
   }
 
-  await mapWithConcurrency(batches, MAX_CONCURRENT, (b) => resolveLyricsBatch(b, apiKey, model, fetchedLyrics, popularitySummaries), (results) => {
+  await mapWithConcurrency(batches, MAX_CONCURRENT, (b) => resolveLyricsBatch(b, apiKey, model, fetchedLyrics, popularitySummaries, unusable), (results) => {
     for (const r of results) {
       if (r.status === "fulfilled") {
         r.value.forEach((meta, id) => combined.set(id, meta));

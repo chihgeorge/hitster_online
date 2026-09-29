@@ -179,6 +179,30 @@ describe("resolveLyricsForTracks — lrclib miss fallback", () => {
     expect(body.messages[0].content).toContain("NO_LYRICS");
   });
 
+  it("reports a round the model answered but that was dropped as unusable", async () => {
+    mockFetch.mockResolvedValueOnce(lrclibGetResponse());
+    mockFetch.mockResolvedValueOnce(
+      anthropicResponse([{ v: "v1", language: "en", lyricContext: "And after all\nYou're my ___", blankSentence: "WonderWall", acceptableVariants: [] }])
+    );
+    const unusable = new Set<string>();
+    await resolveLyricsForTracks([TRACK], "key", undefined, undefined, undefined, unusable);
+    expect([...unusable]).toEqual(["v1"]);
+  });
+
+  it("reports a low-confidence (empty) answer as unusable, but not a failed call", async () => {
+    mockFetch.mockResolvedValueOnce(lrclibGetResponse());
+    mockFetch.mockResolvedValueOnce(anthropicResponse([{ v: "v1", language: "en", lyricContext: "", blankSentence: "", acceptableVariants: [] }]));
+    const unusable = new Set<string>();
+    await resolveLyricsForTracks([TRACK], "key", undefined, undefined, undefined, unusable);
+    expect([...unusable]).toEqual(["v1"]);
+
+    mockFetch.mockResolvedValueOnce(lrclibGetResponse());
+    mockFetch.mockResolvedValueOnce(anthropicError());
+    const afterFailure = new Set<string>();
+    await resolveLyricsForTracks([TRACK], "key", undefined, undefined, undefined, afterFailure);
+    expect(afterFailure.size).toBe(0);
+  });
+
   it("drops a round whose answer is the song title (players see the title)", async () => {
     mockFetch.mockResolvedValueOnce(lrclibGetResponse());
     mockFetch.mockResolvedValueOnce(

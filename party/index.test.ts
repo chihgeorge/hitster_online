@@ -1915,6 +1915,46 @@ describe("Lyrics Mode: START_LYRICS_GAME", () => {
     expect(previewMsg.state.rounds[0].blankSentence).toBe("OVERRIDDEN");
   });
 
+  it("records a Sonnet answer with no usable round, and skips that song's Sonnet call next time", async () => {
+    process.env.ANTHROPIC_API_KEY = "test-key";
+    try {
+      vi.mocked(fetchPlaylistItems).mockResolvedValue([fakeLyricsTrack()]);
+      const stored = new Map<string, unknown>([["lyrics:vid1", CACHED_LYRICS]]); // Haiku preview round only
+      const mockRoom = makeRoom();
+      (mockRoom.storage.get as ReturnType<typeof vi.fn>).mockImplementation((keys: unknown) =>
+        Promise.resolve(Array.isArray(keys) ? new Map(keys.filter((k) => stored.has(k)).map((k) => [k, stored.get(k)])) : undefined));
+      (mockRoom.storage.put as ReturnType<typeof vi.fn>).mockImplementation((values: Record<string, unknown>) => {
+        for (const [k, v] of Object.entries(values)) stored.set(k, v);
+        return Promise.resolve();
+      });
+      vi.mocked(resolveLyricsForTracks).mockImplementation(async (_t, _k, _cb, _model, _pop, unusable) => {
+        unusable?.add("vid1");
+        return new Map();
+      });
+      const start = async () => {
+        const room = new HitsterRoom(mockRoom as any);
+        const hostConn = makeConn("host-conn");
+        await send(room, hostConn, { type: "START_LYRICS_GAME", hostId: "host-uuid", playlistUrl: "PLtest", config: { timerSeconds: 60, totalRounds: 1, fuzzyEnabled: false } });
+        return room;
+      };
+
+      const first = await start();
+      expect(resolveLyricsForTracks).toHaveBeenCalledTimes(1);
+      expect(typeof stored.get("noResult:lyrics-sonnet:v1:vid1")).toBe("number");
+      expect(first.lyricsState?.rounds[0]?.blankSentence).toBe(CACHED_LYRICS.blankSentence); // fell back to the preview round
+
+      vi.mocked(resolveLyricsForTracks).mockClear();
+      vi.mocked(fetchPopularitySummaries).mockClear();
+      const second = await start();
+      expect(resolveLyricsForTracks).not.toHaveBeenCalled();
+      expect(fetchPopularitySummaries).not.toHaveBeenCalled();
+      expect(second.lyricsState?.phase).toBe("preview");
+    } finally {
+      delete process.env.ANTHROPIC_API_KEY;
+      vi.mocked(resolveLyricsForTracks).mockResolvedValue(new Map());
+    }
+  });
+
   it("uses DO lyrics cache when available", async () => {
     vi.mocked(fetchPlaylistItems).mockResolvedValue([fakeLyricsTrack()]);
 

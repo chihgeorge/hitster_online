@@ -33,6 +33,9 @@ import {
   resolvePlaylistFromUrl,
   fetchAndFilterTracks,
   resolveAIWithCache,
+  getNoResult,
+  putNoResult,
+  NO_RESULT,
   resolveEnv,
   parseResolveErrorCode,
   storageBatchGet,
@@ -700,7 +703,9 @@ export default class HitsterRoom implements Party.Server {
       enrichedTracks.map((t) => `lyrics:${t.videoId}`)
     );
     const cachedLyrics = fairRounds(lyricsCacheRaw, "lyrics:");
-    const uncachedTracks = enrichedTracks.filter((t) => !cachedLyrics.has(t.videoId));
+    const noRound = await getNoResult(this.room.storage, NO_RESULT.lyrics,
+      enrichedTracks.filter((t) => !cachedLyrics.has(t.videoId)).map((t) => t.videoId));
+    const uncachedTracks = enrichedTracks.filter((t) => !cachedLyrics.has(t.videoId) && !noRound.has(t.videoId));
 
     // If we have cached results, broadcast them immediately so the table is not empty.
     if (cachedLyrics.size > 0) {
@@ -711,11 +716,13 @@ export default class HitsterRoom implements Party.Server {
     if (anthropicKey && uncachedTracks.length > 0) {
       // Accumulate fresh lyrics progressively, broadcasting after each batch.
       const accumulated = new Map<string, LyricsResult>(cachedLyrics);
+      const unusable = new Set<string>();
       await resolveLyricsForTracks(uncachedTracks, anthropicKey, (partial) => {
         partial.forEach((v, k) => accumulated.set(k, v));
         const progressRounds = this.buildPreviewRounds(enrichedTracks, accumulated);
         this.sendPrivileged({ type: "LYRICS_PREVIEW", rounds: progressRounds, loading: true });
-      });
+      }, undefined, undefined, unusable);
+      if (unusable.size > 0) putNoResult(this.room.storage, NO_RESULT.lyrics, unusable);
 
       // Cache only the newly generated entries.
       const freshEntries = [...accumulated].filter(([id]) => !cachedLyrics.has(id));
@@ -1233,7 +1240,10 @@ export default class HitsterRoom implements Party.Server {
         deckCandidates.map((t) => `lyrics-sonnet:${t.videoId}`)
       );
       const sonnetCached = fairRounds(sonnetCacheRaw, "lyrics-sonnet:");
-      const sonnetUncached = deckCandidates.filter((t) => !sonnetCached.has(t.videoId));
+      // Songs Sonnet already answered without a usable round fall back to the Haiku preview below.
+      const sonnetNoRound = await getNoResult(this.room.storage, NO_RESULT.lyricsSonnet,
+        deckCandidates.filter((t) => !sonnetCached.has(t.videoId)).map((t) => t.videoId));
+      const sonnetUncached = deckCandidates.filter((t) => !sonnetCached.has(t.videoId) && !sonnetNoRound.has(t.videoId));
 
       // Popularity grounding (docs/designs/lyrics-question-search-grounding.md, Approach C):
       // cached per videoId like the lyrics results above, since each summary costs a real
@@ -1261,9 +1271,11 @@ export default class HitsterRoom implements Party.Server {
       }
 
       if (this.lyricsState !== game) return;
+      const sonnetUnusable = new Set<string>();
       const sonnetFresh = anthropicKey && sonnetUncached.length > 0
-        ? await resolveLyricsForTracks(sonnetUncached, anthropicKey, undefined, MODEL_GAME, popularitySummaries)
+        ? await resolveLyricsForTracks(sonnetUncached, anthropicKey, undefined, MODEL_GAME, popularitySummaries, sonnetUnusable)
         : new Map<string, LyricsResult>();
+      if (sonnetUnusable.size > 0) putNoResult(this.room.storage, NO_RESULT.lyricsSonnet, sonnetUnusable);
 
       if (sonnetFresh.size > 0) {
         const entries = [...sonnetFresh].map(([id, l]) => [`lyrics-sonnet:${id}`, l] as const);

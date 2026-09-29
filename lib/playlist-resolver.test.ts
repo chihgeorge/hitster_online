@@ -3,6 +3,10 @@ import type { Storage as PartyStorage } from "partykit/server";
 import {
   fetchAndFilterTracks,
   resolveAIWithCache,
+  getNoResult,
+  putNoResult,
+  NO_RESULT,
+  NO_RESULT_TTL_MS,
   resolvePlaylistFromUrl,
   buildCardsFromAI,
   parseTrackMetas,
@@ -106,6 +110,30 @@ describe("resolveAIWithCache", () => {
       seen.push([...accumulated.keys()]);
     });
     expect(seen).toEqual([["v1", "v2"]]);
+  });
+});
+
+describe("no-usable-result markers", () => {
+  it("resolveAIWithCache marks songs the AI couldn't identify and skips them next time", async () => {
+    vi.mocked(resolveTracksWithAI).mockImplementation(async (_tracks, _key, _onBatch, unusable) => {
+      unusable?.add("vlog");
+      return new Map([["song", { title: "Clean", artist: "Artist", year: 2000 }]]);
+    });
+    const storage = fakeStorage();
+    await resolveAIWithCache(storage, [fakeTrack("song"), fakeTrack("vlog")], "anthropic-key");
+    await vi.waitFor(() => expect(storage.put).toHaveBeenCalledWith({ [NO_RESULT.aiMeta + "vlog"]: expect.any(Number) }));
+
+    vi.mocked(resolveTracksWithAI).mockClear();
+    await resolveAIWithCache(storage, [fakeTrack("song"), fakeTrack("vlog")], "anthropic-key");
+    expect(resolveTracksWithAI).not.toHaveBeenCalled(); // song is cached, vlog is marked
+  });
+
+  it("a marker expires after the TTL, and a different version prefix ignores it", async () => {
+    const storage = fakeStorage();
+    putNoResult(storage, NO_RESULT.lyrics, ["v1"], 1_000);
+    await vi.waitFor(async () => expect([...await getNoResult(storage, NO_RESULT.lyrics, ["v1"], 1_000)]).toEqual(["v1"]));
+    expect((await getNoResult(storage, NO_RESULT.lyrics, ["v1"], 1_000 + NO_RESULT_TTL_MS)).size).toBe(0);
+    expect((await getNoResult(storage, "noResult:lyrics:v2:", ["v1"], 1_000)).size).toBe(0);
   });
 });
 
