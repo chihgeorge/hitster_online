@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.14.12.0] — 2026-09-29
+
+### Fixed
+- **Timeline skips a song that can't play, too:** when the TV can't play the current song, the same player gets the next card instead of guessing in silence. The unplayable song is dropped from the deck, and everyone sees the "skipped" notice. If it was the last song, the game ends with the usual most-cards winner
+
 ## [0.14.11.0] — 2026-09-29
 
 ### Fixed

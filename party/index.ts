@@ -1062,18 +1062,7 @@ export default class HitsterRoom implements Party.Server {
 
   private startNextRound() {
     if (this.state.songs.length === 0) {
-      // Playlist exhausted — end game, most cards wins
-      this.state.phase = "ended";
-      let topPlayer = "";
-      let topCount = 0;
-      for (const [playerId, player] of Object.entries(this.state.players)) {
-        if (player.cardCount > topCount) {
-          topCount = player.cardCount;
-          topPlayer = playerId;
-        }
-      }
-      this.state.winner = topPlayer || null;
-      this.broadcastState();
+      this.endOnCardCount();
       return;
     }
 
@@ -1084,6 +1073,41 @@ export default class HitsterRoom implements Party.Server {
       : -1;
     this.state.activePlayerId = playerIds[(currentIdx + 1) % playerIds.length] ?? null;
 
+    this.dealSong();
+    this.state.currentRound += 1;
+    this.broadcastState();
+  }
+
+  /**
+   * The TV couldn't play this turn's song: throw the card away (it's unplayable, so it never
+   * goes back in the deck) and deal the same player another. No next song ends the game.
+   */
+  private skipTimelineSong() {
+    if (this.state.songs.length === 0) {
+      this.endOnCardCount();
+      return;
+    }
+    this.dealSong();
+    this.broadcastState();
+  }
+
+  /** Playlist exhausted — end game, most cards wins. */
+  private endOnCardCount() {
+    this.state.phase = "ended";
+    let topPlayer = "";
+    let topCount = 0;
+    for (const [playerId, player] of Object.entries(this.state.players)) {
+      if (player.cardCount > topCount) {
+        topCount = player.cardCount;
+        topPlayer = playerId;
+      }
+    }
+    this.state.winner = topPlayer || null;
+    this.broadcastState();
+  }
+
+  /** Deals the active player the next song and opens guessing (placements cleared). */
+  private dealSong() {
     // Prefer a song whose year doesn't collide with the active player's timeline.
     const activeTimeline = this.state.activePlayerId
       ? (this.state.players[this.state.activePlayerId]?.timeline ?? [])
@@ -1098,9 +1122,6 @@ export default class HitsterRoom implements Party.Server {
     this.state.currentSong = nextSong;
     this.state.placements = {};
     this.state.phase = "guessing";
-    this.state.currentRound += 1;
-
-    this.broadcastState();
   }
 
   // ── Lyrics Mode ─────────────────────────────────────────────────────────────
@@ -1600,6 +1621,13 @@ export default class HitsterRoom implements Party.Server {
    */
   private handleAudioFailed(conn: Party.Connection, screenId: string, videoId: string) {
     if (!this.authorizeScreen(conn, screenId) || typeof videoId !== "string") return;
+    // Timeline: only during the turn (the reveal doesn't need audio); the TV gets the new song
+    // through the next STATE like any other deal.
+    if (this.state.phase === "guessing" && this.state.currentSong?.videoId === videoId) {
+      this.broadcast({ type: "ROUND_SKIPPED", mode: "timeline" });
+      this.skipTimelineSong();
+      return;
+    }
     const ls = this.lyricsState;
     const gs = this.guessState;
     if (ls?.currentRound?.videoId === videoId && timedRound.skipRound(ls)) {

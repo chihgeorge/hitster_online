@@ -264,7 +264,7 @@ export type ServerMessage =
   | { type: "GUESS_STATE"; state: PublicGuessGameState; serverNow: number }
   | { type: "GUESS_ABORTED" }
   // A round was dropped because its song couldn't be played on the TV (see AUDIO_FAILED).
-  | { type: "ROUND_SKIPPED"; mode: "lyrics" | "guess" }
+  | { type: "ROUND_SKIPPED"; mode: "timeline" | "lyrics" | "guess" }
   | { type: "GUESS_AUDIO"; videoId: string | null; roundIndex: number }
   | { type: "PLACEMENT_ACK"; playerId: string }
   | { type: "ERROR"; error: string }
