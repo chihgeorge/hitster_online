@@ -3,6 +3,10 @@ import type { Storage as PartyStorage } from "partykit/server";
 import {
   fetchAndFilterTracks,
   resolveAIWithCache,
+  getNoResult,
+  putNoResult,
+  NO_RESULT,
+  NO_RESULT_TTL_MS,
   resolvePlaylistFromUrl,
   buildCardsFromAI,
   parseTrackMetas,
@@ -109,6 +113,30 @@ describe("resolveAIWithCache", () => {
   });
 });
 
+describe("no-usable-result markers", () => {
+  it("resolveAIWithCache marks songs the AI couldn't identify and skips them next time", async () => {
+    vi.mocked(resolveTracksWithAI).mockImplementation(async (_tracks, _key, _onBatch, unusable) => {
+      unusable?.add("vlog");
+      return new Map([["song", { title: "Clean", artist: "Artist", year: 2000 }]]);
+    });
+    const storage = fakeStorage();
+    await resolveAIWithCache(storage, [fakeTrack("song"), fakeTrack("vlog")], "anthropic-key");
+    await vi.waitFor(() => expect(storage.put).toHaveBeenCalledWith({ [NO_RESULT.aiMeta + "vlog"]: expect.any(Number) }));
+
+    vi.mocked(resolveTracksWithAI).mockClear();
+    await resolveAIWithCache(storage, [fakeTrack("song"), fakeTrack("vlog")], "anthropic-key");
+    expect(resolveTracksWithAI).not.toHaveBeenCalled(); // song is cached, vlog is marked
+  });
+
+  it("a marker expires after the TTL, and a different version prefix ignores it", async () => {
+    const storage = fakeStorage();
+    putNoResult(storage, NO_RESULT.lyrics, ["v1"], 1_000);
+    await vi.waitFor(async () => expect([...await getNoResult(storage, NO_RESULT.lyrics, ["v1"], 1_000)]).toEqual(["v1"]));
+    expect((await getNoResult(storage, NO_RESULT.lyrics, ["v1"], 1_000 + NO_RESULT_TTL_MS)).size).toBe(0);
+    expect((await getNoResult(storage, "noResult:lyrics:v2:", ["v1"], 1_000)).size).toBe(0);
+  });
+});
+
 describe("buildCardsFromAI", () => {
   it("prefers description year, then title year, then AI year", () => {
     const tracks = [fakeTrack("v1"), fakeTrack("v2"), fakeTrack("v3")];
@@ -169,6 +197,30 @@ describe("resolvePlaylistFromUrl", () => {
 });
 
 describe("parseTrackMetas / storageBatchGet", () => {
+  it("parseTrackMetas gives a guessable title, not the raw video title, for AI-less fallback", () => {
+    const metas = parseTrackMetas([
+      fakeTrack("a", "Oasis - Wonderwall (Official Video)", "OasisVEVO"),
+      fakeTrack("b", "周杰倫 Jay Chou【告白氣球 Love Confession】Official MV", "JVR Music"),
+      fakeTrack("c", "Blinding Lights (Official Video)", "TheWeekndVEVO"),
+      // YouTube Music upload: the title is already the song; its dash is not "Artist - Track".
+      { videoId: "d", title: "Yesterday - Remastered 2009", channelTitle: "The Beatles - Topic",
+        description: "Provided to YouTube by EMI\n\nYesterday · The Beatles\n\nReleased on: 1965-08-06" },
+    ]);
+    expect(metas.map((m) => [m.title, m.artist])).toEqual([
+      ["Wonderwall", "Oasis"],
+      ["告白氣球 Love Confession", "周杰倫 Jay Chou"],
+      ["Blinding Lights", "TheWeeknd"],
+      ["Yesterday", "The Beatles"],
+    ]);
+  });
+
+  it("buildCardsFromAI uses the parsed title when there is no AI result, and the AI title when there is", () => {
+    const tracks = [fakeTrack("v1", "Oasis - Wonderwall (Official Video)"), fakeTrack("v2", "Oasis - Wonderwall (Official Video)")];
+    const metas = parseTrackMetas(tracks);
+    const { allSongs } = buildCardsFromAI(tracks, metas, new Map([["v2", { title: "AI Title", artist: "AI Artist", year: 1995 }]]));
+    expect(allSongs.map((s) => s.title)).toEqual(["Wonderwall", "AI Title"]);
+  });
+
   it("parseTrackMetas falls back to channel-derived artist with no description or title match", () => {
     const [meta] = parseTrackMetas([fakeTrack("v1", "Some Song", "SomeArtist - Topic")]);
     expect(meta.artist).toBe("SomeArtist");

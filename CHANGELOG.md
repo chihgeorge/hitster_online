@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.14.6.0] — 2026-09-29
+
+### Fixed
+- **Guess answers are real song names even without AI cleanup:** when the AI couldn't tidy a playlist, the answer used to be the whole video title, like "Oasis - Wonderwall (Official Video)", so nobody could get it right. It's now just the song name, with labels such as "Official MV", "Lyrics" or "Remastered 2009" removed
+- **A player can no longer take over the TV and see the Guess answers:** once people have joined a room, a device can only become the TV if it's the host's, and the TV stays the TV after a server restart
+- **Lyrics rounds you fill in yourself are kept:** if a song had no generated question and you wrote one in the preview, it used to disappear when the game started. It's now part of the game
+- **No more paying twice for songs the AI can't use:** songs the AI already answered without a usable question or song name aren't sent again every time you load the playlist or start a game. They're retried after 30 days
+
 ## [0.14.5.0] — 2026-09-29
 
 ### Fixed

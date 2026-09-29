@@ -24,7 +24,7 @@ import {
 } from "../lib/game";
 import { isValidYear, sanitizeText, decodeEntities, shuffle } from "../lib/utils";
 import { proposeEdits, proposeLyricEdits, type AITrackMeta } from "../lib/ai-metadata";
-import { resolveLyricsForTracks, givesAwayTitle, MODEL_GAME, type LyricsResult } from "../lib/lyrics-resolver";
+import { resolveLyricsForTracks, givesAwayTitle, detectLanguageHint, MODEL_GAME, type LyricsResult } from "../lib/lyrics-resolver";
 import { fetchPopularitySummaries } from "../lib/lyrics-popularity";
 import * as timedRound from "./timed-round";
 import { scoreGuess, normGuess } from "../lib/guess-scoring";
@@ -33,6 +33,9 @@ import {
   resolvePlaylistFromUrl,
   fetchAndFilterTracks,
   resolveAIWithCache,
+  getNoResult,
+  putNoResult,
+  NO_RESULT,
   resolveEnv,
   parseResolveErrorCode,
   storageBatchGet,
@@ -42,6 +45,8 @@ import {
 } from "../lib/playlist-resolver";
 
 const DEFAULT_TARGET_CARD_COUNT = 10;
+// Room storage key for the TV's screen credential (see the screenId field).
+const SCREEN_ID_KEY = "screenId";
 const MAX_TARGET_CARD_COUNT = 20;
 const MAX_PLAYERS_SOFT = 8;
 
@@ -91,6 +96,30 @@ function fairRounds(raw: Map<string, LyricsResult>, prefix: string): Map<string,
     .map(([k, l]) => [k.slice(prefix.length), l]));
 }
 
+const LANGUAGE_BY_HINT: [RegExp, LyricsRound["language"]][] = [[/^Japanese/, "ja"], [/^Korean/, "ko"], [/^Chinese/, "zh-TW"]];
+
+/**
+ * A round the host wrote by hand for a song with no generated round (an empty preview row they
+ * filled in). Needs a ___ blank in the context and a non-empty answer; anything else stays dropped.
+ */
+function roundFromOverride(t: { videoId: string; title: string; artist: string }, ov: LyricOverride | undefined): LyricsRound | null {
+  if (typeof ov?.lyricContext !== "string" || typeof ov.blankSentence !== "string") return null;
+  const lyricContext = ov.lyricContext.trim();
+  const blankSentence = ov.blankSentence.trim();
+  if (!lyricContext.includes("___") || !blankSentence) return null;
+  // Players type the blank, so its script (not the song title's) decides how answers are graded.
+  const hint = detectLanguageHint(blankSentence, lyricContext);
+  return {
+    videoId: t.videoId,
+    title: t.title,
+    artist: t.artist,
+    language: LANGUAGE_BY_HINT.find(([re]) => re.test(hint))?.[1] ?? "en",
+    lyricContext,
+    blankSentence,
+    acceptableVariants: Array.isArray(ov.acceptableVariants) ? ov.acceptableVariants.filter((v) => typeof v === "string") : [],
+  };
+}
+
 export default class HitsterRoom implements Party.Server {
   state: GameState;
   lyricsState: LyricsGameState | null = null;
@@ -122,6 +151,12 @@ export default class HitsterRoom implements Party.Server {
   // that its hostId is never transmitted anywhere but the host's own device (see
   // app/room/[code]/screen/page.tsx's private, same-device-only "manage as host" link) — unlike
   // screenId, there's no QR/URL carrying it for a player to intercept in the first place.
+  //
+  // The screen credential matters more: in Guess mode the video id it receives IS the answer.
+  // Rooms are created by /screen, which claims on mount, before anyone has the room code. Two
+  // things keep a player from getting in first anyway (see claimOrValidateScreen): the claim is
+  // kept in room storage (SCREEN_ID_KEY), so a PartyKit restart doesn't reopen it while phones
+  // reconnect; and once players are in the room, an unclaimed screen needs the host's id.
   private screenId = "";
   // Connections that have proven themselves host or screen (see markPrivileged) — the only
   // ones that get the full preview-phase deck (see broadcastLyricsState and onConnect).
@@ -140,6 +175,12 @@ export default class HitsterRoom implements Party.Server {
 
   constructor(readonly room: Party.Room) {
     this.state = this.emptyState();
+  }
+
+  // Runs before any connection or message after a (re)start: restore the TV's claim.
+  async onStart() {
+    const saved = await this.room.storage.get<string>(SCREEN_ID_KEY).catch(() => undefined);
+    if (typeof saved === "string" && this.screenId === "") this.screenId = saved;
   }
 
   private emptyState(): GameState {
@@ -305,7 +346,7 @@ export default class HitsterRoom implements Party.Server {
         this.handleGetLyricsAudio(sender, msg.screenId);
         break;
       case "JOIN_SCREEN":
-        this.handleJoinScreen(sender, msg.screenId);
+        this.handleJoinScreen(sender, msg.screenId, msg.hostId);
         break;
       case "START_LYRICS_ROUND":
         this.handleStartLyricsRound(sender, msg.hostId);
@@ -490,15 +531,22 @@ export default class HitsterRoom implements Party.Server {
   }
 
   /**
-   * The room's screen credential works exactly like hostId, claimed lazily on first use — either
-   * from JOIN_SCREEN (sent once on mount, so Timeline mode's video id starts flowing right away)
-   * or GET_LYRICS_AUDIO (Lyrics mode's per-round request; claims it too if JOIN_SCREEN raced it).
+   * The room's screen credential works like hostId, claimed lazily on first use — either from
+   * JOIN_SCREEN (sent once on mount, so Timeline mode's video id starts flowing right away) or
+   * GET_*_AUDIO (per-round requests; claims it too if JOIN_SCREEN raced it). Two differences,
+   * because in Guess mode the screen receives the answer: once players have joined, an
+   * unclaimed screen can only be claimed with the host's id (the real TV claims before anyone
+   * has the room code), and the claim is saved so a restart doesn't reopen it.
    */
-  private claimOrValidateScreen(conn: Party.Connection, screenId: string): boolean {
+  private claimOrValidateScreen(conn: Party.Connection, screenId: string, hostId?: string): boolean {
+    if (this.screenId === "" && Object.keys(this.state.players).length > 0 && !this.isValidHostId(hostId ?? "")) return false;
     return this.claimOrValidateFirstClaim(
       this.screenId,
       screenId,
-      (v) => { this.screenId = v; },
+      (v) => {
+        this.screenId = v;
+        this.room.storage.put(SCREEN_ID_KEY, v).catch(() => {});
+      },
       conn
     );
   }
@@ -676,7 +724,9 @@ export default class HitsterRoom implements Party.Server {
       enrichedTracks.map((t) => `lyrics:${t.videoId}`)
     );
     const cachedLyrics = fairRounds(lyricsCacheRaw, "lyrics:");
-    const uncachedTracks = enrichedTracks.filter((t) => !cachedLyrics.has(t.videoId));
+    const noRound = await getNoResult(this.room.storage, NO_RESULT.lyrics,
+      enrichedTracks.filter((t) => !cachedLyrics.has(t.videoId)).map((t) => t.videoId));
+    const uncachedTracks = enrichedTracks.filter((t) => !cachedLyrics.has(t.videoId) && !noRound.has(t.videoId));
 
     // If we have cached results, broadcast them immediately so the table is not empty.
     if (cachedLyrics.size > 0) {
@@ -687,11 +737,13 @@ export default class HitsterRoom implements Party.Server {
     if (anthropicKey && uncachedTracks.length > 0) {
       // Accumulate fresh lyrics progressively, broadcasting after each batch.
       const accumulated = new Map<string, LyricsResult>(cachedLyrics);
+      const unusable = new Set<string>();
       await resolveLyricsForTracks(uncachedTracks, anthropicKey, (partial) => {
         partial.forEach((v, k) => accumulated.set(k, v));
         const progressRounds = this.buildPreviewRounds(enrichedTracks, accumulated);
         this.sendPrivileged({ type: "LYRICS_PREVIEW", rounds: progressRounds, loading: true });
-      });
+      }, undefined, undefined, unusable);
+      if (unusable.size > 0) putNoResult(this.room.storage, NO_RESULT.lyrics, unusable);
 
       // Cache only the newly generated entries.
       const freshEntries = [...accumulated].filter(([id]) => !cachedLyrics.has(id));
@@ -1209,7 +1261,10 @@ export default class HitsterRoom implements Party.Server {
         deckCandidates.map((t) => `lyrics-sonnet:${t.videoId}`)
       );
       const sonnetCached = fairRounds(sonnetCacheRaw, "lyrics-sonnet:");
-      const sonnetUncached = deckCandidates.filter((t) => !sonnetCached.has(t.videoId));
+      // Songs Sonnet already answered without a usable round fall back to the Haiku preview below.
+      const sonnetNoRound = await getNoResult(this.room.storage, NO_RESULT.lyricsSonnet,
+        deckCandidates.filter((t) => !sonnetCached.has(t.videoId)).map((t) => t.videoId));
+      const sonnetUncached = deckCandidates.filter((t) => !sonnetCached.has(t.videoId) && !sonnetNoRound.has(t.videoId));
 
       // Popularity grounding (docs/designs/lyrics-question-search-grounding.md, Approach C):
       // cached per videoId like the lyrics results above, since each summary costs a real
@@ -1237,9 +1292,11 @@ export default class HitsterRoom implements Party.Server {
       }
 
       if (this.lyricsState !== game) return;
+      const sonnetUnusable = new Set<string>();
       const sonnetFresh = anthropicKey && sonnetUncached.length > 0
-        ? await resolveLyricsForTracks(sonnetUncached, anthropicKey, undefined, MODEL_GAME, popularitySummaries)
+        ? await resolveLyricsForTracks(sonnetUncached, anthropicKey, undefined, MODEL_GAME, popularitySummaries, sonnetUnusable)
         : new Map<string, LyricsResult>();
+      if (sonnetUnusable.size > 0) putNoResult(this.room.storage, NO_RESULT.lyricsSonnet, sonnetUnusable);
 
       if (sonnetFresh.size > 0) {
         const entries = [...sonnetFresh].map(([id, l]) => [`lyrics-sonnet:${id}`, l] as const);
@@ -1263,7 +1320,11 @@ export default class HitsterRoom implements Party.Server {
         const ov = overrideMap.get(t.videoId);
         if (ov?.skip) continue;
         const base = allLyrics.get(t.videoId);
-        if (!base) continue;
+        if (!base) {
+          const own = roundFromOverride(t, ov);
+          if (own) deck.push(own);
+          continue;
+        }
         deck.push({
           videoId: t.videoId,
           title: base.title,
@@ -1306,8 +1367,8 @@ export default class HitsterRoom implements Party.Server {
   // Sent once by /screen on mount, independent of game mode — claims the screen credential right
   // away so Timeline mode's currentSong.videoId (see sanitizedState) starts flowing on the very
   // next broadcastState instead of waiting for a Lyrics-only GET_LYRICS_AUDIO that may never come.
-  private handleJoinScreen(conn: Party.Connection, screenId: string) {
-    if (!this.authorizeScreen(conn, screenId)) return;
+  private handleJoinScreen(conn: Party.Connection, screenId: string, hostId?: string) {
+    if (!this.authorizeScreen(conn, screenId, hostId)) return;
     // onConnect already sent this connection a redacted STATE (it wasn't privileged yet at that
     // point) — resend the real one now instead of leaving /screen stuck without video until the
     // next unrelated state change.
@@ -1315,8 +1376,8 @@ export default class HitsterRoom implements Party.Server {
   }
 
   /** Shared by JOIN_SCREEN and GET_LYRICS_AUDIO — see claimOrValidateScreen. */
-  private authorizeScreen(conn: Party.Connection, screenId: string): boolean {
-    if (this.claimOrValidateScreen(conn, screenId)) return true;
+  private authorizeScreen(conn: Party.Connection, screenId: string, hostId?: string): boolean {
+    if (this.claimOrValidateScreen(conn, screenId, hostId)) return true;
     this.sendTo(conn, { type: "ERROR", error: "unauthorized" });
     return false;
   }

@@ -76,30 +76,6 @@
 
 ## Guess Mode
 
-### Guess mode answers fall back to raw YouTube titles when AI cleanup is missing
-
-**What:** Guess mode answers fall back to raw YouTube titles when AI cleanup is missing.
-
-**Why:** Without AI cleanup, whole Guess rounds can be unwinnable.
-
-**Context:** Without AI metadata (no Anthropic key, or a failed call) `lib/playlist-resolver.ts` uses the raw video title ("Artist - Song (Official MV)") and channel name ("…VEVO", "… - Topic") as the Guess answer, so players typing the real name are marked wrong and nobody is told. Mid-load starts are already refused (`playlistLoading`). Decide in the host UI (T5/T6): warn the host which songs lack cleaned metadata, strip common YouTube title noise, or exclude those songs from the Guess deck. _Found by /review adversarial pass on feat/guess-mode-engine, 2026-09-24._
-
-**Effort:** M
-**Priority:** P2
-**Depends on:** None
-
-### Guess mode: whoever claims the screen holds the answer key
-
-**What:** Guess mode: whoever claims the screen holds the answer key.
-
-**Why:** In Guess mode the screen credential is the answer key.
-
-**Context:** `GET_GUESS_AUDIO` hands the current videoId (which reveals title/artist) to the first `screenId` claimant — the accepted first-claim gap above, but in Guess mode the videoId *is* the answer. Revisit with the minted-token fix before Guess ships to wider play. _Found by /review adversarial pass, 2026-09-24._
-
-**Effort:** M
-**Priority:** P2
-**Depends on:** None
-
 ### Guess grading tuning after playtest
 
 **What:** Guess grading tuning after playtest.
@@ -125,30 +101,6 @@
 **Depends on:** None
 
 ## Lyrics Mode
-
-### Songs whose Lyrics round or metadata comes back empty are re-resolved on every load
-
-**What:** Cache a "no usable result" marker for songs whose generated Lyrics round is dropped (title giveaway, low confidence), and for tracks the metadata call leaves empty (it now returns empty title/artist instead of guessing "Unknown").
-
-**Why:** Each preview and game start re-sends those songs to Haiku/Sonnet, paying again for a round that is often dropped again.
-
-**Context:** `party/index.ts` only caches non-empty results under `lyrics:` / `lyrics-sonnet:`, and `fairRounds()` treats a cached giveaway as uncached so it gets regenerated. Live runs showed a title-giveaway round in about 1 of 3 Sonnet batches. The metadata side is the same: `resolveBatch` drops empty t/a and `resolveAIWithCache` caches only hits, so a non-song video goes back to Haiku on every playlist load and preview; `aiMeta:` entries cached before the prompt change may still hold "Unknown"-style guesses. Needs a versioned marker (or TTL) so a prompt change can retry. _Deferred from /ship review on refactor/prompt-structured-outputs, 2026-09-24._
-
-**Effort:** S
-**Priority:** P2
-**Depends on:** None
-
-### A Lyrics round the host fills in by hand is dropped at game start
-
-**What:** Build a deck round from the host's override when the song has no generated round.
-
-**Why:** The host can fill an empty preview row (the lyric-edit prompt supports it), but the round silently disappears from the game.
-
-**Context:** The deck build in `party/index.ts` does `if (!base) continue` before applying `lyricOverrides`. When the override has a `lyricContext` containing `___` and a non-empty `blankSentence`, build the round from it plus the track's title/artist (language via `detectLanguageHint`). Predates the title guard, but the guard makes empty rows more common. _Found by /ship red team on refactor/prompt-structured-outputs, 2026-09-24._
-
-**Effort:** S
-**Priority:** P2
-**Depends on:** None
 
 ### E2E: verify lrclib → Claude pipeline with a real player in the room
 
@@ -382,6 +334,62 @@ _Deferred from plan: foamy-crafting-bonbon.md_
 **Depends on:** None
 
 ## Completed
+
+### A Lyrics round the host fills in by hand is dropped at game start
+
+**What:** Build a deck round from the host's override when the song has no generated round.
+
+**Why:** The host can fill an empty preview row (the lyric-edit prompt supports it), but the round silently disappears from the game.
+
+**Context:** The deck build in `party/index.ts` does `if (!base) continue` before applying `lyricOverrides`. When the override has a `lyricContext` containing `___` and a non-empty `blankSentence`, build the round from it plus the track's title/artist (language via `detectLanguageHint`). Predates the title guard, but the guard makes empty rows more common. _Found by /ship red team on refactor/prompt-structured-outputs, 2026-09-24._
+
+**Effort:** S
+**Priority:** P2
+**Depends on:** None
+
+**Completed:** v0.14.6.0 (2026-09-29) — `roundFromOverride` in `party/index.ts` builds the round from the host's override (needs a `___` blank and a non-empty answer; language from the lyric text).
+
+### Songs whose Lyrics round or metadata comes back empty are re-resolved on every load
+
+**What:** Cache a "no usable result" marker for songs whose generated Lyrics round is dropped (title giveaway, low confidence), and for tracks the metadata call leaves empty (it now returns empty title/artist instead of guessing "Unknown").
+
+**Why:** Each preview and game start re-sends those songs to Haiku/Sonnet, paying again for a round that is often dropped again.
+
+**Context:** `party/index.ts` only caches non-empty results under `lyrics:` / `lyrics-sonnet:`, and `fairRounds()` treats a cached giveaway as uncached so it gets regenerated. Live runs showed a title-giveaway round in about 1 of 3 Sonnet batches. The metadata side is the same: `resolveBatch` drops empty t/a and `resolveAIWithCache` caches only hits, so a non-song video goes back to Haiku on every playlist load and preview; `aiMeta:` entries cached before the prompt change may still hold "Unknown"-style guesses. Needs a versioned marker (or TTL) so a prompt change can retry. _Deferred from /ship review on refactor/prompt-structured-outputs, 2026-09-24._
+
+**Effort:** S
+**Priority:** P2
+**Depends on:** None
+
+**Completed:** v0.14.6.0 (2026-09-29) — the resolvers report ids the model answered but left unusable (never ids from a failed or unparseable call); the room stores a `noResult:<kind>:v1:<id>` marker (30-day expiry, `lib/playlist-resolver.ts`) and skips marked songs for Haiku, Sonnet and metadata. Not done: old `aiMeta:` entries holding "Unknown"-style guesses are still served from cache.
+
+### Guess mode answers fall back to raw YouTube titles when AI cleanup is missing
+
+**What:** Guess mode answers fall back to raw YouTube titles when AI cleanup is missing.
+
+**Why:** Without AI cleanup, whole Guess rounds can be unwinnable.
+
+**Context:** Without AI metadata (no Anthropic key, or a failed call) `lib/playlist-resolver.ts` uses the raw video title ("Artist - Song (Official MV)") and channel name ("…VEVO", "… - Topic") as the Guess answer, so players typing the real name are marked wrong and nobody is told. Mid-load starts are already refused (`playlistLoading`). Decide in the host UI (T5/T6): warn the host which songs lack cleaned metadata, strip common YouTube title noise, or exclude those songs from the Guess deck. _Found by /review adversarial pass on feat/guess-mode-engine, 2026-09-24._
+
+**Effort:** M
+**Priority:** P2
+**Depends on:** None
+
+**Completed:** v0.14.6.0 (2026-09-29) — without AI metadata the title is now the parsed track name with video labels and release tags stripped (`stripTitleNoise` in `lib/youtube.ts`), YouTube Music uploads keep their title, and `channelToArtist` drops VEVO. No host warning was added: titles stay editable in the playlist editor.
+
+### Guess mode: whoever claims the screen holds the answer key
+
+**What:** Guess mode: whoever claims the screen holds the answer key.
+
+**Why:** In Guess mode the screen credential is the answer key.
+
+**Context:** `GET_GUESS_AUDIO` hands the current videoId (which reveals title/artist) to the first `screenId` claimant — the accepted first-claim gap above, but in Guess mode the videoId *is* the answer. Revisit with the minted-token fix before Guess ships to wider play. _Found by /review adversarial pass, 2026-09-24._
+
+**Effort:** M
+**Priority:** P2
+**Depends on:** None
+
+**Completed:** v0.14.6.0 (2026-09-29) — the screen claim is saved in room storage and restored in `onStart`, and once players are in the room an unclaimed screen needs the host's id (`claimOrValidateScreen`). The broader first-claim model (P3, "trust whoever asks first") is unchanged.
 
 ### Countdowns use the device clock, not server time
 

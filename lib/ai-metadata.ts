@@ -76,7 +76,8 @@ const LYRIC_EDITS_FORMAT = itemsSchema({
 
 async function resolveBatch(
   tracks: { videoId: string; title: string; description: string; channelTitle: string }[],
-  apiKey: string
+  apiKey: string,
+  unusable?: Set<string>
 ): Promise<Map<string, AITrackMeta>> {
   const result = new Map<string, AITrackMeta>();
   if (tracks.length === 0) return result;
@@ -124,6 +125,8 @@ async function resolveBatch(
       : null;
     if (title && artist) {
       result.set(videoId, { title, artist, year });
+    } else if (tracks.some((t) => t.videoId === videoId)) {
+      unusable?.add(videoId); // the model looked at it and couldn't identify a song
     }
   }
 
@@ -136,12 +139,15 @@ async function resolveBatch(
  * batches in parallel.
  *
  * @param onBatchDone  Called after each batch resolves — use for progressive DIAGNOSTIC updates.
+ * @param unusable  If given, filled with the ids the model answered but left empty (not a song it
+ *   could identify). Ids from a failed or unparseable batch are never added.
  * @returns Map<videoId, AITrackMeta>. Missing entries mean the batch failed or the track wasn't identified (empty t/a); fall back to parsing.
  */
 export async function resolveTracksWithAI(
   tracks: { videoId: string; title: string; description: string; channelTitle: string }[],
   apiKey: string,
-  onBatchDone?: (partial: Map<string, AITrackMeta>) => void
+  onBatchDone?: (partial: Map<string, AITrackMeta>) => void,
+  unusable?: Set<string>
 ): Promise<Map<string, AITrackMeta>> {
   const combined = new Map<string, AITrackMeta>();
   if (!apiKey || tracks.length === 0) return combined;
@@ -153,7 +159,7 @@ export async function resolveTracksWithAI(
   }
 
   // Run in windows of MAX_CONCURRENT to stay within API rate limits.
-  await mapWithConcurrency(batches, MAX_CONCURRENT, (batch) => resolveBatch(batch, apiKey), (results) => {
+  await mapWithConcurrency(batches, MAX_CONCURRENT, (batch) => resolveBatch(batch, apiKey, unusable), (results) => {
     for (const r of results) {
       if (r.status === "fulfilled") {
         r.value.forEach((meta, id) => combined.set(id, meta));

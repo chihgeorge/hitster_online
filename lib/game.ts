@@ -210,7 +210,8 @@ export type ClientMessage =
   | { type: "NEXT_GUESS_ROUND"; hostId: string }
   | { type: "RESET_GUESS_GAME"; hostId: string }
   | { type: "GET_GUESS_AUDIO"; screenId: string }
-  | { type: "JOIN_SCREEN"; screenId: string }
+  // hostId: sent when this browser is also the host's, so a TV opened after players joined can claim.
+  | { type: "JOIN_SCREEN"; screenId: string; hostId?: string }
   | { type: "PROPOSE_EDITS"; hostId: string; instruction: string; songs: EditableSong[] }
   | { type: "PROPOSE_LYRIC_EDITS"; hostId: string; instruction: string; rounds: EditableLyricRound[] };
 

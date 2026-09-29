@@ -3,6 +3,7 @@ import {
   parseArtistAndTrack,
   parseYouTubeMusicDescription,
   channelToArtist,
+  stripTitleNoise,
   extractYearFromTitle,
   fetchEmbeddableVideoIds,
 } from "./youtube";
@@ -152,7 +153,36 @@ describe("parseYouTubeMusicDescription", () => {
 
 // ─── channelToArtist ─────────────────────────────────────────────────────────
 
+describe("stripTitleNoise", () => {
+  it.each([
+    ["Wonderwall (Official Music Video)", "Wonderwall"],
+    ["Blinding Lights [Official Video]", "Blinding Lights"],
+    ["Shape of You (Lyrics)", "Shape of You"],
+    ["Love Story (Taylor's Version) (Official Lyric Video)", "Love Story (Taylor's Version)"],
+    ["Bohemian Rhapsody | Official Video", "Bohemian Rhapsody"],
+    ["告白氣球 Official MV", "告白氣球"],
+    ["小幸運 MV", "小幸運"],
+    ["Hello 【Official MV】", "Hello"],
+    ["晴天 (動態歌詞版)", "晴天"],
+    ["Yesterday - Remastered 2009", "Yesterday"],
+    ["Here Comes the Sun (2019 Remaster)", "Here Comes the Sun"],
+    ["Mr. Brightside - Radio Edit", "Mr. Brightside"],
+  ])("%s → %s", (raw, clean) => {
+    expect(stripTitleNoise(raw)).toBe(clean);
+  });
+
+  it.each(["Live Forever (Live at Knebworth)", "Summer Video", "Mvula", "Music Box Dancer", "MV", "HD"])(
+    "leaves %s alone (part of the name, or nothing would be left)", (title) => {
+      expect(stripTitleNoise(title)).toBe(title);
+    });
+});
+
 describe("channelToArtist", () => {
+  it("strips a VEVO suffix", () => {
+    expect(channelToArtist("TaylorSwiftVEVO")).toBe("TaylorSwift");
+    expect(channelToArtist("Vevo Lin")).toBe("Vevo Lin");
+  });
+
   it("strips ' - Topic' suffix", () => {
     expect(channelToArtist("Frank Mills - Topic")).toBe("Frank Mills");
   });

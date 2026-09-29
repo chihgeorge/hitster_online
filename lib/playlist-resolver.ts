@@ -24,6 +24,7 @@ import {
   parseYouTubeMusicDescription,
   channelToArtist,
   extractYearFromTitle,
+  stripTitleNoise,
 } from "./youtube";
 import { resolveTracksWithAI, type AITrackMeta } from "./ai-metadata";
 
@@ -59,7 +60,8 @@ export function parseResolveErrorCode(err: unknown): string {
 }
 
 export type TrackItem = { videoId: string; title: string; description: string; channelTitle: string };
-type TrackMeta = { artist: string; descYear: number | null; titleYear: number | null };
+/** `title` is the song title parsed from the video title, used when AI metadata is missing. */
+type TrackMeta = { artist: string; title?: string; descYear: number | null; titleYear: number | null };
 
 export function parseTrackMetas(tracks: TrackItem[]): TrackMeta[] {
   return tracks.map((track) => {
@@ -67,7 +69,10 @@ export function parseTrackMetas(tracks: TrackItem[]): TrackMeta[] {
     const titleYear = extractYearFromTitle(track.title);
     const titleParsed = parseArtistAndTrack(track.title);
     const artist = descMeta.artist ?? titleParsed?.artist ?? channelToArtist(track.channelTitle);
-    return { artist, descYear: descMeta.year ?? null, titleYear: titleYear ?? null };
+    // A YouTube Music upload (artist in the description) is already titled with just the song —
+    // splitting "Yesterday - Remastered 2009" on its dash would make "Remastered 2009" the answer.
+    const title = descMeta.artist ? stripTitleNoise(track.title) : stripTitleNoise(titleParsed?.track ?? track.title);
+    return { artist, title, descYear: descMeta.year ?? null, titleYear: titleYear ?? null };
   });
 }
 
@@ -81,12 +86,14 @@ export function buildCardsFromAI(
   const diagnostics: SongDiagnostic[] = [];
   for (let i = 0; i < tracks.length; i++) {
     const t = tracks[i];
-    const { descYear, titleYear, artist } = metas[i];
+    const { descYear, titleYear, artist, title } = metas[i];
     const ai = aiResults.get(t.videoId);
     const year = descYear ?? titleYear ?? ai?.year ?? null;
     const yearSource: SongDiagnostic["yearSource"] =
       descYear ? "description" : titleYear ? "title" : ai?.year ? "ai" : null;
-    const cleanTitle = ai?.title ?? t.title;
+    // Without AI metadata this is the parsed title, never the raw video title: Guess mode's
+    // answer is this string, and "Artist - Song (Official MV)" is unguessable.
+    const cleanTitle = ai?.title ?? title ?? t.title;
     const cleanArtist = ai?.artist ?? artist;
     diagnostics.push({ title: cleanTitle, artist: cleanArtist, year, yearSource });
     allSongs.push({ videoId: t.videoId, title: cleanTitle, artist: cleanArtist, year });
@@ -109,6 +116,36 @@ export async function storageBatchGet<T>(storage: PartyStorage, keys: string[]):
   return result;
 }
 
+/**
+ * "The AI answered but gave nothing usable" markers, so those songs aren't re-sent on every load
+ * (TODOS.md P2). Each kind has its own key prefix with a version: bump the version when the
+ * prompt changes so every song is retried. Only songs the model actually answered get a marker —
+ * a failed call or unparseable reply is retried next time. Markers expire after NO_RESULT_TTL_MS
+ * too, so a song whose lyrics show up on lrclib later gets another chance.
+ */
+export const NO_RESULT = {
+  aiMeta: "noResult:aiMeta:v1:",
+  lyrics: "noResult:lyrics:v1:",
+  lyricsSonnet: "noResult:lyrics-sonnet:v1:",
+} as const;
+export const NO_RESULT_TTL_MS = 30 * 24 * 60 * 60 * 1000;
+
+/** Video ids with a live "no usable result" marker under `prefix`. */
+export async function getNoResult(storage: PartyStorage, prefix: string, videoIds: string[], now = Date.now()): Promise<Set<string>> {
+  const raw = await storageBatchGet<number>(storage, videoIds.map((id) => prefix + id));
+  return new Set([...raw]
+    .filter(([, at]) => typeof at === "number" && now - at < NO_RESULT_TTL_MS)
+    .map(([k]) => k.slice(prefix.length)));
+}
+
+/** Records "no usable result" for these video ids (value: when, for the TTL). Fire-and-forget. */
+export function putNoResult(storage: PartyStorage, prefix: string, videoIds: Iterable<string>, now = Date.now()) {
+  const entries = [...videoIds].map((id) => [prefix + id, now] as const);
+  for (let i = 0; i < entries.length; i += 128) {
+    storage.put(Object.fromEntries(entries.slice(i, i + 128))).catch(() => {});
+  }
+}
+
 /** Exported for callers that already have `tracks` (e.g. handleStartLyricsGame's
  * branches that reuse a pending/test-seed track list) and just need AI metadata
  * without re-running the fetch+filter steps resolvePlaylistFromUrl also does. */
@@ -120,12 +157,15 @@ export async function resolveAIWithCache(
 ): Promise<Map<string, AITrackMeta>> {
   const cacheRaw = await storageBatchGet<AITrackMeta>(storage, tracks.map((t) => `aiMeta:${t.videoId}`));
   const cachedAI = new Map<string, AITrackMeta>([...cacheRaw].map(([k, v]) => [k.slice(7), v]));
-  const uncachedTracks = tracks.filter((t) => !cachedAI.has(t.videoId));
+  const noResult = await getNoResult(storage, NO_RESULT.aiMeta, tracks.filter((t) => !cachedAI.has(t.videoId)).map((t) => t.videoId));
+  const uncachedTracks = tracks.filter((t) => !cachedAI.has(t.videoId) && !noResult.has(t.videoId));
+  const unusable = new Set<string>();
   const freshAI = anthropicKey && uncachedTracks.length > 0
     ? await resolveTracksWithAI(uncachedTracks, anthropicKey, onBatchDone
         ? (partial) => onBatchDone(new Map([...cachedAI, ...partial]))
-        : undefined)
+        : undefined, unusable)
     : new Map<string, AITrackMeta>();
+  if (unusable.size > 0) putNoResult(storage, NO_RESULT.aiMeta, unusable);
   if (freshAI.size > 0) {
     const entries = [...freshAI].map(([id, meta]) => [`aiMeta:${id}`, meta] as const);
     for (let i = 0; i < entries.length; i += 128) {

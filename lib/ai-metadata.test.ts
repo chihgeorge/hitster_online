@@ -48,6 +48,25 @@ describe("resolveTracksWithAI", () => {
     );
     expect(result.size).toBe(0);
   });
+
+  it("reports tracks the model answered with empty title/artist as unusable, and nothing else", async () => {
+    mockFetch.mockResolvedValueOnce(
+      anthropicResponse(`[{"v":"song","t":"Yesterday","a":"The Beatles","y":1965},{"v":"vlog","t":"","a":""},{"v":"stranger","t":"","a":""}]`)
+    );
+    const unusable = new Set<string>();
+    const tracks = ["song", "vlog", "skipped"].map((videoId) => ({ videoId, title: "t", description: "", channelTitle: "c" }));
+    const result = await resolveTracksWithAI(tracks, "fake-key", undefined, unusable);
+    expect([...result.keys()]).toEqual(["song"]);
+    // "skipped" got no answer and "stranger" wasn't asked about: neither is marked.
+    expect([...unusable]).toEqual(["vlog"]);
+  });
+
+  it("never reports anything unusable when the call fails", async () => {
+    mockFetch.mockResolvedValueOnce(anthropicResponse("", false));
+    const unusable = new Set<string>();
+    await resolveTracksWithAI([{ videoId: "x", title: "t", description: "", channelTitle: "c" }], "fake-key", undefined, unusable);
+    expect(unusable.size).toBe(0);
+  });
 });
 
 describe("proposeEdits", () => {

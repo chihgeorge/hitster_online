@@ -253,7 +253,28 @@ export async function fetchEmbeddableVideoIds(
  * e.g. "Frank Mills - Topic" → "Frank Mills"
  */
 export function channelToArtist(channelTitle: string): string {
-  return channelTitle.replace(/\s*-\s*Topic\s*$/i, "").trim();
+  return channelTitle.replace(/\s*-\s*Topic\s*$/i, "").replace(/\s*VEVO\s*$/, "").trim();
+}
+
+// Bracketed or trailing video labels: (Official Music Video), [Lyrics], 【MV】, "Official MV", "Lyric Video"…
+const NOISE_WORDS = String.raw`(?:official|music|lyrics?|video|audio|visuali[sz]er|mv|m\/v|hd|hq|4k|live|performance|動態歌詞版?|歌詞版?|完整版|高清|官方|\s)+`;
+const BRACKETED_NOISE = new RegExp(String.raw`\s*[(\[【（]\s*${NOISE_WORDS}\s*[)\]】）]`, "gi");
+// Release-version tags, as dash suffixes or brackets: " - Remastered 2009", "(Radio Edit)", " - Single Version".
+const VERSION_TAG = String.raw`(?:(?:\d{4}\s+)?remaster(?:ed)?(?:\s+(?:version|\d{4}))*|radio\s+edit|single\s+version|album\s+version|mono|stereo)`;
+const VERSION_NOISE = new RegExp(String.raw`\s*(?:[-–—]\s*${VERSION_TAG}|[(\[]\s*${VERSION_TAG}\s*[)\]])\s*$`, "i");
+const TRAILING_NOISE = new RegExp(String.raw`\s*[-–—|]?\s*(?:official\s+(?:music\s+)?(?:video|mv|audio)|(?:lyrics?|music)\s+video|official\s+lyric\s+video|\bmv|m\/v)\s*$`, "i");
+
+/**
+ * A video title as a guessable song title when nothing better is known (no AI metadata, no
+ * "Artist - Track" pattern): drops video labels like "(Official Music Video)", "[Lyrics]" or a
+ * trailing "Official MV", and release tags like " - Remastered 2009" or "(Radio Edit)". Returns
+ * the input unchanged if stripping would leave nothing.
+ */
+export function stripTitleNoise(title: string): string {
+  let s = title.replace(BRACKETED_NOISE, "");
+  for (let prev = ""; prev !== s; ) { prev = s; s = s.replace(TRAILING_NOISE, "").replace(VERSION_NOISE, ""); }
+  s = s.replace(/\s{2,}/g, " ").trim();
+  return s || title.trim();
 }
 
 /**
