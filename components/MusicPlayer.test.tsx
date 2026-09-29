@@ -128,6 +128,20 @@ describe("MusicPlayer", () => {
     expect(() => view!.unmount()).not.toThrow(); // cleanup after a failed init must not throw either
   });
 
+  it("reports each refused video once through onFailed", () => {
+    w.YT = { Player: FakePlayer };
+    const onFailed = vi.fn();
+    const { rerender } = render(<MusicPlayer currentSong={song("bad")} {...props} onFailed={onFailed} />);
+    player().ready();
+    act(() => { player().events.onError?.({ data: 150 }); });
+    act(() => { player().events.onError?.({ data: 150 }); });
+    expect(onFailed).toHaveBeenCalledTimes(1);
+    expect(onFailed).toHaveBeenCalledWith("bad");
+    rerender(<MusicPlayer currentSong={song("bad2")} {...props} onFailed={onFailed} />);
+    act(() => { player().events.onError?.({ data: 101 }); });
+    expect(onFailed).toHaveBeenLastCalledWith("bad2");
+  });
+
   it("shows the can't-play message in the DOM when the embed reports an error, and clears it on a new song", () => {
     w.YT = { Player: FakePlayer };
     const { rerender } = render(<MusicPlayer currentSong={song("bad")} {...props} />);

@@ -118,6 +118,14 @@ export default function PlayPage() {
           break;
         case "ROUND_SKIPPED":
           setSkipNotice((n) => n + 1);
+          // Timeline deals a new song within the same "guessing" phase, so the phase-change
+          // reset below never runs: clear this turn's placement state here.
+          if (msg.mode === "timeline") {
+            setHasPlaced(false);
+            setPendingPlace(false);
+            setTooLate(false);
+            setSelectedPosition(null);
+          }
           break;
         case "GUESS_ABORTED":
           // The game is gone: a TOO_LATE from it must not carry into the next game's same round.
@@ -493,6 +501,7 @@ export default function PlayPage() {
   /* ── Active game view (guessing / reveal) ── */
   return (
     <main className="min-h-screen px-4 pt-5" style={{ background: "var(--bg)", paddingBottom: 220 }}>
+      {skipped}
       {/* Header bar */}
       <div style={{
         display: "flex", alignItems: "center", justifyContent: "space-between",

@@ -191,7 +191,7 @@ export default function ScreenPage() {
                 <p style={label}>
                   第 {state.currentRound} 回合 · {state.players[state.activePlayerId ?? ""]?.name ?? "?"} 的回合
                 </p>
-                <MusicPlayer currentSong={state.currentSong} phase={phase} />
+                <MusicPlayer currentSong={state.currentSong} phase={phase} onFailed={reportAudioFailed} />
               </div>
               <PlayerList
                 players={state.players}

@@ -31,18 +31,6 @@ _Deferred from /qa on feat/lyrics-api 2026-09-17_
 
 ## Host & Screen
 
-### Timeline: skip a song whose video can't be played
-
-**What:** In Timeline mode, draw another card when the TV's player can't play the current song.
-
-**Why:** A Timeline turn with an unembeddable video runs with no audio; Lyrics and Guess already skip (v0.14.11.0).
-
-**Context:** `MusicPlayer` on `/screen` already detects the failure (`failedId`) and shows a notice. Reuse the `AUDIO_FAILED` message: in Timeline's guessing phase, put the card back out of play and deal the next song from `state.songs` for the same turn. _Split out of the Lyrics/Guess skip, 2026-09-29._
-
-**Effort:** S
-**Priority:** P3
-**Depends on:** None
-
 ### The screen tab opened from the host link keeps a reference to the host tab
 
 **What:** A screen tab opened from the host header link has `window.opener` pointing at the host tab.
@@ -199,6 +187,20 @@ _Deferred from plan: foamy-crafting-bonbon.md_
 **Depends on:** None
 
 ## Completed
+
+### Timeline: skip a song whose video can't be played
+
+**What:** In Timeline mode, draw another card when the TV's player can't play the current song.
+
+**Why:** A Timeline turn with an unembeddable video runs with no audio; Lyrics and Guess already skip (v0.14.11.0).
+
+**Context:** `MusicPlayer` on `/screen` already detects the failure (`failedId`) and shows a notice. Reuse the `AUDIO_FAILED` message: in Timeline's guessing phase, put the card back out of play and deal the next song from `state.songs` for the same turn. _Split out of the Lyrics/Guess skip, 2026-09-29._
+
+**Effort:** S
+**Priority:** P3
+**Depends on:** None
+
+**Completed:** v0.14.12.0 (2026-09-29) — `MusicPlayer` reports a refused video (`onFailed` → `AUDIO_FAILED`); in Timeline's guessing phase the server throws that card away and deals the same player the next song (`skipTimelineSong`, same round, placements cleared), or ends on card count when the deck is empty. The phone resets its placement state on `ROUND_SKIPPED`.
 
 ### Play a video that can't be embedded: skip to the next song automatically
 

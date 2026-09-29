@@ -3031,6 +3031,50 @@ describe("Guess Mode: lifecycle", () => {
   });
 });
 
+describe("AUDIO_FAILED in Timeline: deal the same player another song", () => {
+  const card = (id: string, year: number) => ({ id, videoId: id, title: `T ${id}`, artist: "A", year });
+  async function timelineTurn(songsLeft: number) {
+    const room = new HitsterRoom(makeRoom() as any);
+    const tv = makeConn("tv");
+    await send(room, tv, { type: "JOIN_SCREEN", screenId: "tv-token" });
+    room.state.hostId = "host-uuid";
+    room.state.players[P1] = { name: "Alice", cardCount: 1, timeline: [card("c0", 1990)], connected: true };
+    room.state.phase = "guessing";
+    room.state.activePlayerId = P1;
+    room.state.currentRound = 3;
+    room.state.currentSong = card("badVideo001", 2000);
+    room.state.placements = { [P1]: 0 };
+    room.state.songs = Array.from({ length: songsLeft }, (_, i) => card(`next${i}`.padEnd(11, "x"), 2001 + i));
+    return { room, tv };
+  }
+
+  it("throws the unplayable card away and deals the same player the next one, same round", async () => {
+    const { room, tv } = await timelineTurn(2);
+    await send(room, tv, { type: "AUDIO_FAILED", screenId: "tv-token", videoId: "badVideo001" });
+    expect(room.state).toMatchObject({ phase: "guessing", activePlayerId: P1, currentRound: 3, placements: {} });
+    expect(room.state.currentSong?.videoId).not.toBe("badVideo001");
+    expect(room.state.songs).toHaveLength(1);
+    expect(room.state.songs.some((s) => s.videoId === "badVideo001")).toBe(false);
+    expect(allSentMessages(room).some((m) => m.type === "ROUND_SKIPPED" && m.mode === "timeline")).toBe(true);
+  });
+
+  it("ends the game on card count when no song is left", async () => {
+    const { room, tv } = await timelineTurn(0);
+    await send(room, tv, { type: "AUDIO_FAILED", screenId: "tv-token", videoId: "badVideo001" });
+    expect(room.state).toMatchObject({ phase: "ended", winner: P1 });
+  });
+
+  it("ignores the reveal phase and a stale id", async () => {
+    const { room, tv } = await timelineTurn(2);
+    await send(room, tv, { type: "AUDIO_FAILED", screenId: "tv-token", videoId: "someOtherId" });
+    expect(room.state.currentSong?.videoId).toBe("badVideo001");
+    room.state.phase = "reveal";
+    await send(room, tv, { type: "AUDIO_FAILED", screenId: "tv-token", videoId: "badVideo001" });
+    expect(room.state).toMatchObject({ phase: "reveal", songs: expect.any(Array) });
+    expect(room.state.songs).toHaveLength(2);
+  });
+});
+
 describe("AUDIO_FAILED: the TV can't play the round's song", () => {
   beforeEach(() => vi.clearAllMocks());
   afterEach(() => {

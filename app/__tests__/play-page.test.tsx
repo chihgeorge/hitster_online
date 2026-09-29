@@ -197,6 +197,20 @@ describe("PlayPage: timeline placement double-submit guard", () => {
     expect(sendSpy.mock.calls.filter((c) => String(c[0]).includes('"type":"PLACE"'))).toHaveLength(1);
   });
 
+  it("a Timeline skip (same phase, new song) lets the player place again and shows the notice", () => {
+    render(<PlayPage />);
+    serverSends({ type: "STATE", state: guessingState });
+    selectFirstDropZone();
+    act(() => { screen.getByTestId("place-btn").click(); });
+    serverSends({ type: "PLACEMENT_ACK", playerId: PLAYER });
+    serverSends({ type: "ROUND_SKIPPED", mode: "timeline" });
+    serverSends({ type: "STATE", state: { ...guessingState, currentSong: { id: "s2", videoId: "s2", title: "Next", artist: "B", year: 2005 } } });
+    expect(screen.getByTestId("round-skipped")).toBeTruthy();
+    selectFirstDropZone();
+    act(() => { screen.getByTestId("place-btn").click(); });
+    expect(sendSpy.mock.calls.filter((c) => String(c[0]).includes('"type":"PLACE"'))).toHaveLength(2);
+  });
+
   it("re-enables placement once the server ack arrives, and can place again next round", () => {
     render(<PlayPage />);
     serverSends({ type: "STATE", state: guessingState });

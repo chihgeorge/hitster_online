@@ -7,11 +7,13 @@ import { whenYouTubeApiReady } from "@/lib/youtube-iframe-api";
 interface Props {
   currentSong: Card | null;
   phase: GamePhase;
+  /** Called once per video the embed refuses, so the room can deal another song (AUDIO_FAILED). */
+  onFailed?: (videoId: string) => void;
 }
 
 // Display-only: the video, its guessing-phase overlay, and the reveal-phase song info.
 // Reveal/Next Round are host controls, not display — they live on /host, not here.
-export default function MusicPlayer({ currentSong, phase }: Props) {
+export default function MusicPlayer({ currentSong, phase, onFailed }: Props) {
   const targetRef = useRef<HTMLDivElement>(null);
   const playerRef = useRef<YT.Player | null>(null);
   const loadedRef = useRef<string | null>(null);
@@ -19,6 +21,9 @@ export default function MusicPlayer({ currentSong, phase }: Props) {
   wantIdRef.current = currentSong?.videoId ?? null;
   const [blocked, setBlocked] = useState(false);
   const [failedId, setFailedId] = useState<string | null>(null);
+  const onFailedRef = useRef(onFailed);
+  useEffect(() => { onFailedRef.current = onFailed; });
+  useEffect(() => { if (failedId) onFailedRef.current?.(failedId); }, [failedId]);
 
   function sync() {
     const p = playerRef.current;
