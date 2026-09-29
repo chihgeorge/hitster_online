@@ -34,8 +34,9 @@ export default function PlayPage() {
   const [lyricsTooLate, setLyricsTooLate] = useState(false);
   const [lyricsTimerLeft, setLyricsTimerLeft] = useState<number | null>(null);
   const [guessState, setGuessState] = useState<PublicGuessGameState | null>(null);
-  // Round index a TOO_LATE arrived in — the flag only applies to that round, so a phone that
-  // reconnects straight into the next round's guessing isn't locked out.
+  // Server start time of the round a TOO_LATE arrived in — the flag only applies to that round,
+  // so a phone that reconnects straight into the next round's guessing isn't locked out. Not the
+  // round index: a new game (host reset while this phone was offline) reuses index 0.
   const [guessTooLateRound, setGuessTooLateRound] = useState<number | null>(null);
   const guessRoundRef = useRef<number | null>(null);
   const [selectedPosition, setSelectedPosition] = useState<number | null>(null);
@@ -126,7 +127,7 @@ export default function PlayPage() {
           break;
         case "GUESS_STATE":
           syncServerClock(msg.serverNow);
-          guessRoundRef.current = msg.state.currentRoundIndex;
+          guessRoundRef.current = msg.state.roundStart;
           setGuessState(msg.state);
           break;
         case "GUESS_ABORTED":
@@ -193,7 +194,7 @@ export default function PlayPage() {
         state={guessState}
         playerId={playerIdRef.current}
         playerName={playerName}
-        tooLate={guessTooLateRound !== null && guessTooLateRound === guessState.currentRoundIndex}
+        tooLate={guessTooLateRound !== null && guessTooLateRound === guessState.roundStart}
         onSubmit={(title, artist) => send({ type: "SUBMIT_GUESS", playerId: playerIdRef.current, title, artist })}
       />
     );
