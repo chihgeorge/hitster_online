@@ -1182,9 +1182,20 @@ describe("UUID validation on JOIN/REJOIN/PLACE", () => {
 
 describe("LOAD_SAVED_PLAYLIST handler", () => {
   const validSongs = [
-    { videoId: "v1", title: "Song A", artist: "Artist", year: 1985 },
-    { videoId: "v2", title: "Song B", artist: "Artist", year: 1990 },
+    { videoId: "vid00000001", title: "Song A", artist: "Artist", year: 1985 },
+    { videoId: "vid00000002", title: "Song B", artist: "Artist", year: 1990 },
   ];
+
+  it("drops songs with a malformed video id so they never reach the player", async () => {
+    const room = new HitsterRoom(makeRoom() as any);
+    const conn = makeConn();
+    await send(room, conn, {
+      type: "LOAD_SAVED_PLAYLIST", hostId: "host-uuid", playlistId: "pl-bad",
+      songs: [...validSongs, { videoId: "javascript:alert(1)", title: "Evil", artist: "X", year: 2000 }],
+    });
+    expect(lastSentTo(conn)).toMatchObject({ type: "PLAYLIST_READY", songCount: 2 });
+    expect(JSON.stringify(lastSentTo(conn))).not.toContain("javascript:");
+  });
 
   it("happy path — sets pendingPlaylist and sends PLAYLIST_READY", async () => {
     const room = new HitsterRoom(makeRoom() as any);
@@ -1243,7 +1254,7 @@ describe("LOAD_SAVED_PLAYLIST handler", () => {
       type: "LOAD_SAVED_PLAYLIST",
       hostId: "host-uuid",
       playlistId: "pl-123",
-      songs: [{ videoId: "v1", title: "Song A", artist: "Artist", year: 1985 }],
+      songs: [{ videoId: "vid00000001", title: "Song A", artist: "Artist", year: 1985 }],
     });
     expect(lastSentTo(conn)?.error).toBe("not_enough_songs");
   });
@@ -1256,9 +1267,9 @@ describe("LOAD_SAVED_PLAYLIST handler", () => {
       hostId: "host-uuid",
       playlistId: "pl-123",
       songs: [
-        { videoId: "v1", title: "Good Song", artist: "Artist", year: 1985 },
-        { videoId: "v2", title: "Good Song 2", artist: "Artist", year: 1990 },
-        { videoId: "v3", title: "Bad Song", artist: "Artist", year: 1800 }, // invalid year — shows in editor as null
+        { videoId: "vid00000001", title: "Good Song", artist: "Artist", year: 1985 },
+        { videoId: "vid00000002", title: "Good Song 2", artist: "Artist", year: 1990 },
+        { videoId: "vid00000003", title: "Bad Song", artist: "Artist", year: 1800 }, // invalid year — shows in editor as null
       ],
     });
     const msg = lastSentTo(conn);
@@ -1266,7 +1277,7 @@ describe("LOAD_SAVED_PLAYLIST handler", () => {
     // All 3 songs shown in PlaylistEditor (invalid year stored as null so host can fix it)
     expect(msg?.songCount).toBe(3);
     // Invalid year song has year: null in the list
-    const badSong = msg?.songs?.find((s: { videoId: string }) => s.videoId === "v3");
+    const badSong = msg?.songs?.find((s: { videoId: string }) => s.videoId === "vid00000003");
     expect(badSong?.year).toBeNull();
   });
 
@@ -3286,14 +3297,14 @@ describe("playlist bookkeeping (review re-verify 2026-09-24)", () => {
     const hostConn = makeConn("host-conn");
     const stale = send(room, hostConn, { type: "LOAD_PLAYLIST", hostId: "host-uuid", playlistUrl: "PLtest" });
     const saved = [
-      { videoId: "s1", title: "Saved A", artist: "X", year: 1985 },
-      { videoId: "s2", title: "Saved B", artist: "Y", year: 1990 },
+      { videoId: "sav00000001", title: "Saved A", artist: "X", year: 1985 },
+      { videoId: "sav00000002", title: "Saved B", artist: "Y", year: 1990 },
     ];
     await send(room, hostConn, { type: "LOAD_SAVED_PLAYLIST", hostId: "host-uuid", playlistId: "saved-1", songs: saved });
     release([fakeTrack("v1", 2001), fakeTrack("v2", 2002)]);
     await stale;
     await send(room, hostConn, { type: "START_GUESS_GAME", hostId: "host-uuid", config: {} });
-    expect(room.guessState?.rounds.map((r) => r.videoId).sort()).toEqual(["s1", "s2"]);
+    expect(room.guessState?.rounds.map((r) => r.videoId).sort()).toEqual(["sav00000001", "sav00000002"]);
   });
 
   it("replays the latest LYRICS_PREVIEW to a host connection that re-proves itself", async () => {
@@ -3359,12 +3370,12 @@ describe("playlist bookkeeping: stale aborted load (/ship adversarial #2)", () =
     const stale = send(room, hostConn, { type: "LOAD_PLAYLIST", hostId: "host-uuid", playlistUrl: "PLtest" });
     await send(room, hostConn, { type: "ABORT_LOAD", hostId: "host-uuid" });
     await send(room, hostConn, { type: "LOAD_SAVED_PLAYLIST", hostId: "host-uuid", playlistId: "saved-1", songs: [
-      { videoId: "s1", title: "Saved A", artist: "X", year: 1985 }, { videoId: "s2", title: "Saved B", artist: "Y", year: 1990 },
+      { videoId: "sav00000001", title: "Saved A", artist: "X", year: 1985 }, { videoId: "sav00000002", title: "Saved B", artist: "Y", year: 1990 },
     ] });
     release([fakeTrack("v1", 2001), fakeTrack("v2", 2002)]);
     await stale;
     const ready = (hostConn.send as ReturnType<typeof vi.fn>).mock.calls.map((c: unknown[]) => JSON.parse(c[0] as string)).filter((m) => m.type === "PLAYLIST_READY");
     expect(ready).toHaveLength(1);
-    expect(ready[0].songs.map((x: { videoId: string }) => x.videoId)).toEqual(["s1", "s2"]);
+    expect(ready[0].songs.map((x: { videoId: string }) => x.videoId)).toEqual(["sav00000001", "sav00000002"]);
   });
 });

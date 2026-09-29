@@ -74,7 +74,7 @@ describe("PlaylistParty: POST — save playlist", () => {
     const room = makeRoom();
     const party = new PlaylistParty(room);
 
-    const songs = [song("v1"), song("v2", 1995)];
+    const songs = [song("vid00000001"), song("vid00000002", 1995)];
     const req = makeRequest("POST", { ownerHostId: "host-1", name: "My Mix", songs });
     const res = await party.onRequest(req);
     const { status, body } = await parseResponse(res);
@@ -88,8 +88,8 @@ describe("PlaylistParty: POST — save playlist", () => {
     const room = makeRoom();
     const party = new PlaylistParty(room);
 
-    await createPlaylist(party, [song("v1"), song("v2")]);
-    const res = await createPlaylist(party, [song("v3"), song("v4")]);
+    await createPlaylist(party, [song("vid00000001"), song("vid00000002")]);
+    const res = await createPlaylist(party, [song("vid00000003"), song("vid00000004")]);
     const { status } = await parseResponse(res);
 
     expect(status).toBe(409);
@@ -99,7 +99,7 @@ describe("PlaylistParty: POST — save playlist", () => {
     const room = makeRoom();
     const party = new PlaylistParty(room);
 
-    const req = makeRequest("POST", { name: "My Mix", songs: [song("v1"), song("v2")] });
+    const req = makeRequest("POST", { name: "My Mix", songs: [song("vid00000001"), song("vid00000002")] });
     const { status } = await parseResponse(await party.onRequest(req));
     expect(status).toBe(400);
   });
@@ -108,7 +108,7 @@ describe("PlaylistParty: POST — save playlist", () => {
     const room = makeRoom();
     const party = new PlaylistParty(room);
 
-    const req = makeRequest("POST", { ownerHostId: "host-1", songs: [song("v1"), song("v2")] });
+    const req = makeRequest("POST", { ownerHostId: "host-1", songs: [song("vid00000001"), song("vid00000002")] });
     const { status } = await parseResponse(await party.onRequest(req));
     expect(status).toBe(400);
   });
@@ -117,7 +117,7 @@ describe("PlaylistParty: POST — save playlist", () => {
     const room = makeRoom();
     const party = new PlaylistParty(room);
 
-    const badSongs = [song("v1", 1800), song("v2")];
+    const badSongs = [song("vid00000001", 1800), song("vid00000002")];
     const req = makeRequest("POST", { ownerHostId: "host-1", name: "Bad Mix", songs: badSongs });
     const { status } = await parseResponse(await party.onRequest(req));
     expect(status).toBe(400);
@@ -127,10 +127,16 @@ describe("PlaylistParty: POST — save playlist", () => {
     const room = makeRoom();
     const party = new PlaylistParty(room);
 
-    const badSongs = [{ videoId: "v1", title: "  ", artist: "A", year: 2000 }, song("v2")];
+    const badSongs = [{ videoId: "vid00000001", title: "  ", artist: "A", year: 2000 }, song("vid00000002")];
     const req = makeRequest("POST", { ownerHostId: "host-1", name: "My Mix", songs: badSongs });
     const { status } = await parseResponse(await party.onRequest(req));
     expect(status).toBe(400);
+  });
+
+  it("rejects a playlist with a malformed video id", async () => {
+    const party = new PlaylistParty(makeRoom() as any);
+    const res = await createPlaylist(party, [song("vid00000001"), song("not-an-id")]);
+    expect(res.status).toBe(400);
   });
 });
 
@@ -140,8 +146,8 @@ describe("PlaylistParty: POST action RESOLVE_FROM_URL (D1/D2)", () => {
   it("resolves a playlist server-side and saves it, same as the client-songs path", async () => {
     vi.mocked(resolvePlaylistFromUrl).mockResolvedValue({
       tracks: [], metas: [], aiResults: new Map(), diagnostics: [], skippedEmbeddingCount: 0,
-      songs: [{ id: "v1", videoId: "v1", title: "T", artist: "A", year: 2020 }],
-      allSongs: [{ videoId: "v1", title: "T", artist: "A", year: 2020 }, { videoId: "v2", title: "T2", artist: "A2", year: 2019 }],
+      songs: [{ id: "vid00000001", videoId: "vid00000001", title: "T", artist: "A", year: 2020 }],
+      allSongs: [{ videoId: "vid00000001", title: "T", artist: "A", year: 2020 }, { videoId: "vid00000002", title: "T2", artist: "A2", year: 2019 }],
     });
 
     const room = makeRoom();
@@ -154,7 +160,7 @@ describe("PlaylistParty: POST action RESOLVE_FROM_URL (D1/D2)", () => {
     expect(status).toBe(201);
     expect(body.playlistId).toBe("test-playlist-id");
     expect(room._store.get("playlist")).toMatchObject({
-      songs: [{ videoId: "v1", title: "T", artist: "A", year: 2020 }, { videoId: "v2", title: "T2", artist: "A2", year: 2019 }],
+      songs: [{ videoId: "vid00000001", title: "T", artist: "A", year: 2020 }, { videoId: "vid00000002", title: "T2", artist: "A2", year: 2019 }],
     });
   });
 
@@ -179,7 +185,7 @@ describe("PlaylistParty: POST action RESOLVE_FROM_URL (D1/D2)", () => {
   it("returns not_enough_songs when fewer than 2 songs resolve", async () => {
     vi.mocked(resolvePlaylistFromUrl).mockResolvedValue({
       tracks: [], metas: [], aiResults: new Map(), diagnostics: [], skippedEmbeddingCount: 0,
-      songs: [], allSongs: [{ videoId: "v1", title: "T", artist: "A", year: 2020 }],
+      songs: [], allSongs: [{ videoId: "vid00000001", title: "T", artist: "A", year: 2020 }],
     });
     const room = makeRoom();
     const party = new PlaylistParty(room);
@@ -221,7 +227,7 @@ describe("PlaylistParty: library sync on create/delete (D2a)", () => {
     const room = makeRoom("test-playlist-id", libraryFetch);
     const party = new PlaylistParty(room);
 
-    await createPlaylist(party, [song("v1"), song("v2")], "My Mix");
+    await createPlaylist(party, [song("vid00000001"), song("vid00000002")], "My Mix");
 
     expect(libraryFetch).toHaveBeenCalledTimes(1);
     const [, init] = libraryFetch.mock.calls[0];
@@ -235,7 +241,7 @@ describe("PlaylistParty: library sync on create/delete (D2a)", () => {
     const libraryFetch = makeLibraryFetchMock();
     const room = makeRoom("test-playlist-id", libraryFetch);
     const party = new PlaylistParty(room);
-    await createPlaylist(party, [song("v1"), song("v2")]);
+    await createPlaylist(party, [song("vid00000001"), song("vid00000002")]);
     libraryFetch.mockClear();
 
     await party.onRequest(makeRequest("DELETE", { ownerHostId: "host-1" }));
@@ -250,7 +256,7 @@ describe("PlaylistParty: library sync on create/delete (D2a)", () => {
     const room = makeRoom("test-playlist-id", libraryFetch);
     const party = new PlaylistParty(room);
 
-    const res = await createPlaylist(party, [song("v1"), song("v2")]);
+    const res = await createPlaylist(party, [song("vid00000001"), song("vid00000002")]);
     const { status } = await parseResponse(res);
 
     expect(status).toBe(201);
@@ -261,7 +267,7 @@ describe("PlaylistParty: library sync on create/delete (D2a)", () => {
     const libraryFetch = vi.fn().mockResolvedValue(new Response(JSON.stringify({ error: "boom" }), { status: 500 }));
     const room = makeRoom("test-playlist-id", libraryFetch);
     const party = new PlaylistParty(room);
-    await createPlaylist(party, [song("v1"), song("v2")]);
+    await createPlaylist(party, [song("vid00000001"), song("vid00000002")]);
 
     const res = await party.onRequest(makeRequest("DELETE", { ownerHostId: "host-1" }));
     expect((await parseResponse(res)).status).toBe(200);
@@ -281,14 +287,14 @@ describe("PlaylistParty: GET — fetch playlist", () => {
     const room = makeRoom();
     const party = new PlaylistParty(room);
 
-    await createPlaylist(party, [song("v1"), song("v2", 1980)], "Weekend Hits");
+    await createPlaylist(party, [song("vid00000001"), song("vid00000002", 1980)], "Weekend Hits");
     const res = await party.onRequest(makeRequest("GET"));
     const { status, body } = await parseResponse(res);
 
     expect(status).toBe(200);
     expect(body.name).toBe("Weekend Hits");
     expect(body.songs).toHaveLength(2);
-    expect(body.songs[0].videoId).toBe("v1");
+    expect(body.songs[0].videoId).toBe("vid00000001");
   });
 });
 
@@ -296,12 +302,12 @@ describe("PlaylistParty: PUT action=UPDATE_SONG", () => {
   it("updates title, artist, and year of a song", async () => {
     const room = makeRoom();
     const party = new PlaylistParty(room);
-    await createPlaylist(party, [song("v1"), song("v2")]);
+    await createPlaylist(party, [song("vid00000001"), song("vid00000002")]);
 
     const req = makeRequest("PUT", {
       ownerHostId: "host-1",
       action: "UPDATE_SONG",
-      videoId: "v1",
+      videoId: "vid00000001",
       title: "New Title",
       artist: "New Artist",
       year: 1985,
@@ -311,7 +317,7 @@ describe("PlaylistParty: PUT action=UPDATE_SONG", () => {
 
     const getRes = await party.onRequest(makeRequest("GET"));
     const { body } = await parseResponse(getRes);
-    const updated = (body.songs as EditableSong[]).find((s) => s.videoId === "v1");
+    const updated = (body.songs as EditableSong[]).find((s) => s.videoId === "vid00000001");
     expect(updated?.title).toBe("New Title");
     expect(updated?.year).toBe(1985);
   });
@@ -319,12 +325,12 @@ describe("PlaylistParty: PUT action=UPDATE_SONG", () => {
   it("rejects unauthorized update", async () => {
     const room = makeRoom();
     const party = new PlaylistParty(room);
-    await createPlaylist(party, [song("v1"), song("v2")]);
+    await createPlaylist(party, [song("vid00000001"), song("vid00000002")]);
 
     const req = makeRequest("PUT", {
       ownerHostId: "wrong-host",
       action: "UPDATE_SONG",
-      videoId: "v1",
+      videoId: "vid00000001",
       title: "Hacked",
     });
     const { status } = await parseResponse(await party.onRequest(req));
@@ -334,12 +340,12 @@ describe("PlaylistParty: PUT action=UPDATE_SONG", () => {
   it("rejects invalid year", async () => {
     const room = makeRoom();
     const party = new PlaylistParty(room);
-    await createPlaylist(party, [song("v1"), song("v2")]);
+    await createPlaylist(party, [song("vid00000001"), song("vid00000002")]);
 
     const req = makeRequest("PUT", {
       ownerHostId: "host-1",
       action: "UPDATE_SONG",
-      videoId: "v1",
+      videoId: "vid00000001",
       year: 1800,
     });
     const { status } = await parseResponse(await party.onRequest(req));
@@ -349,7 +355,7 @@ describe("PlaylistParty: PUT action=UPDATE_SONG", () => {
   it("returns 404 for unknown videoId", async () => {
     const room = makeRoom();
     const party = new PlaylistParty(room);
-    await createPlaylist(party, [song("v1"), song("v2")]);
+    await createPlaylist(party, [song("vid00000001"), song("vid00000002")]);
 
     const req = makeRequest("PUT", {
       ownerHostId: "host-1",
@@ -366,22 +372,22 @@ describe("PlaylistParty: PUT action=DELETE_SONG", () => {
   it("removes a song from the playlist", async () => {
     const room = makeRoom();
     const party = new PlaylistParty(room);
-    await createPlaylist(party, [song("v1"), song("v2"), song("v3")]);
+    await createPlaylist(party, [song("vid00000001"), song("vid00000002"), song("vid00000003")]);
 
-    const req = makeRequest("PUT", { ownerHostId: "host-1", action: "DELETE_SONG", videoId: "v2" });
+    const req = makeRequest("PUT", { ownerHostId: "host-1", action: "DELETE_SONG", videoId: "vid00000002" });
     const { status } = await parseResponse(await party.onRequest(req));
     expect(status).toBe(200);
 
     const getRes = await party.onRequest(makeRequest("GET"));
     const { body } = await parseResponse(getRes);
     const ids = (body.songs as EditableSong[]).map((s) => s.videoId);
-    expect(ids).toEqual(["v1", "v3"]);
+    expect(ids).toEqual(["vid00000001", "vid00000003"]);
   });
 
   it("rejects delete of non-existent song", async () => {
     const room = makeRoom();
     const party = new PlaylistParty(room);
-    await createPlaylist(party, [song("v1"), song("v2")]);
+    await createPlaylist(party, [song("vid00000001"), song("vid00000002")]);
 
     const req = makeRequest("PUT", { ownerHostId: "host-1", action: "DELETE_SONG", videoId: "nope" });
     const { status } = await parseResponse(await party.onRequest(req));
@@ -393,7 +399,7 @@ describe("PlaylistParty: DELETE — delete playlist", () => {
   it("deletes the entire playlist", async () => {
     const room = makeRoom();
     const party = new PlaylistParty(room);
-    await createPlaylist(party, [song("v1"), song("v2")]);
+    await createPlaylist(party, [song("vid00000001"), song("vid00000002")]);
 
     const req = makeRequest("DELETE", { ownerHostId: "host-1" });
     const { status } = await parseResponse(await party.onRequest(req));
@@ -406,7 +412,7 @@ describe("PlaylistParty: DELETE — delete playlist", () => {
   it("rejects unauthorized delete", async () => {
     const room = makeRoom();
     const party = new PlaylistParty(room);
-    await createPlaylist(party, [song("v1"), song("v2")]);
+    await createPlaylist(party, [song("vid00000001"), song("vid00000002")]);
 
     const req = makeRequest("DELETE", { ownerHostId: "wrong-host" });
     const { status } = await parseResponse(await party.onRequest(req));
@@ -424,9 +430,9 @@ describe("PlaylistParty: PUT PROPOSE_EDITS — AI chat-to-diff editing", () => {
     const room = makeRoom();
     room.env = { ANTHROPIC_API_KEY: "test-key" };
     const party = new PlaylistParty(room);
-    await createPlaylist(party, [song("v1", 1999)]);
+    await createPlaylist(party, [song("vid00000001", 1999)]);
 
-    const diff = [{ videoId: "v1", field: "year" as const, oldValue: 1999, newValue: 2000 }];
+    const diff = [{ videoId: "vid00000001", field: "year" as const, oldValue: 1999, newValue: 2000 }];
     vi.mocked(proposeEdits).mockResolvedValue(diff);
 
     const req = makeRequest("PUT", { ownerHostId: "host-1", action: "PROPOSE_EDITS", instruction: "fix the year" });
@@ -434,7 +440,7 @@ describe("PlaylistParty: PUT PROPOSE_EDITS — AI chat-to-diff editing", () => {
 
     expect(status).toBe(200);
     expect(body.diff).toEqual(diff);
-    expect(proposeEdits).toHaveBeenCalledWith("fix the year", [song("v1", 1999)], "test-key");
+    expect(proposeEdits).toHaveBeenCalledWith("fix the year", [song("vid00000001", 1999)], "test-key");
 
     const stored = await parseResponse(await party.onRequest(makeRequest("GET")));
     expect((stored.body.songs as EditableSong[])[0].year).toBe(1999); // unchanged
@@ -444,7 +450,7 @@ describe("PlaylistParty: PUT PROPOSE_EDITS — AI chat-to-diff editing", () => {
     const room = makeRoom();
     room.env = { ANTHROPIC_API_KEY: "test-key" };
     const party = new PlaylistParty(room);
-    await createPlaylist(party, [song("v1")]);
+    await createPlaylist(party, [song("vid00000001")]);
 
     const req = makeRequest("PUT", { ownerHostId: "host-1", action: "PROPOSE_EDITS", instruction: "  " });
     const { status } = await parseResponse(await party.onRequest(req));
@@ -455,7 +461,7 @@ describe("PlaylistParty: PUT PROPOSE_EDITS — AI chat-to-diff editing", () => {
   it("returns 503 when no Anthropic key is configured", async () => {
     const room = makeRoom(); // env: {} — no key
     const party = new PlaylistParty(room);
-    await createPlaylist(party, [song("v1")]);
+    await createPlaylist(party, [song("vid00000001")]);
 
     const req = makeRequest("PUT", { ownerHostId: "host-1", action: "PROPOSE_EDITS", instruction: "fix it" });
     const { status } = await parseResponse(await party.onRequest(req));
@@ -467,7 +473,7 @@ describe("PlaylistParty: PUT PROPOSE_EDITS — AI chat-to-diff editing", () => {
     const room = makeRoom();
     room.env = { ANTHROPIC_API_KEY: "test-key" };
     const party = new PlaylistParty(room);
-    await createPlaylist(party, [song("v1")]);
+    await createPlaylist(party, [song("vid00000001")]);
 
     const req = makeRequest("PUT", { ownerHostId: "wrong-host", action: "PROPOSE_EDITS", instruction: "fix it" });
     const { status } = await parseResponse(await party.onRequest(req));

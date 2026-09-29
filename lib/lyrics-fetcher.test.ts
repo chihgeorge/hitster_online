@@ -1,5 +1,5 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
-import { fetchLyrics, fetchLyricsBatch } from "./lyrics-fetcher";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { fetchLyrics, fetchLyricsBatch, LrclibRateLimited } from "./lyrics-fetcher";
 
 // Mock fetch so tests don't hit the network
 const mockFetch = vi.fn();
@@ -230,5 +230,47 @@ describe("fetchLyrics — additional edge cases", () => {
 
     const result = await fetchLyrics("Wonderwall", "Oasis");
     expect(result).toBeNull();
+  });
+});
+
+describe("lrclib rate limiting (429)", () => {
+  const rateLimited = (retryAfter?: string) => ({
+    ok: false, status: 429, headers: { get: (h: string) => (h === "retry-after" ? retryAfter ?? null : null) },
+    json: () => Promise.resolve({}),
+  } as unknown as Response);
+
+  afterEach(() => { vi.useRealTimers(); vi.restoreAllMocks(); });
+
+  it("waits and retries once, then uses the answer", async () => {
+    vi.useFakeTimers();
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    mockFetch.mockResolvedValueOnce(rateLimited("2")).mockResolvedValueOnce(mockResponse(lrclibTrack()));
+    const pending = fetchLyrics("Wonderwall", "Oasis");
+    await vi.advanceTimersByTimeAsync(2000);
+    expect(await pending).toBeTruthy();
+    expect(mockFetch).toHaveBeenCalledTimes(2);
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining("rate limited"));
+  });
+
+  it("a second 429 throws instead of falling through to a search", async () => {
+    vi.useFakeTimers();
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    mockFetch.mockResolvedValue(rateLimited());
+    const pending = fetchLyrics("Wonderwall", "Oasis").catch((e) => e);
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(await pending).toBeInstanceOf(LrclibRateLimited);
+    expect(mockFetch).toHaveBeenCalledTimes(2); // the get and its one retry — no search
+  });
+
+  it("the batch stops starting new lookups once lrclib keeps rate-limiting, and says so", async () => {
+    vi.useFakeTimers();
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    mockFetch.mockResolvedValue(rateLimited());
+    const tracks = Array.from({ length: 6 }, (_, i) => ({ videoId: `v${i}`, title: `T${i}`, artist: "A" }));
+    const pending = fetchLyricsBatch(tracks, 2);
+    await vi.advanceTimersByTimeAsync(5000);
+    expect((await pending).size).toBe(0);
+    expect(mockFetch).toHaveBeenCalledTimes(4); // first window only: 2 songs × (get + retry)
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining("skipping lookups for 4 more song(s)"));
   });
 });

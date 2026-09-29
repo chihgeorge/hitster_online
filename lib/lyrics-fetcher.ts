@@ -41,9 +41,31 @@ function matchScore(result: LrclibTrack, title: string, artist: string): number 
   return score;
 }
 
+/** lrclib answered 429 twice in a row: stop asking for now. */
+export class LrclibRateLimited extends Error {
+  constructor() { super("lrclib rate limited"); }
+}
+
+const MAX_RETRY_WAIT_MS = 3000;
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+/** fetch, retrying once after a 429 (honouring Retry-After, capped); a second 429 throws LrclibRateLimited. */
+async function lrclibFetch(url: string, signal: () => AbortSignal | undefined): Promise<Response> {
+  for (let attempt = 0; ; attempt++) {
+    const res = await fetch(url, { signal: signal() });
+    if (res.status !== 429) return res;
+    if (attempt >= 1) throw new LrclibRateLimited();
+    const retryAfter = Number(res.headers?.get?.("retry-after"));
+    const wait = Math.min(Number.isFinite(retryAfter) && retryAfter > 0 ? retryAfter * 1000 : 1000, MAX_RETRY_WAIT_MS);
+    console.warn(`[lyrics-fetcher] lrclib rate limited; retrying in ${wait}ms`);
+    await sleep(wait);
+  }
+}
+
 /**
  * Fetch lyrics for a single song. Returns the plain-text lyrics string, or
  * null if nothing useful was found (no hit, or hit with empty lyrics).
+ * Throws LrclibRateLimited if lrclib keeps answering 429 (see fetchLyricsBatch).
  */
 export async function fetchLyrics(title: string, artist: string): Promise<string | null> {
   const timeout = () =>
@@ -52,21 +74,22 @@ export async function fetchLyrics(title: string, artist: string): Promise<string
   // Try exact-ish get first (faster, uses internal matching)
   try {
     const getUrl = `${LRCLIB_BASE}/get?track_name=${encodeURIComponent(title)}&artist_name=${encodeURIComponent(artist)}`;
-    const getRes = await fetch(getUrl, { signal: timeout() });
+    const getRes = await lrclibFetch(getUrl, timeout);
     if (getRes.ok) {
       const data = (await getRes.json()) as LrclibTrack;
       if (data.plainLyrics && data.plainLyrics.length > 100) {
         return data.plainLyrics;
       }
     }
-  } catch {
+  } catch (e) {
+    if (e instanceof LrclibRateLimited) throw e; // don't pile a search onto a rate limit
     // timeout or parse error — fall through to search
   }
 
   // Fall back to search (handles name variations, CJK alternate spellings)
   try {
     const q = encodeURIComponent(`${title} ${artist}`);
-    const searchRes = await fetch(`${LRCLIB_BASE}/search?q=${q}`, { signal: timeout() });
+    const searchRes = await lrclibFetch(`${LRCLIB_BASE}/search?q=${q}`, timeout);
     if (!searchRes.ok) return null;
 
     const results = (await searchRes.json()) as LrclibTrack[];
@@ -80,7 +103,8 @@ export async function fetchLyrics(title: string, artist: string): Promise<string
     if (best.score >= 3 && best.r.plainLyrics && best.r.plainLyrics.length > 100) {
       return best.r.plainLyrics;
     }
-  } catch {
+  } catch (e) {
+    if (e instanceof LrclibRateLimited) throw e;
     // network error or timeout
   }
 
@@ -90,6 +114,8 @@ export async function fetchLyrics(title: string, artist: string): Promise<string
 /**
  * Batch-fetch lyrics for up to `concurrency` tracks in parallel.
  * Returns a map of videoId → lyrics string (only hits are included).
+ * If lrclib keeps rate-limiting, stops starting new windows (logging how many songs were
+ * skipped); those songs fall back to the model's memory like any other miss.
  */
 export async function fetchLyricsBatch(
   tracks: { videoId: string; title: string; artist: string }[],
@@ -110,6 +136,11 @@ export async function fetchLyricsBatch(
       if (r.status === "fulfilled" && r.value.lyrics) {
         result.set(r.value.videoId, r.value.lyrics);
       }
+    }
+    if (fetched.some((r) => r.status === "rejected" && r.reason instanceof LrclibRateLimited)) {
+      const skipped = tracks.length - (i + window.length);
+      console.warn(`[lyrics-fetcher] lrclib rate limited; skipping lookups for ${skipped} more song(s)`);
+      break;
     }
   }
 

@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { decodeEntities, sanitizeText, itemsSchema, parseItems } from "./utils";
+import { decodeEntities, sanitizeText, itemsSchema, parseItems, isValidVideoId } from "./utils";
 
 describe("decodeEntities", () => {
   it("inverts sanitizeText, even when escaped twice", () => {
@@ -31,5 +31,13 @@ describe("itemsSchema / parseItems (structured outputs)", () => {
   it("returns the items array, or [] when it is missing", () => {
     expect(parseItems('{"items":[1]}')).toEqual([1]);
     expect(parseItems("{}")).toEqual([]);
+  });
+});
+
+describe("isValidVideoId", () => {
+  it("accepts real 11-character YouTube ids only", () => {
+    for (const ok of ["dQw4w9WgXcQ", "_sQSXwdtxlY", "vsBf_0gDxSM", "a-b_c-d_e-f"]) expect(isValidVideoId(ok)).toBe(true);
+    for (const bad of ["", "v1", "dQw4w9WgXcQ_0", "dQw4w9WgXc\"", "abc def ghi", "<script>xyz", 12345678901, null, undefined])
+      expect(isValidVideoId(bad)).toBe(false);
   });
 });
