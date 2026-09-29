@@ -389,3 +389,18 @@ describe("LyricsPlayer: malformed video id, more branches", () => {
     expect(player().loadVideoById).toHaveBeenLastCalledWith("good-id-001");
   });
 });
+
+describe("LyricsPlayer onFailed", () => {
+  it("reports each refused video once, with its id", () => {
+    const onFailed = vi.fn();
+    const { rerender } = render(<LyricsPlayer videoId="vid-1" playing onFailed={onFailed} />);
+    player().ready();
+    act(() => { player().events.onError?.({ data: 150 }); });
+    act(() => { player().events.onError?.({ data: 150 }); }); // repeat for the same video
+    expect(onFailed).toHaveBeenCalledTimes(1);
+    expect(onFailed).toHaveBeenCalledWith("vid-1");
+    rerender(<LyricsPlayer videoId="vid-2" playing onFailed={onFailed} />);
+    act(() => { player().events.onError?.({ data: 101 }); });
+    expect(onFailed).toHaveBeenLastCalledWith("vid-2");
+  });
+});

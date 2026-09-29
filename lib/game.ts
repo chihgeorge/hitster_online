@@ -228,6 +228,8 @@ export type ClientMessage =
   | { type: "NEXT_GUESS_ROUND"; hostId: string }
   | { type: "RESET_GUESS_GAME"; hostId: string }
   | { type: "GET_GUESS_AUDIO"; screenId: string }
+  // The TV's player couldn't play this video (not embeddable, removed…): skip the round.
+  | { type: "AUDIO_FAILED"; screenId: string; videoId: string }
   // hostId: sent when this browser is also the host's, so a TV opened after players joined can claim.
   | { type: "JOIN_SCREEN"; screenId: string; hostId?: string }
   | { type: "PROPOSE_EDITS"; hostId: string; instruction: string; songs: EditableSong[] }
@@ -261,6 +263,8 @@ export type ServerMessage =
   | { type: "LYRICS_AUDIO"; videoId: string | null; roundIndex: number }
   | { type: "GUESS_STATE"; state: PublicGuessGameState; serverNow: number }
   | { type: "GUESS_ABORTED" }
+  // A round was dropped because its song couldn't be played on the TV (see AUDIO_FAILED).
+  | { type: "ROUND_SKIPPED"; mode: "lyrics" | "guess" }
   | { type: "GUESS_AUDIO"; videoId: string | null; roundIndex: number }
   | { type: "PLACEMENT_ACK"; playerId: string }
   | { type: "ERROR"; error: string }

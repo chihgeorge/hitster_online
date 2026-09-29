@@ -103,3 +103,18 @@ export function TvFinal({ players, title }: { players: Players; title: string })
     </div>
   );
 }
+
+/** Shown for a few seconds after a round was skipped because its song couldn't play. */
+export function SkipNotice() {
+  const [visible, setVisible] = useState(true);
+  useEffect(() => {
+    const t = setTimeout(() => setVisible(false), 6000);
+    return () => clearTimeout(t);
+  }, []);
+  if (!visible) return null;
+  return (
+    <div role="status" data-testid="round-skipped" style={{ position: "fixed", left: "50%", bottom: 24, transform: "translateX(-50%)", zIndex: 50, maxWidth: "92vw", textAlign: "center", background: "var(--surface2)", border: "2px solid rgba(255,59,92,.4)", borderRadius: 14, padding: "10px 18px", fontSize: 15, fontWeight: 700, color: "var(--ink)", fontFamily: "var(--font-zh)", }}>
+      ⏭️ 這首歌無法播放，已換下一首 · That song couldn&apos;t play — skipped to the next one
+    </div>
+  );
+}

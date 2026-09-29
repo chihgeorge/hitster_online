@@ -86,6 +86,36 @@ describe("timed-round wrong-phase refusals", () => {
   });
 });
 
+describe("timed-round skipRound (song can't be played)", () => {
+  it("drops the current round and moves to the next one's playing, discarding answers", () => {
+    const s = fresh();
+    s.rounds = ["r1", "r2", "r3"]; s.totalRounds = 3;
+    tr.confirmPreview(s);
+    tr.startRound(s, 1_000);
+    tr.acceptAnswer(s, "p1", 2_000, 500, build("x"));
+    expect(tr.skipRound(s)).toBe(true);
+    expect(s).toMatchObject({ phase: "playing", currentRound: "r2", currentRoundIndex: 0, totalRounds: 2, roundStart: null, answers: {} });
+    expect(s.rounds).toEqual(["r2", "r3"]);
+  });
+
+  it("skipping the last round ends the game", () => {
+    const s = fresh();
+    tr.confirmPreview(s);
+    tr.startRound(s, 0); tr.showResults(s, (_, a) => ({ answer: a, points: 0 })); tr.nextRound(s);
+    expect(s.currentRound).toBe("r2");
+    expect(tr.skipRound(s)).toBe(true);
+    expect(s).toMatchObject({ phase: "ended", currentRound: null, totalRounds: 1 });
+  });
+
+  it("refuses at results, in preview and after the end", () => {
+    const s = fresh();
+    expect(tr.skipRound(s)).toBe(false); // preview
+    tr.confirmPreview(s); tr.startRound(s, 0); tr.showResults(s, (_, a) => ({ answer: a, points: 0 }));
+    expect(tr.skipRound(s)).toBe(false); // results
+    expect(s.rounds).toHaveLength(2);
+  });
+});
+
 describe("timed-round tie-break time", () => {
   it("showResults adds the time taken to each scoring answer, and nothing for a miss", () => {
     const s = fresh();

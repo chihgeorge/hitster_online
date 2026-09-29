@@ -7,7 +7,7 @@ import usePartySocket from "partysocket/react";
 import Timeline from "@/components/Timeline";
 import Vinyl from "@/components/Vinyl";
 import { GuessPlay, SUBMIT_ACK_TIMEOUT_MS } from "@/components/GuessMode";
-import { useCountdown, isLeader, Standings, WonOnTimeNote } from "@/components/TimedRound";
+import { useCountdown, isLeader, Standings, WonOnTimeNote, SkipNotice } from "@/components/TimedRound";
 import { syncServerClock } from "@/lib/server-clock";
 import { rankPlayers, type GameState, type ServerMessage, type ClientMessage, type Player, type PublicLyricsGameState, type PublicGuessGameState } from "@/lib/game";
 
@@ -32,6 +32,7 @@ export default function PlayPage() {
   // True from the click until the round resets; "Submitted!" itself waits for the server (see below).
   const [lyricsSubmitted, setLyricsSubmitted] = useState(false);
   const [lyricsSendFailed, setLyricsSendFailed] = useState(false);
+  const [skipNotice, setSkipNotice] = useState(0); // bumps on ROUND_SKIPPED; keys a fresh SkipNotice
   const [lyricsTooLate, setLyricsTooLate] = useState(false);
   const lyricsTimerLeft = useCountdown(lyricsState);
   const [guessState, setGuessState] = useState<PublicGuessGameState | null>(null);
@@ -115,6 +116,9 @@ export default function PlayPage() {
           guessRoundRef.current = msg.state.roundStart;
           setGuessState(msg.state);
           break;
+        case "ROUND_SKIPPED":
+          setSkipNotice((n) => n + 1);
+          break;
         case "GUESS_ABORTED":
           // The game is gone: a TOO_LATE from it must not carry into the next game's same round.
           guessRoundRef.current = null;
@@ -173,8 +177,11 @@ export default function PlayPage() {
     return () => clearTimeout(t);
   }, [lyricsSubmitted, lyricsConfirmed, lyricsTooLate]);
 
+  const skipped = skipNotice > 0 ? <SkipNotice key={skipNotice} /> : null;
+
   if (guessState) {
-    return (
+    return (<>
+      {skipped}
       <GuessPlay
         state={guessState}
         playerId={playerIdRef.current}
@@ -182,7 +189,7 @@ export default function PlayPage() {
         tooLate={guessTooLateRound !== null && guessTooLateRound === guessState.roundStart}
         onSubmit={(title, artist) => send({ type: "SUBMIT_GUESS", playerId: playerIdRef.current, title, artist })}
       />
-    );
+    </>);
   }
 
   /* ── Lyrics Mode: loading ── */
@@ -216,6 +223,7 @@ export default function PlayPage() {
           <p style={{ fontSize: 15, fontWeight: 700, color: "var(--ink)" }}>等待主持人切歌…</p>
           <p style={{ fontSize: 12, color: "var(--text3)", marginTop: 4 }}>Waiting for host to cut the song</p>
         </div>
+        {skipped}
         {myLyricsPlayer && (
           <div style={{ fontSize: 18, fontWeight: 900, color: "var(--orange)", fontFamily: "var(--font-mono)" }}>
             {myLyricsPlayer.score} pts

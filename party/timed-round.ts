@@ -105,6 +105,27 @@ export function showResults<R, A extends { ts: number }>(
   return true;
 }
 
+/**
+ * The current song can't be played (the TV's embed refused it): drop this round from the deck
+ * and move to the next one's "playing" (answers discarded), or end the game if it was the last.
+ * Only before results — the reveal doesn't need audio. False otherwise.
+ */
+export function skipRound<R, A extends { ts: number }>(s: State<R, A>): boolean {
+  if ((s.phase !== "playing" && s.phase !== "guessing") || !s.currentRound) return false;
+  s.rounds.splice(s.currentRoundIndex, 1);
+  s.totalRounds = s.rounds.length;
+  s.roundStart = null;
+  s.answers = {};
+  if (s.currentRoundIndex >= s.rounds.length) {
+    s.phase = "ended";
+    s.currentRound = null;
+  } else {
+    s.phase = "playing";
+    s.currentRound = s.rounds[s.currentRoundIndex];
+  }
+  return true;
+}
+
 /** results → next round's playing, or ended after the last round. False if not in results. */
 export function nextRound<R, A extends { ts: number }>(s: State<R, A>): boolean {
   if (s.phase !== "results") return false;
