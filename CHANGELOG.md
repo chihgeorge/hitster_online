@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.14.15.0] — 2026-09-29
+
+### Fixed
+- **No second TV screen after the host page is reopened:** if the host closed and reopened the host page (or the browser restored it), tapping the screen link opened a second screen tab, and every song played twice. The host page now checks whether a screen tab for the room is already open in the same browser. If it is, the host sees "大螢幕已在另一個分頁開啟 · The screen is already open in another tab" instead of getting a duplicate
+
 ## [0.14.14.0] — 2026-09-29
 
 ### Changed
