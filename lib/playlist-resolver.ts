@@ -24,6 +24,7 @@ import {
   parseYouTubeMusicDescription,
   channelToArtist,
   extractYearFromTitle,
+  stripTitleNoise,
 } from "./youtube";
 import { resolveTracksWithAI, type AITrackMeta } from "./ai-metadata";
 
@@ -59,7 +60,8 @@ export function parseResolveErrorCode(err: unknown): string {
 }
 
 export type TrackItem = { videoId: string; title: string; description: string; channelTitle: string };
-type TrackMeta = { artist: string; descYear: number | null; titleYear: number | null };
+/** `title` is the song title parsed from the video title, used when AI metadata is missing. */
+type TrackMeta = { artist: string; title?: string; descYear: number | null; titleYear: number | null };
 
 export function parseTrackMetas(tracks: TrackItem[]): TrackMeta[] {
   return tracks.map((track) => {
@@ -67,7 +69,10 @@ export function parseTrackMetas(tracks: TrackItem[]): TrackMeta[] {
     const titleYear = extractYearFromTitle(track.title);
     const titleParsed = parseArtistAndTrack(track.title);
     const artist = descMeta.artist ?? titleParsed?.artist ?? channelToArtist(track.channelTitle);
-    return { artist, descYear: descMeta.year ?? null, titleYear: titleYear ?? null };
+    // A YouTube Music upload (artist in the description) is already titled with just the song —
+    // splitting "Yesterday - Remastered 2009" on its dash would make "Remastered 2009" the answer.
+    const title = descMeta.artist ? stripTitleNoise(track.title) : stripTitleNoise(titleParsed?.track ?? track.title);
+    return { artist, title, descYear: descMeta.year ?? null, titleYear: titleYear ?? null };
   });
 }
 
@@ -81,12 +86,14 @@ export function buildCardsFromAI(
   const diagnostics: SongDiagnostic[] = [];
   for (let i = 0; i < tracks.length; i++) {
     const t = tracks[i];
-    const { descYear, titleYear, artist } = metas[i];
+    const { descYear, titleYear, artist, title } = metas[i];
     const ai = aiResults.get(t.videoId);
     const year = descYear ?? titleYear ?? ai?.year ?? null;
     const yearSource: SongDiagnostic["yearSource"] =
       descYear ? "description" : titleYear ? "title" : ai?.year ? "ai" : null;
-    const cleanTitle = ai?.title ?? t.title;
+    // Without AI metadata this is the parsed title, never the raw video title: Guess mode's
+    // answer is this string, and "Artist - Song (Official MV)" is unguessable.
+    const cleanTitle = ai?.title ?? title ?? t.title;
     const cleanArtist = ai?.artist ?? artist;
     diagnostics.push({ title: cleanTitle, artist: cleanArtist, year, yearSource });
     allSongs.push({ videoId: t.videoId, title: cleanTitle, artist: cleanArtist, year });

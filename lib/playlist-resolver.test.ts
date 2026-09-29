@@ -197,6 +197,30 @@ describe("resolvePlaylistFromUrl", () => {
 });
 
 describe("parseTrackMetas / storageBatchGet", () => {
+  it("parseTrackMetas gives a guessable title, not the raw video title, for AI-less fallback", () => {
+    const metas = parseTrackMetas([
+      fakeTrack("a", "Oasis - Wonderwall (Official Video)", "OasisVEVO"),
+      fakeTrack("b", "周杰倫 Jay Chou【告白氣球 Love Confession】Official MV", "JVR Music"),
+      fakeTrack("c", "Blinding Lights (Official Video)", "TheWeekndVEVO"),
+      // YouTube Music upload: the title is already the song; its dash is not "Artist - Track".
+      { videoId: "d", title: "Yesterday - Remastered 2009", channelTitle: "The Beatles - Topic",
+        description: "Provided to YouTube by EMI\n\nYesterday · The Beatles\n\nReleased on: 1965-08-06" },
+    ]);
+    expect(metas.map((m) => [m.title, m.artist])).toEqual([
+      ["Wonderwall", "Oasis"],
+      ["告白氣球 Love Confession", "周杰倫 Jay Chou"],
+      ["Blinding Lights", "TheWeeknd"],
+      ["Yesterday", "The Beatles"],
+    ]);
+  });
+
+  it("buildCardsFromAI uses the parsed title when there is no AI result, and the AI title when there is", () => {
+    const tracks = [fakeTrack("v1", "Oasis - Wonderwall (Official Video)"), fakeTrack("v2", "Oasis - Wonderwall (Official Video)")];
+    const metas = parseTrackMetas(tracks);
+    const { allSongs } = buildCardsFromAI(tracks, metas, new Map([["v2", { title: "AI Title", artist: "AI Artist", year: 1995 }]]));
+    expect(allSongs.map((s) => s.title)).toEqual(["Wonderwall", "AI Title"]);
+  });
+
   it("parseTrackMetas falls back to channel-derived artist with no description or title match", () => {
     const [meta] = parseTrackMetas([fakeTrack("v1", "Some Song", "SomeArtist - Topic")]);
     expect(meta.artist).toBe("SomeArtist");
