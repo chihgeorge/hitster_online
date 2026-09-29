@@ -59,11 +59,15 @@ vi.mock("../lib/ai-metadata", () => ({
   proposeLyricEdits: vi.fn().mockResolvedValue([]),
 }));
 
-vi.mock("../lib/lyrics-resolver", async (importOriginal) => ({
-  resolveLyricsForTracks: vi.fn().mockResolvedValue(new Map()),
-  givesAwayTitle: (await importOriginal<typeof import("../lib/lyrics-resolver")>()).givesAwayTitle,
-  MODEL_GAME: "claude-sonnet-5",
-}));
+vi.mock("../lib/lyrics-resolver", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../lib/lyrics-resolver")>();
+  return {
+    resolveLyricsForTracks: vi.fn().mockResolvedValue(new Map()),
+    givesAwayTitle: actual.givesAwayTitle,
+    detectLanguageHint: actual.detectLanguageHint,
+    MODEL_GAME: "claude-sonnet-5",
+  };
+});
 
 vi.mock("../lib/lyrics-popularity", () => ({
   fetchPopularitySummaries: vi.fn().mockResolvedValue(new Map()),
@@ -1865,6 +1869,40 @@ describe("Lyrics Mode: START_LYRICS_GAME", () => {
       .find((m: any) => m.type === "ERROR");
     expect(errorMsg).toBeDefined();
     expect(errorMsg.error).toBe("not_enough_songs");
+  });
+
+  it("builds a round from the host's override for a song with no generated round", async () => {
+    vi.mocked(fetchPlaylistItems).mockResolvedValue([fakeLyricsTrack()]);
+    const room = new HitsterRoom(makeRoom() as any);
+    (room.room.storage.get as ReturnType<typeof vi.fn>).mockResolvedValue(new Map());
+    const hostConn = makeConn("host-conn");
+    await send(room, hostConn, {
+      type: "START_LYRICS_GAME", hostId: "host-uuid", playlistUrl: "PLtest",
+      config: { timerSeconds: 60, totalRounds: 1, fuzzyEnabled: false },
+      lyricOverrides: [{ videoId: "vid1", lyricContext: " 我要送你九十九朵___ ", blankSentence: " 玫瑰花 " }],
+    });
+    expect(room.lyricsState?.phase).toBe("preview");
+    expect(room.lyricsState?.rounds).toEqual([{
+      videoId: "vid1", title: "Test Song", artist: "Test Artist", language: "zh-TW",
+      lyricContext: "我要送你九十九朵___", blankSentence: "玫瑰花", acceptableVariants: [],
+    }]);
+  });
+
+  it.each([
+    ["no ___ blank", { lyricContext: "no blank here", blankSentence: "x" }],
+    ["an empty answer", { lyricContext: "a ___ b", blankSentence: "  " }],
+    ["only an answer", { blankSentence: "x" }],
+  ])("still drops a song with no generated round when the override has %s", async (_, ov) => {
+    vi.mocked(fetchPlaylistItems).mockResolvedValue([fakeLyricsTrack()]);
+    const room = new HitsterRoom(makeRoom() as any);
+    (room.room.storage.get as ReturnType<typeof vi.fn>).mockResolvedValue(new Map());
+    const hostConn = makeConn("host-conn");
+    await send(room, hostConn, {
+      type: "START_LYRICS_GAME", hostId: "host-uuid", playlistUrl: "PLtest",
+      config: { timerSeconds: 60, totalRounds: 1, fuzzyEnabled: false },
+      lyricOverrides: [{ videoId: "vid1", ...ov }],
+    });
+    expect(lastSentTo(hostConn)).toMatchObject({ type: "ERROR", error: "not_enough_songs" });
   });
 
   it("applies lyricOverrides to deck", async () => {

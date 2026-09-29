@@ -24,7 +24,7 @@ import {
 } from "../lib/game";
 import { isValidYear, sanitizeText, decodeEntities, shuffle } from "../lib/utils";
 import { proposeEdits, proposeLyricEdits, type AITrackMeta } from "../lib/ai-metadata";
-import { resolveLyricsForTracks, givesAwayTitle, MODEL_GAME, type LyricsResult } from "../lib/lyrics-resolver";
+import { resolveLyricsForTracks, givesAwayTitle, detectLanguageHint, MODEL_GAME, type LyricsResult } from "../lib/lyrics-resolver";
 import { fetchPopularitySummaries } from "../lib/lyrics-popularity";
 import * as timedRound from "./timed-round";
 import { scoreGuess, normGuess } from "../lib/guess-scoring";
@@ -89,6 +89,30 @@ function fairRounds(raw: Map<string, LyricsResult>, prefix: string): Map<string,
   return new Map([...raw]
     .filter(([, l]) => !givesAwayTitle(l.blankSentence, l.title))
     .map(([k, l]) => [k.slice(prefix.length), l]));
+}
+
+const LANGUAGE_BY_HINT: [RegExp, LyricsRound["language"]][] = [[/^Japanese/, "ja"], [/^Korean/, "ko"], [/^Chinese/, "zh-TW"]];
+
+/**
+ * A round the host wrote by hand for a song with no generated round (an empty preview row they
+ * filled in). Needs a ___ blank in the context and a non-empty answer; anything else stays dropped.
+ */
+function roundFromOverride(t: { videoId: string; title: string; artist: string }, ov: LyricOverride | undefined): LyricsRound | null {
+  if (typeof ov?.lyricContext !== "string" || typeof ov.blankSentence !== "string") return null;
+  const lyricContext = ov.lyricContext.trim();
+  const blankSentence = ov.blankSentence.trim();
+  if (!lyricContext.includes("___") || !blankSentence) return null;
+  // Players type the blank, so its script (not the song title's) decides how answers are graded.
+  const hint = detectLanguageHint(blankSentence, lyricContext);
+  return {
+    videoId: t.videoId,
+    title: t.title,
+    artist: t.artist,
+    language: LANGUAGE_BY_HINT.find(([re]) => re.test(hint))?.[1] ?? "en",
+    lyricContext,
+    blankSentence,
+    acceptableVariants: Array.isArray(ov.acceptableVariants) ? ov.acceptableVariants.filter((v) => typeof v === "string") : [],
+  };
 }
 
 export default class HitsterRoom implements Party.Server {
@@ -1263,7 +1287,11 @@ export default class HitsterRoom implements Party.Server {
         const ov = overrideMap.get(t.videoId);
         if (ov?.skip) continue;
         const base = allLyrics.get(t.videoId);
-        if (!base) continue;
+        if (!base) {
+          const own = roundFromOverride(t, ov);
+          if (own) deck.push(own);
+          continue;
+        }
         deck.push({
           videoId: t.videoId,
           title: base.title,
