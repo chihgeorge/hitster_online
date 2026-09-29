@@ -33,7 +33,7 @@ function lyricsState(over: Partial<PublicLyricsGameState> = {}): PublicLyricsGam
       videoId: "v1", title: "那些年", artist: "胡夏", language: "zh-TW",
       lyricContext: "那些年錯過的__", blankSentence: null,
     },
-    roundStart: Date.now(), timerSeconds: 20, answers: {}, totalRounds: 3, currentRoundIndex: 0, consecutiveSkips: 0,
+    roundStart: Date.now(), timerSeconds: 20, answers: {}, totalRounds: 3, currentRoundIndex: 0,
     ...over,
   } as PublicLyricsGameState;
 }
@@ -71,7 +71,7 @@ describe("PlayPage: countdown follows the server clock", () => {
     const guess = {
       mode: "guess", phase: "guessing", players: { [PLAYER]: { name: "QA", score: 0, connected: true } },
       currentRound: { hasArtist: true, title: null, artist: null }, roundStart: serverTime(), timerSeconds: 20,
-      answers: {}, totalRounds: 3, currentRoundIndex: 0, consecutiveSkips: 0,
+      answers: {}, totalRounds: 3, currentRoundIndex: 0,
     };
     serverSends({ type: "GUESS_STATE", state: guess, serverNow: serverTime() });
     act(() => { vi.advanceTimersByTime(300); });
@@ -264,7 +264,7 @@ describe("PlayPage: Guess Mode TOO_LATE resets on the next round", () => {
   const guess = (over: object = {}) => ({
     mode: "guess", phase: "guessing", players: { [PLAYER]: { name: "QA", score: 0, connected: true } },
     currentRound: { hasArtist: true, title: null, artist: null }, roundStart: Date.now(), timerSeconds: 60,
-    answers: {}, totalRounds: 3, currentRoundIndex: 0, consecutiveSkips: 0, ...over,
+    answers: {}, totalRounds: 3, currentRoundIndex: 0, ...over,
   });
   it("shows time's up after TOO_LATE, then the inputs again next round", () => {
     render(<PlayPage />);
@@ -297,7 +297,7 @@ describe("PlayPage: Guess TOO_LATE is per round (/ship adversarial #3)", () => {
   const guess = (over: object = {}) => ({
     mode: "guess", phase: "guessing", players: { [PLAYER]: { name: "QA", score: 0, connected: true } },
     currentRound: { hasArtist: true, title: null, artist: null }, roundStart: Date.now(), timerSeconds: 60,
-    answers: {}, totalRounds: 3, currentRoundIndex: 0, consecutiveSkips: 0, ...over,
+    answers: {}, totalRounds: 3, currentRoundIndex: 0, ...over,
   });
   it("reconnecting straight into the next round's guessing still shows the inputs", () => {
     render(<PlayPage />);
@@ -332,7 +332,7 @@ describe("PlayPage: Guess TOO_LATE doesn't leak into the next game (/land-and-de
   const guess = (over: object = {}) => ({
     mode: "guess", phase: "guessing", players: { [PLAYER]: { name: "QA", score: 0, connected: true } },
     currentRound: { hasArtist: true, title: null, artist: null }, roundStart: Date.now(), timerSeconds: 60,
-    answers: {}, totalRounds: 3, currentRoundIndex: 0, consecutiveSkips: 0, ...over,
+    answers: {}, totalRounds: 3, currentRoundIndex: 0, ...over,
   });
   it("after the host quits and restarts, round 0 of the new game shows the inputs", () => {
     render(<PlayPage />);

@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.14.9.0] — 2026-09-29
+
+### Changed
+- Lyrics and Guess now share one version of the countdown, the final standings and the TV scoreboard, so the two modes look the same and can't drift apart. Two small visible changes in Lyrics: the phone's final standings are flat like Guess (no drop shadow), and TV scores use the same number font as Guess
+- Removed an unused field from the game state sent to phones and the TV
+
 ## [0.14.8.0] — 2026-09-29
 
 ### Fixed

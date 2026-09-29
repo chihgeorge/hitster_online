@@ -6,9 +6,10 @@ import Link from "next/link";
 import usePartySocket from "partysocket/react";
 import Timeline from "@/components/Timeline";
 import Vinyl from "@/components/Vinyl";
-import { GuessPlay, isLeader, SUBMIT_ACK_TIMEOUT_MS } from "@/components/GuessMode";
-import { serverNow, syncServerClock } from "@/lib/server-clock";
-import { rankPlayers, wonOnTime, type GameState, type ServerMessage, type ClientMessage, type Player, type PublicLyricsGameState, type PublicGuessGameState } from "@/lib/game";
+import { GuessPlay, SUBMIT_ACK_TIMEOUT_MS } from "@/components/GuessMode";
+import { useCountdown, isLeader, Standings, WonOnTimeNote } from "@/components/TimedRound";
+import { syncServerClock } from "@/lib/server-clock";
+import { rankPlayers, type GameState, type ServerMessage, type ClientMessage, type Player, type PublicLyricsGameState, type PublicGuessGameState } from "@/lib/game";
 
 function getOrCreatePlayerId(): string {
   const key = "hitster_player_id";
@@ -32,7 +33,7 @@ export default function PlayPage() {
   const [lyricsSubmitted, setLyricsSubmitted] = useState(false);
   const [lyricsSendFailed, setLyricsSendFailed] = useState(false);
   const [lyricsTooLate, setLyricsTooLate] = useState(false);
-  const [lyricsTimerLeft, setLyricsTimerLeft] = useState<number | null>(null);
+  const lyricsTimerLeft = useCountdown(lyricsState);
   const [guessState, setGuessState] = useState<PublicGuessGameState | null>(null);
   // Server start time of the round a TOO_LATE arrived in — the flag only applies to that round,
   // so a phone that reconnects straight into the next round's guessing isn't locked out. Not the
@@ -73,25 +74,9 @@ export default function PlayPage() {
       setLyricsSubmitted(false);
       setLyricsSendFailed(false);
       setLyricsTooLate(false);
-      setLyricsTimerLeft(null);
     }
   }, [lyricsState?.phase, lyricsState?.currentRoundIndex]);
 
-  // Lyrics countdown timer
-  useEffect(() => {
-    if (lyricsState?.phase !== "guessing" || lyricsState.roundStart === null) {
-      if (lyricsState?.phase !== "guessing") setLyricsTimerLeft(null);
-      return;
-    }
-    const deadline = lyricsState.roundStart + lyricsState.timerSeconds * 1000;
-    const tick = () => {
-      const left = Math.max(0, Math.ceil((deadline - serverNow()) / 1000));
-      setLyricsTimerLeft(left);
-    };
-    tick();
-    const id = setInterval(tick, 200);
-    return () => clearInterval(id);
-  }, [lyricsState?.phase, lyricsState?.roundStart, lyricsState?.timerSeconds]);
 
   useEffect(() => {
     if (state !== null && state.phase !== "lobby") return;
@@ -374,20 +359,9 @@ export default function PlayPage() {
               <h1 style={{ fontSize: 26, fontWeight: 900, color: "var(--ink)" }}>#{myRank + 1} — {myLyricsPlayer?.score ?? 0} pts</h1>
             </>
           )}
-          {wonOnTime(lyricsState.players) && <p data-testid="won-on-time" style={{ fontSize: 12, color: "var(--text3)", marginTop: 8 }}>同分，答得較快的人獲勝 · Tied on points — faster answers won</p>}
+          <WonOnTimeNote players={lyricsState.players} />
         </div>
-        <div style={{ background: "white", borderRadius: 20, padding: 20, boxShadow: "0 4px 20px rgba(255,107,53,.08)", width: "100%", maxWidth: 340 }}>
-          <p style={{ fontSize: 12, fontWeight: 700, color: "var(--text3)", marginBottom: 12 }}>最終排名 · Final Scores</p>
-          <ul style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-            {sorted.map(([id, p], idx) => (
-              <li key={id} style={{ display: "flex", alignItems: "center", gap: 12, background: id === playerIdRef.current ? "var(--surface2)" : "#F8F8FC", borderRadius: 14, padding: "11px 14px", border: id === playerIdRef.current ? "2px solid rgba(255,107,53,.3)" : "2px solid transparent" }}>
-                <span style={{ width: 24, height: 24, borderRadius: "50%", background: idx === 0 ? "var(--gold)" : idx === 1 ? "#C0C0C0" : idx === 2 ? "#CD7F32" : "#E8E8F0", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, fontWeight: 900, color: "var(--ink)", flexShrink: 0 }}>{idx + 1}</span>
-                <span style={{ fontWeight: 700, color: "var(--ink)", fontSize: 14, flex: 1 }}>{p.name}</span>
-                <span style={{ fontFamily: "var(--font-mono)", color: "var(--orange)", fontWeight: 700, fontSize: 16 }}>{p.score}</span>
-              </li>
-            ))}
-          </ul>
-        </div>
+        <Standings players={lyricsState.players} highlight={playerIdRef.current} />
       </main>
     );
   }

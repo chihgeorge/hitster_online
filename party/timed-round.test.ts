@@ -7,7 +7,7 @@ function fresh(): TimedRoundState<string, A> {
   return {
     phase: "preview", players: { p1: { name: "a", score: 0, connected: true }, p2: { name: "b", score: 0, connected: true } },
     rounds: ["r1", "r2"], currentRound: null, roundStart: null, timerSeconds: 10, answers: {},
-    totalRounds: 2, currentRoundIndex: 0, consecutiveSkips: 3,
+    totalRounds: 2, currentRoundIndex: 0,
   };
 }
 const build = (text: string) => (ts: number): A => ({ text, ts, points: 0 });
@@ -31,7 +31,6 @@ describe("timed-round engine", () => {
     expect(s.phase).toBe("results");
     expect(s.players.p1.score).toBe(7);
     expect(s.answers.p1.points).toBe(7);
-    expect(s.consecutiveSkips).toBe(0);
 
     expect(tr.nextRound(s)).toBe(true);
     expect(s).toMatchObject({ phase: "playing", currentRound: "r2", roundStart: null, answers: {} });

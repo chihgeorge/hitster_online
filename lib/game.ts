@@ -48,7 +48,6 @@ export interface TimedRoundState<R, A extends { ts: number }> {
   answers: Record<string, A>;
   totalRounds: number;
   currentRoundIndex: number;
-  consecutiveSkips: number;
 }
 
 export interface LyricsAnswer { text: string; ts: number; correct: boolean; points: number }

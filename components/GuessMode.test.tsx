@@ -11,7 +11,7 @@ function state(over: Partial<PublicGuessGameState> = {}): PublicGuessGameState {
     mode: "guess", phase: "guessing",
     players: { [ME]: { name: "Alice", score: 0, connected: true }, bob: { name: "Bob", score: 0, connected: true } },
     currentRound: { hasArtist: true, title: null, artist: null },
-    roundStart: Date.now(), timerSeconds: 60, answers: {}, totalRounds: 3, currentRoundIndex: 0, consecutiveSkips: 0,
+    roundStart: Date.now(), timerSeconds: 60, answers: {}, totalRounds: 3, currentRoundIndex: 0,
     ...over,
   };
 }

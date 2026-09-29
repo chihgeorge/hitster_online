@@ -8,8 +8,11 @@ import { useEffect, useRef, useState } from "react";
 import Vinyl from "@/components/Vinyl";
 import { isAudioPhase, type VideoFrame } from "@/components/LyricsPlayer";
 import { decodeEntities } from "@/lib/utils";
-import { serverNow } from "@/lib/server-clock";
-import { rankPlayers, wonOnTime, type GuessAnswer, type PublicGuessGameState } from "@/lib/game";
+import { rankPlayers, type GuessAnswer, type PublicGuessGameState } from "@/lib/game";
+import { useCountdown, isLeader, Standings, WonOnTimeNote, TvScoreRow, TvFinal } from "@/components/TimedRound";
+
+// Re-exported: pages and tests import these from here as well.
+export { useCountdown, isLeader };
 
 type AudioReply = { videoId: string | null; roundIndex: number };
 
@@ -33,36 +36,12 @@ export function guessAudioProps(state: PublicGuessGameState | null, audio: Audio
   return { videoId: audio.videoId, playing: state.phase !== "playing", frame: state.phase === "results" && state.currentRound ? REVEAL_VIDEO : null };
 }
 
-/** Seconds left in the guessing phase, null outside it. */
-export function useCountdown(state: PublicGuessGameState | null): number | null {
-  const [left, setLeft] = useState<number | null>(null);
-  const phase = state?.phase;
-  const roundStart = state?.roundStart ?? null;
-  const timerSeconds = state?.timerSeconds ?? 0;
-  const active = phase === "guessing" && roundStart !== null;
-  useEffect(() => {
-    if (!active) return;
-    const deadline = roundStart + timerSeconds * 1000;
-    const tick = () => setLeft(Math.max(0, Math.ceil((deadline - serverNow()) / 1000)));
-    const id = setInterval(tick, 200);
-    queueMicrotask(tick);
-    // Drop the old value on the way out, or the next round's first render shows last round's 0.
-    return () => { clearInterval(id); setLeft(null); };
-  }, [active, roundStart, timerSeconds]);
-  return active ? left : null;
-}
 
 // Server text is HTML-escaped (sanitizeText); React escapes again, so decode for display.
 const show = (s: string | null | undefined) => decodeEntities(s ?? "");
 
 const ranked = (state: PublicGuessGameState) => rankPlayers(state.players);
 
-/** The current leader by rankPlayers (ties go to the faster answers), with at least one point —
- * the only player whose score shows in gold. */
-export const isLeader = (state: { players: Record<string, { score: number; timeMs?: number }> }, playerId: string) => {
-  const [top] = rankPlayers(state.players);
-  return !!top && top[0] === playerId && top[1].score > 0;
-};
 
 const roundLabel = (state: PublicGuessGameState) => `第 ${state.currentRoundIndex + 1} / ${state.totalRounds} 回合`;
 
@@ -232,9 +211,9 @@ export function GuessPlay({ state, playerId, playerName, tooLate, onSubmit }: Pl
             <h1 style={{ fontSize: 26, fontWeight: 900, color: "var(--ink)" }}>#{myRank + 1} — {me?.score ?? 0} pts</h1>
           </>
         )}
-        {wonOnTime(state.players) && <p data-testid="won-on-time" style={{ fontSize: 12, color: "var(--text3)", marginTop: 8 }}>同分，答得較快的人獲勝 · Tied on points — faster answers won</p>}
+        <WonOnTimeNote players={state.players} />
       </div>
-      <Standings state={state} highlight={playerId} />
+      <Standings players={state.players} highlight={playerId} />
     </>, true);
   }
 
@@ -267,22 +246,6 @@ function MyResult({ answer, hasArtist }: { answer: GuessAnswer; hasArtist: boole
   );
 }
 
-function Standings({ state, highlight }: { state: PublicGuessGameState; highlight?: string }) {
-  return (
-    <div style={{ background: "white", borderRadius: 20, padding: 20, width: "100%", maxWidth: 340 }}>
-      <p style={{ fontSize: 12, fontWeight: 700, color: "var(--text3)", marginBottom: 12 }}>最終排名 · Final Scores</p>
-      <ul style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-        {ranked(state).map(([id, p], idx) => (
-          <li key={id} style={{ display: "flex", alignItems: "center", gap: 12, background: id === highlight ? "var(--surface2)" : "#F8F8FC", borderRadius: 14, padding: "11px 14px", border: id === highlight ? "2px solid rgba(255,107,53,.3)" : "2px solid transparent" }}>
-            <span style={{ width: 24, height: 24, borderRadius: "50%", background: idx === 0 ? "var(--gold)" : idx === 1 ? "#C0C0C0" : idx === 2 ? "#CD7F32" : "#E8E8F0", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, fontWeight: 900, color: "var(--ink)", flexShrink: 0 }}>{idx + 1}</span>
-            <span style={{ fontWeight: 700, color: "var(--ink)", fontSize: 14, flex: 1 }}>{p.name}</span>
-            <span style={{ fontFamily: "var(--font-mono)", color: "var(--orange)", fontWeight: 700, fontSize: 16 }}>{p.score}</span>
-          </li>
-        ))}
-      </ul>
-    </div>
-  );
-}
 
 // ── TV (read-only, inside the 960×540 Stage) ─────────────────────────────────────
 
@@ -297,11 +260,7 @@ export function GuessScreen({ state }: { state: PublicGuessGameState }) {
       <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 20, minHeight: 0 }}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
           <p style={label}>{roundLabel(state)}</p>
-          <div style={{ display: "flex", gap: 14, flexWrap: "wrap" }}>
-            {ranked(state).map(([id, p]) => (
-              <span key={id} style={{ fontSize: 13, color: "var(--text2)", fontWeight: 600 }}>{p.name}: <span style={{ color: "var(--orange)", fontFamily: "var(--font-mono)" }}>{p.score}</span></span>
-            ))}
-          </div>
+          <TvScoreRow players={state.players} />
         </div>
         <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 18 }}>
           <div className="animate-vinyl" style={{ width: 72, height: 72, borderRadius: "50%", background: "radial-gradient(circle at 35% 35%, #3a3a4a, var(--ink) 70%)" }} />
@@ -355,25 +314,7 @@ export function GuessScreen({ state }: { state: PublicGuessGameState }) {
     );
   }
 
-  if (state.phase === "ended") {
-    const sorted = ranked(state);
-    return (
-      <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 20 }}>
-        <p style={label}>猜歌模式結束 · Guess Mode Over!</p>
-        <h2 className="title-outlined" style={{ fontSize: 48 }}>{sorted[0]?.[1]?.name ?? "?"}</h2>
-        {wonOnTime(state.players) && <p data-testid="won-on-time" style={{ fontSize: 14, color: "var(--text2)", fontWeight: 700 }}>同分，答得較快的人獲勝 · Tied on points — faster answers won</p>}
-        <div style={{ width: "100%", maxWidth: 520, display: "flex", flexDirection: "column", gap: 8 }}>
-          {sorted.map(([id, p], i) => (
-            <div key={id} style={{ display: "flex", alignItems: "center", gap: 12, background: i === 0 ? "var(--ink)" : "white", border: "2px solid rgba(255,107,53,.15)", borderRadius: 14, padding: "10px 18px" }}>
-              <span style={{ fontWeight: 900, color: i === 0 ? "var(--gold)" : "var(--text3)", minWidth: 28 }}>#{i + 1}</span>
-              <span style={{ fontWeight: 700, color: i === 0 ? "var(--bg)" : "var(--ink)", flex: 1 }}>{p.name}</span>
-              <span style={{ fontWeight: 900, color: i === 0 ? "var(--gold)" : "var(--orange)", fontFamily: "var(--font-mono)" }}>{p.score}</span>
-            </div>
-          ))}
-        </div>
-      </div>
-    );
-  }
+  if (state.phase === "ended") return <TvFinal players={state.players} title="猜歌模式結束 · Guess Mode Over!" />;
 
   return null;
 }

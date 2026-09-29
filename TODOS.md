@@ -14,32 +14,6 @@
 **Priority:** P3
 **Depends on:** None
 
-### Share timed-round UI helpers between Lyrics and Guess
-
-**What:** Share timed-round UI helpers between Lyrics and Guess.
-
-**Why:** Three copies of the countdown/leaderboard logic can drift apart.
-
-**Context:** `useCountdown`, `Standings`, `guessAudioProps`, and the TV score row in `components/GuessMode.tsx` duplicate inline Lyrics code in the play/screen pages (~50 lines). Widen them to structural types and use them for Lyrics too (touches live Lyrics UI — do it with tests). _Advisory from /ship review, 2026-09-24._
-
-**Effort:** M
-**Priority:** P3
-**Depends on:** None
-
-### `consecutiveSkips` is a dead field in the timed-round state
-
-**What:** `consecutiveSkips` is a dead field in the timed-round state.
-
-**Why:** Dead state on the wire confuses anyone reading the protocol.
-
-**Context:** Carried in `TimedRoundState` (lib/game.ts) and reset in `timedRound.showResults`, but nothing increments or reads it. Delete it (wire-visible on LYRICS_STATE, no client reads it) unless a skip-round feature is planned. _Found by /review on feat/guess-mode-engine, 2026-09-24._
-
-**Effort:** S
-**Priority:** P3
-**Depends on:** None
-
-## Guess Mode
-
 ### Guess grading tuning after playtest
 
 **What:** Guess grading tuning after playtest.
@@ -272,6 +246,36 @@ _Deferred from plan: foamy-crafting-bonbon.md_
 **Depends on:** None
 
 ## Completed
+
+### Share timed-round UI helpers between Lyrics and Guess
+
+**What:** Share timed-round UI helpers between Lyrics and Guess.
+
+**Why:** Three copies of the countdown/leaderboard logic can drift apart.
+
+**Context:** `useCountdown`, `Standings`, `guessAudioProps`, and the TV score row in `components/GuessMode.tsx` duplicate inline Lyrics code in the play/screen pages (~50 lines). Widen them to structural types and use them for Lyrics too (touches live Lyrics UI — do it with tests). _Advisory from /ship review, 2026-09-24._
+
+**Effort:** M
+**Priority:** P3
+**Depends on:** None
+
+**Completed:** v0.14.9.0 (2026-09-29) — `components/TimedRound.tsx` holds `useCountdown`, `isLeader`, `Standings`, `WonOnTimeNote`, `TvScoreRow` and `TvFinal`, used by both modes on the phone and TV. The Lyrics copies took the Guess versions (flat standings per DESIGN.md, DM Mono scores). `guessAudioProps` stays separate from `lyricsAudioProps` on purpose: Lyrics cuts the audio for guessing, Guess plays through it.
+
+### `consecutiveSkips` is a dead field in the timed-round state
+
+**What:** `consecutiveSkips` is a dead field in the timed-round state.
+
+**Why:** Dead state on the wire confuses anyone reading the protocol.
+
+**Context:** Carried in `TimedRoundState` (lib/game.ts) and reset in `timedRound.showResults`, but nothing increments or reads it. Delete it (wire-visible on LYRICS_STATE, no client reads it) unless a skip-round feature is planned. _Found by /review on feat/guess-mode-engine, 2026-09-24._
+
+**Effort:** S
+**Priority:** P3
+**Depends on:** None
+
+## Guess Mode
+
+**Completed:** v0.14.9.0 (2026-09-29) — removed from `TimedRoundState`, the server and every test fixture.
 
 ### Ties crown a single winner in Lyrics/Guess
 
