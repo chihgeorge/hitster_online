@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.14.5.0] — 2026-09-29
+
+### Fixed
+- **Countdowns no longer depend on the phone's or TV's clock:** in Lyrics and Guess, the time left now follows the game server's clock. Before, a phone whose clock was off showed the wrong time: it could say "Time's up" and hide the answer box while the round was still open, or keep showing time left after answers had stopped counting
+
 ## [0.14.4.0] — 2026-09-28
 
 ### Fixed

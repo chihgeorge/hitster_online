@@ -234,12 +234,13 @@ export type PublicLyricsGameState = Omit<LyricsGameState, "currentRound" | "roun
 
 export type ServerMessage =
   | { type: "STATE"; state: GameState }
-  | { type: "LYRICS_STATE"; state: PublicLyricsGameState }
+  // serverNow: the server clock when sent, so countdowns can correct for a wrong device clock.
+  | { type: "LYRICS_STATE"; state: PublicLyricsGameState; serverNow: number }
   | { type: "LYRICS_ABORTED" }
   // Sent only to the connection that authenticated as the room's screen (see GET_LYRICS_AUDIO):
   // players never receive the current round's video id.
   | { type: "LYRICS_AUDIO"; videoId: string | null; roundIndex: number }
-  | { type: "GUESS_STATE"; state: PublicGuessGameState }
+  | { type: "GUESS_STATE"; state: PublicGuessGameState; serverNow: number }
   | { type: "GUESS_ABORTED" }
   | { type: "GUESS_AUDIO"; videoId: string | null; roundIndex: number }
   | { type: "PLACEMENT_ACK"; playerId: string }

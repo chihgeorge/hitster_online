@@ -13,6 +13,7 @@ import { Qr } from "@/components/Qr";
 import { Stage } from "@/components/Stage";
 import { GuessScreen, guessAudioProps } from "@/components/GuessMode";
 import { getOrCreatePersistedId } from "@/lib/device-id";
+import { serverNow, syncServerClock } from "@/lib/server-clock";
 import type { GameState, ServerMessage, PublicLyricsGameState, PublicGuessGameState } from "@/lib/game";
 
 const VICTORY_VIDEO_ID: string | null = "bqon4TM2MgM";
@@ -46,6 +47,7 @@ export default function ScreenPage() {
       try { msg = JSON.parse(event.data as string) as ServerMessage; } catch { return; }
       if (msg.type === "STATE") setState(msg.state);
       if (msg.type === "LYRICS_STATE") {
+        syncServerClock(msg.serverNow);
         setLyricsState(msg.state);
         if (["loading", "preview", "ended"].includes(msg.state.phase)) setLyricsAudio(null);
         if (msg.state.phase === "lobby" || msg.state.phase === "ended") setLyricsTimerLeft(null);
@@ -53,6 +55,7 @@ export default function ScreenPage() {
       if (msg.type === "LYRICS_ABORTED") { setLyricsState(null); setLyricsAudio(null); }
       if (msg.type === "LYRICS_AUDIO") setLyricsAudio({ videoId: msg.videoId, roundIndex: msg.roundIndex });
       if (msg.type === "GUESS_STATE") {
+        syncServerClock(msg.serverNow);
         setGuessState(msg.state);
         if (msg.state.phase === "ended") setGuessAudio(null);
       }
@@ -92,7 +95,7 @@ export default function ScreenPage() {
       return;
     }
     const deadline = lyricsState.roundStart + lyricsState.timerSeconds * 1000;
-    const tick = () => setLyricsTimerLeft(Math.max(0, Math.ceil((deadline - Date.now()) / 1000)));
+    const tick = () => setLyricsTimerLeft(Math.max(0, Math.ceil((deadline - serverNow()) / 1000)));
     tick();
     const id = setInterval(tick, 200);
     return () => clearInterval(id);

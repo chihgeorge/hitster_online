@@ -7,6 +7,7 @@ import usePartySocket from "partysocket/react";
 import Timeline from "@/components/Timeline";
 import Vinyl from "@/components/Vinyl";
 import { GuessPlay, isLeader, SUBMIT_ACK_TIMEOUT_MS } from "@/components/GuessMode";
+import { serverNow, syncServerClock } from "@/lib/server-clock";
 import type { GameState, ServerMessage, ClientMessage, Player, PublicLyricsGameState, PublicGuessGameState } from "@/lib/game";
 
 function getOrCreatePlayerId(): string {
@@ -83,7 +84,7 @@ export default function PlayPage() {
     }
     const deadline = lyricsState.roundStart + lyricsState.timerSeconds * 1000;
     const tick = () => {
-      const left = Math.max(0, Math.ceil((deadline - Date.now()) / 1000));
+      const left = Math.max(0, Math.ceil((deadline - serverNow()) / 1000));
       setLyricsTimerLeft(left);
     };
     tick();
@@ -117,12 +118,14 @@ export default function PlayPage() {
           setState(msg.state);
           break;
         case "LYRICS_STATE":
+          syncServerClock(msg.serverNow);
           setLyricsState(msg.state);
           break;
         case "LYRICS_ABORTED":
           setLyricsState(null);
           break;
         case "GUESS_STATE":
+          syncServerClock(msg.serverNow);
           guessRoundRef.current = msg.state.currentRoundIndex;
           setGuessState(msg.state);
           break;

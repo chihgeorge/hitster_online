@@ -2,20 +2,6 @@
 
 ## Timed rounds (Lyrics + Guess)
 
-### Countdowns use the device clock, not server time
-
-**What:** Countdowns use the device clock, not server time.
-
-**Why:** A phone with a wrong clock hides the inputs early or loses answers to TOO_LATE.
-
-**Context:** Phones and the TV compute time left as `roundStart + timerSeconds*1000 - Date.now()`; `roundStart` is server time. A phone clock that's far off shows the wrong time (inputs hidden early, or TOO_LATE after "time left"). Fix: send `serverNow` with GUESS_STATE/LYRICS_STATE and apply the offset. _Deferred from /ship review (red team), 2026-09-24._
-
-Also tracked earlier as "Client countdown uses the device clock against the server's `roundStart`": A device clock ahead by more than the round timer shows "Time's up" immediately. Send a server time offset. Found by /ship adversarial review on 2026-09-21.
-
-**Effort:** M
-**Priority:** P3
-**Depends on:** None
-
 ### TV results list can overflow with 9+ players
 
 **What:** TV results list can overflow with 9+ players.
@@ -396,6 +382,52 @@ _Deferred from plan: foamy-crafting-bonbon.md_
 **Depends on:** None
 
 ## Completed
+
+### Countdowns use the device clock, not server time
+
+**What:** Countdowns use the device clock, not server time.
+
+**Why:** A phone with a wrong clock hides the inputs early or loses answers to TOO_LATE.
+
+**Context:** Phones and the TV compute time left as `roundStart + timerSeconds*1000 - Date.now()`; `roundStart` is server time. A phone clock that's far off shows the wrong time (inputs hidden early, or TOO_LATE after "time left"). Fix: send `serverNow` with GUESS_STATE/LYRICS_STATE and apply the offset. _Deferred from /ship review (red team), 2026-09-24._
+
+Also tracked earlier as "Client countdown uses the device clock against the server's `roundStart`": A device clock ahead by more than the round timer shows "Time's up" immediately. Send a server time offset. Found by /ship adversarial review on 2026-09-21.
+
+**Effort:** M
+**Priority:** P3
+**Depends on:** None
+
+**Completed:** v0.14.5.0 (2026-09-29) — every `LYRICS_STATE`/`GUESS_STATE` carries `serverNow`; phones and the TV record the offset (`lib/server-clock.ts`) and count down against `serverNow()`. Tests in `app/__tests__/play-page.test.tsx`, `app/__tests__/screen-page.test.tsx` and `party/index.test.ts`.
+
+### Players who join mid-game can't answer in Lyrics/Guess mode
+
+**What:** Players who join mid-game can't answer in Lyrics/Guess mode.
+
+**Why:** A friend who arrives late can't play until the next game, and nothing tells them why.
+
+**Context:** `lyricsState.players` / `guessState.players` are snapshots taken at game start; JOIN/REJOIN never add to them and `connected` never updates. A late joiner sees the round, types an answer, and `timedRound.acceptAnswer` drops it silently (`"ignored"`, no error). More likely in Guess mode (no loading phase to wait through). Fix: add late joiners to the active timed-round state with score 0 (and sync `connected` on REJOIN/onClose), or send an explicit spectator signal the client can show. _Found by /review red team on feat/guess-mode-engine, 2026-09-24._
+
+**Effort:** S
+**Priority:** P3
+**Depends on:** None
+
+**Completed:** v0.14.4.0 (2026-09-28) — `timedRound.upsertPlayer` seats a mid-game JOIN at score 0 and refreshes name/`connected` on REJOIN; nobody is added once the game has ended.
+
+### "Submitted!" is optimistic in Guess mode
+
+**What:** "Submitted!" is optimistic in Guess mode.
+
+**Why:** A dropped answer still shows ✓, so the player finds out only at the reveal.
+
+**Context:** The phone shows ✓ before the server confirms; a silently-dropped submit (second tab took over the player id, player not in the game) still looks sent. Derive "submitted" from the redacted answer key arriving, show "sending…" until then. _Deferred from /ship review (red team), 2026-09-24._
+
+Also tracked earlier as "Player shows "Submitted!" before the server acknowledges": Server silently drops answers for unknown/late-joining players. Send an ack or derive submitted from `lyricsState.answers[playerId]`. Also tag SUBMIT/TOO_LATE with the round index. Found by /ship adversarial review on 2026-09-21.
+
+**Effort:** S
+**Priority:** P3
+**Depends on:** None
+
+**Completed:** v0.14.4.0 (2026-09-28) — Guess and Lyrics derive "Submitted!" from the redacted answer key, show "Sending…" until then, and reopen the form with a retry notice after 5s without it.
 
 ### Mobile Safari e2e specs time out at random under full-suite load
 
