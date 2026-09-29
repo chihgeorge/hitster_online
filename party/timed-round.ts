@@ -60,7 +60,7 @@ export function upsertPlayer<R, A extends { ts: number }>(s: State<R, A>, player
     return true;
   }
   if (s.phase === "ended") return false;
-  s.players[playerId] = { name, score: 0, connected: true };
+  s.players[playerId] = { name, score: 0, connected: true, timeMs: 0 };
   return true;
 }
 
@@ -95,7 +95,11 @@ export function showResults<R, A extends { ts: number }>(
   for (const [pid, ans] of Object.entries(s.answers)) {
     const { answer, points } = score(s.currentRound, ans, s.roundStart);
     s.answers[pid] = answer;
-    if (points > 0 && s.players[pid]) s.players[pid].score += points;
+    if (points > 0 && s.players[pid]) {
+      s.players[pid].score += points;
+      // Tie-break (rankPlayers): time taken on the answers that scored.
+      s.players[pid].timeMs = (s.players[pid].timeMs ?? 0) + Math.max(0, ans.ts - s.roundStart);
+    }
   }
   s.phase = "results";
   s.consecutiveSkips = 0;

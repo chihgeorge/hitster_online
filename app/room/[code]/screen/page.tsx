@@ -14,7 +14,7 @@ import { Stage } from "@/components/Stage";
 import { GuessScreen, guessAudioProps } from "@/components/GuessMode";
 import { getOrCreatePersistedId } from "@/lib/device-id";
 import { serverNow, syncServerClock } from "@/lib/server-clock";
-import type { GameState, ServerMessage, PublicLyricsGameState, PublicGuessGameState } from "@/lib/game";
+import { rankPlayers, wonOnTime, type GameState, type ServerMessage, type PublicLyricsGameState, type PublicGuessGameState } from "@/lib/game";
 
 const VICTORY_VIDEO_ID: string | null = "bqon4TM2MgM";
 
@@ -114,9 +114,9 @@ export default function ScreenPage() {
 
   const phase = state?.phase ?? "lobby";
   const label: React.CSSProperties = { fontSize: 11, color: "var(--text3)", textTransform: "uppercase", letterSpacing: ".1em" };
-  const scoreRow = (players: Record<string, { name: string; score: number }>) => (
+  const scoreRow = (players: Record<string, { name: string; score: number; timeMs?: number }>) => (
     <div style={{ display: "flex", gap: 14, alignItems: "center", flexWrap: "wrap" }}>
-      {Object.entries(players).sort(([, a], [, b]) => b.score - a.score).map(([id, p]) => (
+      {rankPlayers(players).map(([id, p]) => (
         <span key={id} style={{ fontSize: 13, color: "var(--text2)", fontWeight: 600 }}>{p.name}: <span style={{ color: "var(--orange)" }}>{p.score}</span></span>
       ))}
     </div>
@@ -263,7 +263,7 @@ export default function ScreenPage() {
                 <p style={{ fontSize: 26, fontWeight: 900, color: "var(--orange)", marginTop: 4 }}>{lyricsState.currentRound.blankSentence ?? "（已揭曉）"}</p>
               </div>
               <div style={{ flex: 1, overflowY: "auto", display: "flex", flexDirection: "column", gap: 8 }}>
-                {Object.entries(lyricsState.players).sort(([, a], [, b]) => b.score - a.score).map(([id, p]) => {
+                {rankPlayers(lyricsState.players).map(([id, p]) => {
                   const ans = lyricsState.answers[id];
                   return (
                     <div key={id} style={{ display: "flex", alignItems: "center", gap: 12, background: ans?.correct ? "rgba(0,200,150,.08)" : "rgba(255,107,53,.04)", borderRadius: 12, padding: "10px 16px" }}>
@@ -280,10 +280,11 @@ export default function ScreenPage() {
             <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 20 }}>
               <p style={label}>歌詞模式結束 · Lyrics Mode Over!</p>
               <h2 className="title-outlined" style={{ fontSize: 48 }}>
-                {Object.entries(lyricsState.players).sort(([, a], [, b]) => b.score - a.score)[0]?.[1]?.name ?? "?"}
+                {rankPlayers(lyricsState.players)[0]?.[1]?.name ?? "?"}
               </h2>
+              {wonOnTime(lyricsState.players) && <p data-testid="won-on-time" style={{ fontSize: 14, color: "var(--text2)", fontWeight: 700 }}>同分，答得較快的人獲勝 · Tied on points — faster answers won</p>}
               <div style={{ width: "100%", maxWidth: 520, display: "flex", flexDirection: "column", gap: 8 }}>
-                {Object.entries(lyricsState.players).sort(([, a], [, b]) => b.score - a.score).map(([id, p], i) => (
+                {rankPlayers(lyricsState.players).map(([id, p], i) => (
                   <div key={id} style={{ display: "flex", alignItems: "center", gap: 12, background: i === 0 ? "var(--ink)" : "white", border: "2px solid rgba(255,107,53,.15)", borderRadius: 14, padding: "10px 18px" }}>
                     <span style={{ fontWeight: 900, color: i === 0 ? "var(--gold)" : "var(--text3)", minWidth: 28 }}>#{i + 1}</span>
                     <span style={{ fontWeight: 700, color: i === 0 ? "var(--bg)" : "var(--ink)", flex: 1 }}>{p.name}</span>

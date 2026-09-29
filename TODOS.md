@@ -26,18 +26,6 @@
 **Priority:** P3
 **Depends on:** None
 
-### Ties crown a single winner in Lyrics/Guess
-
-**What:** Ties crown a single winner in Lyrics/Guess.
-
-**Why:** A tie shows one player as winner and the other as #2 at random.
-
-**Context:** Players tied on top get "WINNER!" vs "#2" by object-key order; TV/host show one name. Decide tie semantics (co-winners?). _From /ship adversarial #5, 2026-09-24._
-
-**Effort:** S
-**Priority:** P3
-**Depends on:** None
-
 ### `consecutiveSkips` is a dead field in the timed-round state
 
 **What:** `consecutiveSkips` is a dead field in the timed-round state.
@@ -284,6 +272,20 @@ _Deferred from plan: foamy-crafting-bonbon.md_
 **Depends on:** None
 
 ## Completed
+
+### Ties crown a single winner in Lyrics/Guess
+
+**What:** Ties crown a single winner in Lyrics/Guess.
+
+**Why:** A tie shows one player as winner and the other as #2 at random.
+
+**Context:** Players tied on top get "WINNER!" vs "#2" by object-key order; TV/host show one name. Decide tie semantics (co-winners?). _From /ship adversarial #5, 2026-09-24._
+
+**Effort:** S
+**Priority:** P3
+**Depends on:** None
+
+**Completed:** v0.14.8.0 (2026-09-29) — tie-break chosen: more points, then less total time on scoring answers (`timeMs`, added in `timedRound.showResults`), then join order. `rankPlayers()` in `lib/game.ts` drives every standings list, WINNER! and the gold leader; end screens say when time decided it (`wonOnTime`).
 
 ### Timeline START_GAME isn't blocked by an *ended* Guess/Lyrics game
 

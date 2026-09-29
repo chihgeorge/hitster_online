@@ -1190,7 +1190,7 @@ export default class HitsterRoom implements Party.Server {
     const playlistId = extractPlaylistId(playlistUrl);
     const players: LyricsGameState["players"] = {};
     for (const [pid, p] of Object.entries(this.state.players)) {
-      players[pid] = { name: p.name, score: 0, connected: p.connected };
+      players[pid] = { name: p.name, score: 0, connected: p.connected, timeMs: 0 };
     }
 
     this.lyricsState = {
@@ -1572,7 +1572,7 @@ export default class HitsterRoom implements Party.Server {
     }
     const players: GuessGameState["players"] = {};
     for (const [pid, p] of Object.entries(this.state.players)) {
-      players[pid] = { name: p.name, score: 0, connected: p.connected };
+      players[pid] = { name: p.name, score: 0, connected: p.connected, timeMs: 0 };
     }
     this.guessState = {
       mode: "guess",

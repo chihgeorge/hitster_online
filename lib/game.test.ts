@@ -1,5 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
+  rankPlayers,
+  wonOnTime,
   isCorrectPlacement,
   evaluateRound,
   checkWinner,
@@ -192,5 +194,25 @@ describe("extractPlaylistId", () => {
     expect(extractPlaylistId("PLFsQleAWXsj_4yDeebiIADdH5FMayBiZo")).toBe(
       "PLFsQleAWXsj_4yDeebiIADdH5FMayBiZo"
     );
+  });
+});
+
+describe("rankPlayers / wonOnTime (Lyrics/Guess tie-break)", () => {
+  it("ranks by points, then less time on scoring answers, then join order", () => {
+    const players = {
+      a: { score: 5, timeMs: 1_000 },
+      b: { score: 9, timeMs: 50_000 },
+      c: { score: 5, timeMs: 800 },
+      d: { score: 5, timeMs: 800 },
+      e: { score: 5 }, // older state without timeMs counts as 0
+    };
+    expect(rankPlayers(players).map(([id]) => id)).toEqual(["b", "e", "c", "d", "a"]);
+  });
+
+  it("wonOnTime is true only when the top two share a positive score", () => {
+    expect(wonOnTime({ a: { score: 5, timeMs: 1 }, b: { score: 5, timeMs: 2 } })).toBe(true);
+    expect(wonOnTime({ a: { score: 6 }, b: { score: 5 } })).toBe(false);
+    expect(wonOnTime({ a: { score: 0 }, b: { score: 0 } })).toBe(false);
+    expect(wonOnTime({ a: { score: 5 } })).toBe(false);
   });
 });

@@ -188,8 +188,39 @@ describe("isLeader (DESIGN.md: gold = current leader only)", () => {
   it("is gold only for a top scorer with points", () => {
     expect(isLeader(players(10, 5), "me")).toBe(true);
     expect(isLeader(players(5, 10), "me")).toBe(false);
-    expect(isLeader(players(7, 7), "me")).toBe(true); // tied lead
     expect(isLeader(players(0, 0), "me")).toBe(false); // nobody leads at 0-0
+  });
+
+  it("on tied points only the faster player is gold", () => {
+    const tied = (meMs: number, otherMs: number) => ({ players: { me: { score: 7, timeMs: meMs }, other: { score: 7, timeMs: otherMs } } });
+    expect(isLeader(tied(4_000, 9_000), "me")).toBe(true);
+    expect(isLeader(tied(4_000, 9_000), "other")).toBe(false);
+    expect(isLeader(tied(9_000, 4_000), "me")).toBe(false);
+  });
+});
+
+describe("Guess ended screens: a tie on points", () => {
+  const tiedEnd = state({ phase: "ended", currentRound: null, players: {
+    [ME]: { name: "Alice", score: 500, connected: true, timeMs: 30_000 },
+    bob: { name: "Bob", score: 500, connected: true, timeMs: 12_000 },
+  } });
+  it("names one winner (the faster player) and says time decided it", () => {
+    const { unmount } = render(<GuessPlay state={tiedEnd} playerId="bob" playerName="Bob" tooLate={false} onSubmit={vi.fn()} />);
+    expect(screen.getByText("WINNER!")).toBeTruthy();
+    expect(screen.getByTestId("won-on-time")).toBeTruthy();
+    unmount();
+    render(<GuessPlay state={tiedEnd} playerId={ME} playerName="Alice" tooLate={false} onSubmit={vi.fn()} />);
+    expect(screen.getByText(/#2 — 500 pts/)).toBeTruthy();
+    expect(screen.queryByText("WINNER!")).toBeNull();
+  });
+
+  it("the TV shows the faster player as winner, and no note when the scores differ", () => {
+    const { unmount } = render(<GuessScreen state={tiedEnd} />);
+    expect(screen.getByRole("heading", { level: 2 }).textContent).toBe("Bob");
+    expect(screen.getByTestId("won-on-time")).toBeTruthy();
+    unmount();
+    render(<GuessScreen state={{ ...tiedEnd, players: { ...tiedEnd.players, bob: { ...tiedEnd.players.bob, score: 600 } } }} />);
+    expect(screen.queryByTestId("won-on-time")).toBeNull();
   });
 });
 
