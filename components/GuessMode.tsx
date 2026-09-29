@@ -9,7 +9,7 @@ import Vinyl from "@/components/Vinyl";
 import { isAudioPhase, type VideoFrame } from "@/components/LyricsPlayer";
 import { decodeEntities } from "@/lib/utils";
 import { serverNow } from "@/lib/server-clock";
-import type { GuessAnswer, PublicGuessGameState } from "@/lib/game";
+import { rankPlayers, wonOnTime, type GuessAnswer, type PublicGuessGameState } from "@/lib/game";
 
 type AudioReply = { videoId: string | null; roundIndex: number };
 
@@ -55,13 +55,13 @@ export function useCountdown(state: PublicGuessGameState | null): number | null 
 // Server text is HTML-escaped (sanitizeText); React escapes again, so decode for display.
 const show = (s: string | null | undefined) => decodeEntities(s ?? "");
 
-const ranked = (state: PublicGuessGameState) =>
-  Object.entries(state.players).sort(([, a], [, b]) => b.score - a.score);
+const ranked = (state: PublicGuessGameState) => rankPlayers(state.players);
 
-/** Sole or tied top scorer with at least one point — the only player whose score shows in gold. */
-export const isLeader = (state: { players: Record<string, { score: number }> }, playerId: string) => {
-  const me = state.players[playerId]?.score ?? 0;
-  return me > 0 && Object.values(state.players).every((p) => p.score <= me);
+/** The current leader by rankPlayers (ties go to the faster answers), with at least one point —
+ * the only player whose score shows in gold. */
+export const isLeader = (state: { players: Record<string, { score: number; timeMs?: number }> }, playerId: string) => {
+  const [top] = rankPlayers(state.players);
+  return !!top && top[0] === playerId && top[1].score > 0;
 };
 
 const roundLabel = (state: PublicGuessGameState) => `第 ${state.currentRoundIndex + 1} / ${state.totalRounds} 回合`;
@@ -232,6 +232,7 @@ export function GuessPlay({ state, playerId, playerName, tooLate, onSubmit }: Pl
             <h1 style={{ fontSize: 26, fontWeight: 900, color: "var(--ink)" }}>#{myRank + 1} — {me?.score ?? 0} pts</h1>
           </>
         )}
+        {wonOnTime(state.players) && <p data-testid="won-on-time" style={{ fontSize: 12, color: "var(--text3)", marginTop: 8 }}>同分，答得較快的人獲勝 · Tied on points — faster answers won</p>}
       </div>
       <Standings state={state} highlight={playerId} />
     </>, true);
@@ -360,6 +361,7 @@ export function GuessScreen({ state }: { state: PublicGuessGameState }) {
       <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 20 }}>
         <p style={label}>猜歌模式結束 · Guess Mode Over!</p>
         <h2 className="title-outlined" style={{ fontSize: 48 }}>{sorted[0]?.[1]?.name ?? "?"}</h2>
+        {wonOnTime(state.players) && <p data-testid="won-on-time" style={{ fontSize: 14, color: "var(--text2)", fontWeight: 700 }}>同分，答得較快的人獲勝 · Tied on points — faster answers won</p>}
         <div style={{ width: "100%", maxWidth: 520, display: "flex", flexDirection: "column", gap: 8 }}>
           {sorted.map(([id, p], i) => (
             <div key={id} style={{ display: "flex", alignItems: "center", gap: 12, background: i === 0 ? "var(--ink)" : "white", border: "2px solid rgba(255,107,53,.15)", borderRadius: 14, padding: "10px 18px" }}>

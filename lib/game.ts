@@ -19,9 +19,28 @@ export interface LyricsRound {
 // Shared shape of every simultaneous-timed-round mode (Lyrics, Guess); lifecycle in party/timed-round.ts.
 export type TimedRoundPhase = "lobby" | "loading" | "preview" | "playing" | "guessing" | "results" | "ended";
 
+/** A player in a Lyrics/Guess game. timeMs: total time taken on answers that scored — the
+ * tie-break (see rankPlayers). Optional: a state from before it existed counts as 0. */
+export type TimedRoundPlayer = { name: string; score: number; connected: boolean; timeMs?: number };
+
+/**
+ * Standings, best first: more points, then less time taken on scoring answers, then whoever
+ * joined first (Object.entries keeps insertion order and sort is stable), so there is always
+ * exactly one winner.
+ */
+export function rankPlayers<P extends { score: number; timeMs?: number }>(players: Record<string, P>): [string, P][] {
+  return Object.entries(players).sort(([, a], [, b]) => b.score - a.score || (a.timeMs ?? 0) - (b.timeMs ?? 0));
+}
+
+/** True when the top two finished on the same points, so time decided the winner. */
+export function wonOnTime(players: Record<string, { score: number; timeMs?: number }>): boolean {
+  const [first, second] = rankPlayers(players);
+  return !!first && !!second && first[1].score > 0 && first[1].score === second[1].score;
+}
+
 export interface TimedRoundState<R, A extends { ts: number }> {
   phase: TimedRoundPhase;
-  players: Record<string, { name: string; score: number; connected: boolean }>;
+  players: Record<string, TimedRoundPlayer>;
   rounds: R[];
   currentRound: R | null;
   roundStart: number | null;

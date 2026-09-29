@@ -8,7 +8,7 @@ import Timeline from "@/components/Timeline";
 import Vinyl from "@/components/Vinyl";
 import { GuessPlay, isLeader, SUBMIT_ACK_TIMEOUT_MS } from "@/components/GuessMode";
 import { serverNow, syncServerClock } from "@/lib/server-clock";
-import type { GameState, ServerMessage, ClientMessage, Player, PublicLyricsGameState, PublicGuessGameState } from "@/lib/game";
+import { rankPlayers, wonOnTime, type GameState, type ServerMessage, type ClientMessage, type Player, type PublicLyricsGameState, type PublicGuessGameState } from "@/lib/game";
 
 function getOrCreatePlayerId(): string {
   const key = "hitster_player_id";
@@ -355,7 +355,7 @@ export default function PlayPage() {
 
   /* ── Lyrics Mode: ended ── */
   if (lyricsState?.phase === "ended") {
-    const sorted = Object.entries(lyricsState.players).sort(([,a],[,b]) => b.score - a.score);
+    const sorted = rankPlayers(lyricsState.players);
     const myRank = sorted.findIndex(([id]) => id === playerIdRef.current);
     const isWinner = myRank === 0;
     return (
@@ -374,6 +374,7 @@ export default function PlayPage() {
               <h1 style={{ fontSize: 26, fontWeight: 900, color: "var(--ink)" }}>#{myRank + 1} — {myLyricsPlayer?.score ?? 0} pts</h1>
             </>
           )}
+          {wonOnTime(lyricsState.players) && <p data-testid="won-on-time" style={{ fontSize: 12, color: "var(--text3)", marginTop: 8 }}>同分，答得較快的人獲勝 · Tied on points — faster answers won</p>}
         </div>
         <div style={{ background: "white", borderRadius: 20, padding: 20, boxShadow: "0 4px 20px rgba(255,107,53,.08)", width: "100%", maxWidth: 340 }}>
           <p style={{ fontSize: 12, fontWeight: 700, color: "var(--text3)", marginBottom: 12 }}>最終排名 · Final Scores</p>

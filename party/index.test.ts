@@ -3146,7 +3146,7 @@ describe("Timed rounds: players who join mid-game", () => {
     await send(room, hostConn, { type: "START_LYRICS_ROUND", hostId: "host-uuid" });
     const lateConn = makeConn("p3-conn");
     await send(room, lateConn, { type: "JOIN", playerId: P3, name: "Carol" });
-    expect(room.lyricsState!.players[P3]).toEqual({ name: "Carol", score: 0, connected: true });
+    expect(room.lyricsState!.players[P3]).toEqual({ name: "Carol", score: 0, connected: true, timeMs: 0 });
     await send(room, lateConn, { type: "SUBMIT_LYRICS_ANSWER", playerId: P3, text: "hi" });
     expect(room.lyricsState!.answers[P3]?.text).toBe("hi");
   });

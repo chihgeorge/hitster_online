@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.14.8.0] — 2026-09-29
+
+### Fixed
+- **Ties in Lyrics and Guess now have a fair winner:** when players finish on the same points, whoever answered faster on the rounds they scored wins. Before, one of them was picked at random. The end screens on phones and the TV say when the tie came down to speed, and only the real leader's score shows in gold during the game
+
 ## [0.14.7.0] — 2026-09-29
 
 ### Fixed

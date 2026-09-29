@@ -99,6 +99,18 @@ describe("ScreenPage: countdown follows the server clock", () => {
   });
 });
 
+describe("ScreenPage: Lyrics end screen on tied points", () => {
+  it("names the faster player as winner and says time decided it", () => {
+    render(<ScreenPage />);
+    serverSends({ type: "LYRICS_STATE", serverNow: Date.now(), state: lyricsState({ phase: "ended", currentRound: null, players: {
+      [P1]: { name: "Alice", score: 40, connected: true, timeMs: 20_000 },
+      [P2]: { name: "Bob", score: 40, connected: true, timeMs: 8_000 },
+    } }) });
+    expect(screen.getByRole("heading", { level: 2 }).textContent).toBe("Bob");
+    expect(screen.getByTestId("won-on-time")).toBeTruthy();
+  });
+});
+
 describe("ScreenPage: waiting / lobby", () => {
   it("shows the join QR and room code before any game starts", () => {
     render(<ScreenPage />);

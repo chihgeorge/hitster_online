@@ -10,6 +10,7 @@ import { Qr } from "@/components/Qr";
 import { GuessHostControls, QuitGameButton } from "@/components/GuessMode";
 import { getOrCreatePersistedId } from "@/lib/device-id";
 import { importLocalPlaylistsToLibrary } from "@/lib/playlist-library-migration";
+import { rankPlayers } from "@/lib/game";
 import type { GameState, ServerMessage, ClientMessage, SongDiagnostic, EditableSong, PublicLyricsGameState, PublicLyricsRound, LyricsGameConfig, PublicGuessGameState, SongEditDiff, EditableLyricRound, LyricEditDiff } from "@/lib/game";
 
 const PARTYKIT_HOST = process.env.NEXT_PUBLIC_PARTYKIT_HOST || "localhost:1999";
@@ -942,7 +943,7 @@ export default function HostPage() {
         <div style={{ ...panel, display: "flex", flexDirection: "column", alignItems: "center", gap: 16, padding: "36px 24px" }}>
           <p style={{ fontSize: 11, color: "var(--text3)", textTransform: "uppercase", letterSpacing: ".12em" }}>歌詞模式結束 · Lyrics Mode Over!</p>
           <h2 className="title-outlined" style={{ fontSize: 32, lineHeight: 1.05 }}>
-            {Object.entries(lyricsState.players).sort(([,a],[,b]) => b.score - a.score)[0]?.[1]?.name ?? "?"}
+            {rankPlayers(lyricsState.players)[0]?.[1]?.name ?? "?"}
           </h2>
           <button onClick={handleResetLyricsGame}
             style={{ background: "var(--orange)", color: "white", border: "none", borderRadius: 14, padding: "14px 32px", fontSize: 15, fontWeight: 900, cursor: "pointer", fontFamily: "var(--font-zh)" }}>

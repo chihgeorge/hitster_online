@@ -87,6 +87,25 @@ describe("timed-round wrong-phase refusals", () => {
   });
 });
 
+describe("timed-round tie-break time", () => {
+  it("showResults adds the time taken to each scoring answer, and nothing for a miss", () => {
+    const s = fresh();
+    tr.confirmPreview(s);
+    tr.startRound(s, 1_000);
+    tr.acceptAnswer(s, "p1", 4_000, 500, build("fast"));
+    tr.acceptAnswer(s, "p2", 9_000, 500, build("miss"));
+    tr.showResults(s, (_, a) => ({ answer: a, points: a.text === "miss" ? 0 : 10 }));
+    expect(s.players.p1.timeMs).toBe(3_000);
+    expect(s.players.p2.timeMs ?? 0).toBe(0);
+
+    tr.nextRound(s);
+    tr.startRound(s, 20_000);
+    tr.acceptAnswer(s, "p1", 22_500, 500, build("again"));
+    tr.showResults(s, (_, a) => ({ answer: a, points: 10 }));
+    expect(s.players.p1.timeMs).toBe(5_500);
+  });
+});
+
 describe("timed-round upsertPlayer (late joiners)", () => {
   it("seats a new player at score 0 so their answer counts", () => {
     const s = fresh();
@@ -94,7 +113,7 @@ describe("timed-round upsertPlayer (late joiners)", () => {
     tr.startRound(s, 0);
     expect(tr.acceptAnswer(s, "p3", 100, 500, build("x"))).toBe("ignored");
     expect(tr.upsertPlayer(s, "p3", "c")).toBe(true);
-    expect(s.players.p3).toEqual({ name: "c", score: 0, connected: true });
+    expect(s.players.p3).toEqual({ name: "c", score: 0, connected: true, timeMs: 0 });
     expect(tr.acceptAnswer(s, "p3", 100, 500, build("x"))).toBe("ok");
   });
 
