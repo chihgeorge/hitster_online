@@ -136,7 +136,7 @@ describe("HostPage: Lyrics mode Start-Lyrics race (T2, docs/designs/full-page-fo
         mode: "lyrics", phase: "preview",
         players: { p1: { name: "Alice", score: 0, connected: true } },
         rounds: [{ videoId: "v1", title: "Song A", artist: "Artist A", language: "en", lyricContext: "I want ___", blankSentence: "you" }],
-        currentRound: null, roundStart: null, timerSeconds: 60, answers: {}, totalRounds: 1, currentRoundIndex: 0, consecutiveSkips: 0,
+        currentRound: null, roundStart: null, timerSeconds: 60, answers: {}, totalRounds: 1, currentRoundIndex: 0,
       },
     });
 
@@ -170,7 +170,7 @@ describe("HostPage: Lyrics Focus mode entry point gating (T6)", () => {
         mode: "lyrics", phase: "preview",
         players: { p1: { name: "Alice", score: 0, connected: true } },
         rounds: [{ videoId: "v1", title: "Song A", artist: "Artist A", language: "en", lyricContext: "I want ___", blankSentence: "you" }],
-        currentRound: null, roundStart: null, timerSeconds: 60, answers: {}, totalRounds: 1, currentRoundIndex: 0, consecutiveSkips: 0,
+        currentRound: null, roundStart: null, timerSeconds: 60, answers: {}, totalRounds: 1, currentRoundIndex: 0,
       },
     });
     expect(screen.queryByText(/Focus 模式/)).toBeNull();

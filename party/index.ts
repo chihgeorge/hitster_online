@@ -1204,7 +1204,6 @@ export default class HitsterRoom implements Party.Server {
       answers: {},
       totalRounds: this.lyricsConfig.totalRounds,
       currentRoundIndex: 0,
-      consecutiveSkips: 0,
     };
     this.broadcastLyricsState();
     // RESET_LYRICS_GAME works in any phase, including mid-"loading" — after every await below,
@@ -1585,7 +1584,6 @@ export default class HitsterRoom implements Party.Server {
       answers: {},
       totalRounds: deck.length,
       currentRoundIndex: 0,
-      consecutiveSkips: 0,
     };
     this.broadcastGuessState();
   }

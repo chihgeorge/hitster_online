@@ -102,7 +102,6 @@ export function showResults<R, A extends { ts: number }>(
     }
   }
   s.phase = "results";
-  s.consecutiveSkips = 0;
   return true;
 }
 

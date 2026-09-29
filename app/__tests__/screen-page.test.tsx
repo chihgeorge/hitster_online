@@ -70,7 +70,7 @@ function lyricsState(over: Partial<PublicLyricsGameState> = {}): PublicLyricsGam
     players: { [P1]: { name: "Alice", score: 10, connected: true }, [P2]: { name: "Bob", score: 5, connected: true } },
     rounds: [],
     currentRound: { videoId: "", title: "那些年", artist: "胡夏", language: "zh-TW", lyricContext: "那些年錯過的__", blankSentence: null },
-    roundStart: Date.now(), timerSeconds: 20, answers: {}, totalRounds: 3, currentRoundIndex: 0, consecutiveSkips: 0,
+    roundStart: Date.now(), timerSeconds: 20, answers: {}, totalRounds: 3, currentRoundIndex: 0,
     ...over,
   } as PublicLyricsGameState;
 }
@@ -337,7 +337,7 @@ describe("ScreenPage: audio request (needsLyricsAudio retry)", () => {
     expect(screen.getByTestId("not-the-tv").textContent).toContain("isn't this room's TV");
     sendSpy.mockClear();
     serverSends({ type: "LYRICS_STATE", state: lyricsState({ phase: "playing", currentRoundIndex: 0, answers: {} }) });
-    serverSends({ type: "GUESS_STATE", state: { mode: "guess", phase: "playing", players: {}, currentRound: { hasArtist: true, title: null, artist: null }, roundStart: null, timerSeconds: 60, answers: {}, totalRounds: 3, currentRoundIndex: 0, consecutiveSkips: 0 }, serverNow: Date.now() });
+    serverSends({ type: "GUESS_STATE", state: { mode: "guess", phase: "playing", players: {}, currentRound: { hasArtist: true, title: null, artist: null }, roundStart: null, timerSeconds: 60, answers: {}, totalRounds: 3, currentRoundIndex: 0 }, serverNow: Date.now() });
     expect(sendSpy.mock.calls.filter((c) => /GET_(LYRICS|GUESS)_AUDIO/.test(String(c[0])))).toHaveLength(0);
   });
 
@@ -371,7 +371,7 @@ describe("ScreenPage: audio request (needsLyricsAudio retry)", () => {
 describe("ScreenPage: Guess Mode audio", () => {
   const guess = (over: object = {}) => ({
     mode: "guess", phase: "playing", players: {}, currentRound: { hasArtist: true, title: null, artist: null },
-    roundStart: null, timerSeconds: 60, answers: {}, totalRounds: 3, currentRoundIndex: 0, consecutiveSkips: 0, ...over,
+    roundStart: null, timerSeconds: 60, answers: {}, totalRounds: 3, currentRoundIndex: 0, ...over,
   });
   const audioRequests = () => sendSpy.mock.calls.map((c) => JSON.parse(c[0] as string)).filter((m) => m.type === "GET_GUESS_AUDIO").length;
 
