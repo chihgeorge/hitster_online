@@ -1,6 +1,6 @@
 # TODOS
 
-## Timed rounds (Lyrics + Guess)
+## Guess Mode
 
 ### Guess grading tuning after playtest
 
@@ -13,6 +13,8 @@
 **Effort:** S
 **Priority:** P3
 **Depends on:** None
+
+## Lyrics Mode
 
 ### E2E: verify lrclib → Claude pipeline with a real player in the room
 
@@ -27,19 +29,19 @@ _Deferred from /qa on feat/lyrics-api 2026-09-17_
 **Priority:** P3
 **Depends on:** None
 
-### Play a video that can't be embedded: skip to the next song automatically
+## Host & Screen
 
-**What:** Play a video that can't be embedded: skip to the next song automatically.
+### Timeline: skip a song whose video can't be played
 
-**Why:** A round with an unembeddable video runs with no audio.
+**What:** In Timeline mode, draw another card when the TV's player can't play the current song.
 
-**Context:** LyricsPlayer now warns the host, but the round still runs without audio. A skip message would need adding (the unused `LYRICS_ROUND_FAILED` type was removed in v0.5.1.0). Found by /ship adversarial review on 2026-09-21.
+**Why:** A Timeline turn with an unembeddable video runs with no audio; Lyrics and Guess already skip (v0.14.11.0).
 
-**Effort:** M
+**Context:** `MusicPlayer` on `/screen` already detects the failure (`failedId`) and shows a notice. Reuse the `AUDIO_FAILED` message: in Timeline's guessing phase, put the card back out of play and deal the next song from `state.songs` for the same turn. _Split out of the Lyrics/Guess skip, 2026-09-29._
+
+**Effort:** S
 **Priority:** P3
 **Depends on:** None
-
-## Host & Screen
 
 ### The screen tab opened from the host link keeps a reference to the host tab
 
@@ -198,6 +200,20 @@ _Deferred from plan: foamy-crafting-bonbon.md_
 
 ## Completed
 
+### Play a video that can't be embedded: skip to the next song automatically
+
+**What:** Play a video that can't be embedded: skip to the next song automatically.
+
+**Why:** A round with an unembeddable video runs with no audio.
+
+**Context:** LyricsPlayer now warns the host, but the round still runs without audio. A skip message would need adding (the unused `LYRICS_ROUND_FAILED` type was removed in v0.5.1.0). Found by /ship adversarial review on 2026-09-21.
+
+**Effort:** M
+**Priority:** P3
+**Depends on:** None
+
+**Completed:** v0.14.11.0 (2026-09-29), Lyrics and Guess — the TV's `LyricsPlayer` reports a refused video (`onFailed` → `AUDIO_FAILED`); the server checks it's the room's screen, the current song and before results, then `timedRound.skipRound` drops the round (the game gets one round shorter, or ends), broadcasts `ROUND_SKIPPED` (a notice on TV, phones and host) and sends the TV the next song. Timeline mode is a separate item under Host & Screen.
+
 ### TV results list can overflow with 9+ players
 
 **What:** TV results list can overflow with 9+ players.
@@ -281,8 +297,6 @@ _Surfaced by adversarial review on feat/lyrics-api 2026-09-17_
 **Priority:** P3
 **Depends on:** None
 
-## Guess Mode
-
 **Completed:** v0.14.9.0 (2026-09-29) — removed from `TimedRoundState`, the server and every test fixture.
 
 ### Ties crown a single winner in Lyrics/Guess
@@ -338,8 +352,6 @@ _Surfaced by adversarial review on feat/lyrics-api 2026-09-17_
 **Effort:** S
 **Priority:** P3
 **Depends on:** None
-
-## Lyrics Mode
 
 **Completed:** v0.14.7.0 (2026-09-29) — the play page keys the Guess TOO_LATE flag on the round's `roundStart` (server time) instead of its index.
 

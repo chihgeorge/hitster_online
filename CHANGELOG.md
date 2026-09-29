@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.14.11.0] — 2026-09-29
+
+### Fixed
+- **Songs that can't play are skipped automatically in Lyrics and Guess:** when the TV can't play a round's video (the uploader blocked embedding, or it was removed), the game moves on to the next song instead of running a silent round. The TV, phones and host show "這首歌無法播放，已換下一首 · That song couldn't play — skipped to the next one". The game gets one round shorter, and any answers already sent for the skipped song are discarded
+
 ## [0.14.10.0] — 2026-09-29
 
 ### Fixed
