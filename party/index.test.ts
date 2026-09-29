@@ -3020,6 +3020,43 @@ describe("Guess Mode: lifecycle", () => {
   });
 });
 
+describe("Timeline START_GAME over a finished or previewed Lyrics/Guess game", () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it("drops an ended Guess game and tells clients, so phones leave its standings", async () => {
+    const { room, hostConn } = await setupGuessGame({ timerSeconds: 60, totalRounds: 1, fuzzyEnabled: false });
+    await send(room, hostConn, { type: "START_GUESS_ROUND", hostId: "host-uuid" });
+    await send(room, hostConn, { type: "SHOW_GUESS_RESULTS", hostId: "host-uuid" });
+    await send(room, hostConn, { type: "NEXT_GUESS_ROUND", hostId: "host-uuid" });
+    expect(room.guessState?.phase).toBe("ended");
+    await send(room, hostConn, { type: "START_GAME", hostId: "host-uuid", playlistUrl: "hitster://test" });
+    expect(room.guessState).toBeNull();
+    expect(allSentMessages(room).some((m) => m.type === "GUESS_ABORTED")).toBe(true);
+    expect(room.state.phase).not.toBe("lobby");
+  });
+
+  it("drops a Lyrics game still in preview", async () => {
+    const { room, hostConn } = await setupLyricsGame();
+    room.lyricsState!.phase = "preview";
+    await send(room, hostConn, { type: "START_GAME", hostId: "host-uuid", playlistUrl: "hitster://test" });
+    expect(room.lyricsState).toBeNull();
+    expect(allSentMessages(room).some((m) => m.type === "LYRICS_ABORTED")).toBe(true);
+  });
+
+  it("still refuses while a Guess round is in play, and a non-host can't clear anything", async () => {
+    const { room, hostConn } = await setupGuessGame();
+    await send(room, hostConn, { type: "START_GAME", hostId: "host-uuid", playlistUrl: "hitster://test" });
+    expect(lastSentTo(hostConn)).toMatchObject({ type: "ERROR", error: "wrong_phase" });
+    expect(room.guessState?.phase).toBe("playing");
+
+    room.guessState!.phase = "ended";
+    const stranger = makeConn("stranger");
+    await send(room, stranger, { type: "START_GAME", hostId: "not-the-host", playlistUrl: "hitster://test" });
+    expect(lastSentTo(stranger)).toMatchObject({ type: "ERROR", error: "unauthorized" });
+    expect(room.guessState).not.toBeNull();
+  });
+});
+
 describe("Guess Mode: guards", () => {
   beforeEach(() => vi.clearAllMocks());
 
