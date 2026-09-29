@@ -682,7 +682,10 @@ export default function HostPage() {
                 <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                   <span style={{ color: "var(--mint)", fontSize: 16 }}>✓</span>
                   <p style={{ color: "var(--mint)", fontWeight: 700, fontSize: 13 }}>
-                    已載入 — {readySongCount} 首歌曲有確認年份
+                    {/* Release years only matter in Timeline; songCount counts every loaded song. */}
+                    {gameMode === "timeline"
+                      ? `已載入 — ${readySongCount} 首歌曲，${readySongs.filter((s) => s.year).length} 首有確認年份`
+                      : `已載入 — ${readySongCount} 首歌曲`}
                   </p>
                 </div>
                 {savedId ? (
