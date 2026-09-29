@@ -93,18 +93,18 @@ _Deferred from /qa on feat/lyrics-api 2026-09-17_
 **Priority:** P3
 **Depends on:** None
 
-### `npm audit` reports 17 remaining advisories (2 critical, 5 high, 9 moderate, 1 low), all dev/build-tooling only
+### `npm audit` reports 4 remaining advisories (1 high, 3 moderate), all inside `partykit`'s local dev server
 
-**What:** `npm audit` reports 17 remaining advisories (2 critical, 5 high, 9 moderate, 1 low), all dev/build-tooling only.
+**What:** `npm audit` still reports 4 advisories, all inside `partykit`'s local dev server: esbuild 0.21.5, and undici 5.29.0 via miniflare 3.
 
-**Why:** Keep the advisory count honest; dev-only today.
+**Why:** Keep the advisory count honest. These packages only run during `npx partykit dev` on a developer's machine; they are not deployed.
 
-**Context:** Confirmed via `npm ls` per package — none trace to a production dependency: `eslint-config-next`'s tooling (brace-expansion, browserslist, baseline-browser-mapping), `eslint` itself (js-yaml), `vitest` (vite, fflate), and `partykit`'s own bundler/local-dev simulator (esbuild, undici via miniflare). `ws` was fixed via a package.json `overrides` pin to `8.21.0`. The rest aren't safely fixable without a major-version bump from an upstream package (`partykit`→miniflare, or `next build`/`eslint-config-next`'s own dep tree) — revisit in a batch when those ship updates.
-_Surfaced by ad-hoc audit, 2026-09-23_
+**Context:** v0.14.14.0 fixed the other 13 by updating packages within their existing version ranges (vite, vitest 4.1.11, concurrently/shell-quote, js-yaml, brace-expansion, browserslist, @babel/core). `partykit@0.0.115` is the latest release and pins these two. npm's suggested fix (`partykit@0.0.0`) is a downgrade, not a fix. Forcing undici 6.28+ into miniflare 3 through `overrides` could break the local simulator, so revisit this when partykit ships a release on newer miniflare. Note: npm 10.9.7 crashes on `npm audit fix` in this repo (`Cannot read properties of null (reading 'edgesOut')`), so v0.14.14.0 used `npx npm@11 update …` instead.
+_Surfaced by ad-hoc audit, 2026-09-23; narrowed 2026-09-29_
 
 **Effort:** S
 **Priority:** P3
-**Depends on:** None
+**Depends on:** A partykit release
 
 ### Install `gstack-cso` for formal security audit
 

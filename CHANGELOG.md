@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.14.14.0] — 2026-09-29
+
+### Changed
+- **Dependency security updates:** development tooling was updated to versions without known advisories: the test runner (vitest 4.1.11, vite 8.3), concurrently, and the build and lint helpers (js-yaml, brace-expansion, browserslist, babel). `npm audit` goes from 17 advisories to 4. The 4 left are inside PartyKit's local dev server, and a PartyKit release is needed to clear them. Nothing changes for players
+
 ## [0.14.13.0] — 2026-09-29
 
 ### Fixed
