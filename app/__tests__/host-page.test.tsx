@@ -71,6 +71,32 @@ function loadLyricsPlaylistWithPlayer() {
   serverSends({ type: "STATE", state: lobbyStateWithPlayer });
 }
 
+describe("HostPage: lobby vinyl background is lobby-only (DESIGN.md)", () => {
+  const guess = (phase: string) => ({
+    mode: "guess", phase, players: {}, currentRound: { hasArtist: true, title: null, artist: null },
+    roundStart: null, timerSeconds: 60, answers: {}, totalRounds: 3, currentRoundIndex: 0,
+  });
+  it("shows the pattern in the lobby and drops it once a Guess game is running", () => {
+    render(<HostPage />);
+    serverSends({ type: "STATE", state: lobbyStateWithPlayer });
+    expect(screen.getByTestId("host-root").className).toContain("bg-vinyl-pattern");
+    serverSends({ type: "GUESS_STATE", state: guess("playing"), serverNow: Date.now() });
+    expect(screen.getByTestId("host-root").className).not.toContain("bg-vinyl-pattern");
+    serverSends({ type: "GUESS_ABORTED" });
+    expect(screen.getByTestId("host-root").className).toContain("bg-vinyl-pattern");
+  });
+
+  it("keeps the pattern while a Lyrics game is still loading or in preview", () => {
+    render(<HostPage />);
+    serverSends({ type: "STATE", state: lobbyStateWithPlayer });
+    const lyrics = (phase: string) => ({ ...guess(phase), mode: "lyrics", rounds: [], currentRound: null });
+    serverSends({ type: "LYRICS_STATE", state: lyrics("loading"), serverNow: Date.now() });
+    expect(screen.getByTestId("host-root").className).toContain("bg-vinyl-pattern");
+    serverSends({ type: "LYRICS_STATE", state: lyrics("playing"), serverNow: Date.now() });
+    expect(screen.getByTestId("host-root").className).not.toContain("bg-vinyl-pattern");
+  });
+});
+
 describe("HostPage: loaded-playlist line matches the game mode", () => {
   const load = (modeLabel: string | null) => {
     render(<HostPage />);
