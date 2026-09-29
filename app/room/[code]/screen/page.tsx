@@ -12,7 +12,7 @@ import VictoryPlayer from "@/components/VictoryPlayer";
 import { Qr } from "@/components/Qr";
 import { Stage } from "@/components/Stage";
 import { GuessScreen, guessAudioProps } from "@/components/GuessMode";
-import { useCountdown, TvScoreRow, TvFinal, tvListStyle } from "@/components/TimedRound";
+import { useCountdown, TvScoreRow, TvFinal, tvListStyle, SkipNotice } from "@/components/TimedRound";
 import { getOrCreatePersistedId } from "@/lib/device-id";
 import { syncServerClock } from "@/lib/server-clock";
 import { rankPlayers, type GameState, type ServerMessage, type PublicLyricsGameState, type PublicGuessGameState } from "@/lib/game";
@@ -39,6 +39,8 @@ export default function ScreenPage() {
   // joined before this one, see claimOrValidateScreen). Stop re-asking for audio on every state
   // broadcast and say why the TV is silent; a reconnect tries once more.
   const [notTheTv, setNotTheTv] = useState(false);
+  // Brief notice after the server skipped a round whose song the player couldn't play.
+  const [skipNotice, setSkipNotice] = useState(0);
 
   useEffect(() => {
     screenIdRef.current = getOrCreatePersistedId("hitster_screen_id");
@@ -53,6 +55,7 @@ export default function ScreenPage() {
       if (msg.type === "STATE") setState(msg.state);
       // This page only sends screen-claim messages, so any unauthorized error is about the claim.
       if (msg.type === "ERROR" && msg.error === "unauthorized") setNotTheTv(true);
+      if (msg.type === "ROUND_SKIPPED") setSkipNotice((n) => n + 1);
       if (msg.type === "LYRICS_STATE") {
         syncServerClock(msg.serverNow);
         setLyricsState(msg.state);
@@ -100,6 +103,11 @@ export default function ScreenPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps -- socket is stable; re-run on new state or reply
   }, [guessState, guessAudio, notTheTv]);
 
+
+  // The player couldn't play this round's song: ask the server to skip the round (see handleAudioFailed).
+  function reportAudioFailed(videoId: string) {
+    socket.send(JSON.stringify({ type: "AUDIO_FAILED", screenId: screenIdRef.current, videoId }));
+  }
 
   const phase = state?.phase ?? "lobby";
   const label: React.CSSProperties = { fontSize: 11, color: "var(--text3)", textTransform: "uppercase", letterSpacing: ".1em" };
@@ -265,8 +273,10 @@ export default function ScreenPage() {
           {guessState && <GuessScreen state={guessState} />}
         </div>
       </div>
-      {isAudioPhase(lyricsState) && <LyricsPlayer {...lyricsAudioProps(lyricsState, lyricsAudio)} />}
-      {isAudioPhase(guessState) && <LyricsPlayer {...guessAudioProps(guessState, guessAudio)} />}
+      {isAudioPhase(lyricsState) && <LyricsPlayer {...lyricsAudioProps(lyricsState, lyricsAudio)} onFailed={reportAudioFailed} />}
+      {isAudioPhase(guessState) && <LyricsPlayer {...guessAudioProps(guessState, guessAudio)} onFailed={reportAudioFailed} />}
+      {skipNotice > 0 && <SkipNotice key={skipNotice} />}
     </Stage>
   );
 }
+

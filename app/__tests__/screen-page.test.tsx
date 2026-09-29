@@ -33,8 +33,10 @@ vi.mock("@/components/LyricsPlayer", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/components/LyricsPlayer")>();
   return {
     ...actual,
-    default: (props: { videoId: string | null; playing: boolean }) => (
-      <div data-testid="lyrics-player" data-video={props.videoId ?? ""} data-playing={String(props.playing)} />
+    default: (props: { videoId: string | null; playing: boolean; onFailed?: (id: string) => void }) => (
+      <div data-testid="lyrics-player" data-video={props.videoId ?? ""} data-playing={String(props.playing)}>
+        <button data-testid="player-fail" onClick={() => props.onFailed?.(props.videoId ?? "")} />
+      </div>
     ),
   };
 });
@@ -87,6 +89,23 @@ beforeEach(() => {
   searchParamsValue = new URLSearchParams(""); // default: not the creator
 });
 afterEach(() => { cleanup(); vi.useRealTimers(); resetServerClock(); });
+
+describe("ScreenPage: a song the player can't play", () => {
+  it("reports it to the server with the screen id, and shows the skip notice when the server skips", () => {
+    render(<ScreenPage />);
+    serverSends({ type: "LYRICS_STATE", serverNow: Date.now(), state: lyricsState({ phase: "playing" }) });
+    serverSends({ type: "LYRICS_AUDIO", videoId: "badVideo123", roundIndex: 0 });
+    sendSpy.mockClear();
+    act(() => { screen.getByTestId("player-fail").click(); });
+    const sent = sendSpy.mock.calls.map((c) => JSON.parse(c[0] as string));
+    expect(sent).toContainEqual({ type: "AUDIO_FAILED", screenId: localStorage.getItem("hitster_screen_id"), videoId: "badVideo123" });
+    expect(screen.queryByTestId("round-skipped")).toBeNull();
+    serverSends({ type: "ROUND_SKIPPED", mode: "lyrics" });
+    expect(screen.getByTestId("round-skipped")).toBeTruthy();
+    act(() => { vi.advanceTimersByTime(6_000); });
+    expect(screen.queryByTestId("round-skipped")).toBeNull();
+  });
+});
 
 describe("ScreenPage: countdown follows the server clock", () => {
   it("a TV clock 90s fast still shows the server's time left, not 00", () => {

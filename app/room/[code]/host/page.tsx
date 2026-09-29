@@ -8,6 +8,7 @@ import LyricsTable from "@/components/LyricsTable";
 import LyricRoundItemEditor from "@/components/LyricRoundItemEditor";
 import { Qr } from "@/components/Qr";
 import { GuessHostControls, QuitGameButton } from "@/components/GuessMode";
+import { SkipNotice } from "@/components/TimedRound";
 import { getOrCreatePersistedId } from "@/lib/device-id";
 import { importLocalPlaylistsToLibrary } from "@/lib/playlist-library-migration";
 import { rankPlayers } from "@/lib/game";
@@ -66,6 +67,7 @@ export default function HostPage() {
   // Guess Mode — starts synchronously on the server (no AI), so a local pending flag only has to
   // cover the one round trip; cleared by GUESS_STATE, GUESS_ABORTED or ERROR.
   const [guessState, setGuessState] = useState<PublicGuessGameState | null>(null);
+  const [skipNotice, setSkipNotice] = useState(0); // bumps on ROUND_SKIPPED; keys a fresh SkipNotice
   const [pendingGuessStart, setPendingGuessStart] = useState(false);
   const [lyricsState, setLyricsState] = useState<PublicLyricsGameState | null>(null);
   const [lyricsPreview, setLyricsPreview] = useState<PublicLyricsRound[]>([]);
@@ -188,6 +190,7 @@ export default function HostPage() {
       if (msg.type === "LYRICS_ABORTED") { setLyricsState(null); setPendingLyricsStart(false); }
       if (msg.type === "GUESS_STATE") { setGuessState(msg.state); setPendingGuessStart(false); }
       if (msg.type === "GUESS_ABORTED") { setGuessState(null); setPendingGuessStart(false); }
+      if (msg.type === "ROUND_SKIPPED") setSkipNotice((n) => n + 1);
       if (msg.type === "LYRICS_PREVIEW") {
         setLyricsPreviewLoading(msg.loading);
         if (!msg.loading) setLyricsPreview(msg.rounds);
@@ -481,6 +484,7 @@ export default function HostPage() {
         display: "flex", flexDirection: "column", gap: 20, padding: 24, maxWidth: 960, margin: "0 auto",
       }}
     >
+      {skipNotice > 0 && <SkipNotice key={skipNotice} />}
       {/* Header */}
       {/* Both rows wrap: on a phone the TV card otherwise gets squeezed to one character per line
           and overlaps the player list (found by /qa 2026-09-24). */}

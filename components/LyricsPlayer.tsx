@@ -13,6 +13,8 @@ interface Props {
   playing: boolean;
   /** Show the video here instead of hiding it (e.g. the Guess reveal). Same player, so nothing reloads. */
   frame?: VideoFrame | null;
+  /** Called once per video the embed refuses (not embeddable, removed…), so the room can skip it. */
+  onFailed?: (videoId: string) => void;
 }
 
 type AudioReply = { videoId: string | null; roundIndex: number };
@@ -47,7 +49,7 @@ export function needsLyricsAudio(state: AudioState | null, audio: AudioReply | n
 // 200px is the smallest size YouTube embeds reliably play at; the hidden wrapper clips it to 1px.
 const HIDDEN_SIZE = 200;
 
-export default function LyricsPlayer({ videoId, playing, frame = null }: Props) {
+export default function LyricsPlayer({ videoId, playing, frame = null, onFailed }: Props) {
   const targetRef = useRef<HTMLDivElement>(null);
   const playerRef = useRef<YT.Player | null>(null);
   const loadedRef = useRef<string | null>(null);
@@ -55,6 +57,9 @@ export default function LyricsPlayer({ videoId, playing, frame = null }: Props) 
   wantRef.current = { videoId, playing, frame };
   const [blocked, setBlocked] = useState(false);
   const [failedId, setFailedId] = useState<string | null>(null); // video the embed refused to play
+  const onFailedRef = useRef(onFailed);
+  useEffect(() => { onFailedRef.current = onFailed; });
+  useEffect(() => { if (failedId) onFailedRef.current?.(failedId); }, [failedId]);
 
   function resize() {
     const p = playerRef.current;

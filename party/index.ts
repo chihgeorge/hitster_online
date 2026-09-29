@@ -382,6 +382,9 @@ export default class HitsterRoom implements Party.Server {
       case "RESET_GUESS_GAME":
         this.handleResetGuessGame(sender, msg.hostId);
         break;
+      case "AUDIO_FAILED":
+        this.handleAudioFailed(sender, msg.screenId, msg.videoId);
+        break;
       case "GET_GUESS_AUDIO":
         this.handleGetGuessAudio(sender, msg.screenId);
         break;
@@ -1589,6 +1592,27 @@ export default class HitsterRoom implements Party.Server {
   }
 
   // Screen-only: the video id reveals the answer, so players never get it (see sanitizedGuessState).
+  /**
+   * The TV's player refused the current song (TODOS.md: a round with an unembeddable video ran
+   * with no audio). Only the room's screen can report it, only for the song it's playing now, and
+   * only before results. Drops the round, tells everyone, and hands the TV the next song directly:
+   * the round index doesn't change, so its per-index GET_*_AUDIO retry wouldn't ask again.
+   */
+  private handleAudioFailed(conn: Party.Connection, screenId: string, videoId: string) {
+    if (!this.authorizeScreen(conn, screenId) || typeof videoId !== "string") return;
+    const ls = this.lyricsState;
+    const gs = this.guessState;
+    if (ls?.currentRound?.videoId === videoId && timedRound.skipRound(ls)) {
+      this.broadcast({ type: "ROUND_SKIPPED", mode: "lyrics" });
+      this.broadcastLyricsState();
+      this.sendTo(conn, { type: "LYRICS_AUDIO", videoId: ls.currentRound?.videoId ?? null, roundIndex: ls.currentRoundIndex });
+    } else if (gs?.currentRound?.videoId === videoId && timedRound.skipRound(gs)) {
+      this.broadcast({ type: "ROUND_SKIPPED", mode: "guess" });
+      this.broadcastGuessState();
+      this.sendTo(conn, { type: "GUESS_AUDIO", videoId: gs.currentRound?.videoId ?? null, roundIndex: gs.currentRoundIndex });
+    }
+  }
+
   private handleGetGuessAudio(conn: Party.Connection, screenId: string) {
     if (!this.authorizeScreen(conn, screenId)) return;
     this.sendTo(conn, {

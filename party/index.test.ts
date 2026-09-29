@@ -3031,6 +3031,52 @@ describe("Guess Mode: lifecycle", () => {
   });
 });
 
+describe("AUDIO_FAILED: the TV can't play the round's song", () => {
+  beforeEach(() => vi.clearAllMocks());
+  afterEach(() => {
+    vi.mocked(fetchEmbeddableVideoIds).mockImplementation((ids: string[]) => Promise.resolve(new Set(ids)));
+  });
+  const claimTv = async (room: HitsterRoom) => {
+    const tv = makeConn("tv");
+    await send(room, tv, { type: "JOIN_SCREEN", screenId: "tv-token", hostId: "host-uuid" });
+    return tv;
+  };
+
+  it("Guess: drops the round, tells everyone, and hands the TV the next song", async () => {
+    const { room, hostConn } = await setupGuessGame({ timerSeconds: 60, totalRounds: 3, fuzzyEnabled: false });
+    const tv = await claimTv(room);
+    await send(room, hostConn, { type: "START_GUESS_ROUND", hostId: "host-uuid" });
+    const bad = room.guessState!.currentRound!.videoId;
+    const next = room.guessState!.rounds[1].videoId;
+    await send(room, tv, { type: "AUDIO_FAILED", screenId: "tv-token", videoId: bad });
+    expect(room.guessState).toMatchObject({ phase: "playing", currentRoundIndex: 0, totalRounds: 2, answers: {} });
+    expect(room.guessState!.currentRound!.videoId).toBe(next);
+    expect(allSentMessages(room).some((m) => m.type === "ROUND_SKIPPED" && m.mode === "guess")).toBe(true);
+    expect(lastSentTo(tv)).toEqual({ type: "GUESS_AUDIO", videoId: next, roundIndex: 0 });
+  });
+
+  it("Lyrics: drops the only round and ends the game", async () => {
+    const { room } = await setupLyricsGame();
+    const tv = await claimTv(room);
+    await send(room, tv, { type: "AUDIO_FAILED", screenId: "tv-token", videoId: room.lyricsState!.currentRound!.videoId });
+    expect(room.lyricsState).toMatchObject({ phase: "ended", totalRounds: 0 });
+    expect(allSentMessages(room).some((m) => m.type === "ROUND_SKIPPED" && m.mode === "lyrics")).toBe(true);
+  });
+
+  it("ignores a stale video id, the results phase, and anyone who isn't the TV", async () => {
+    const { room, hostConn, p1Conn } = await setupGuessGame({ timerSeconds: 60, totalRounds: 3, fuzzyEnabled: false });
+    const tv = await claimTv(room);
+    const current = room.guessState!.currentRound!.videoId;
+    await send(room, tv, { type: "AUDIO_FAILED", screenId: "tv-token", videoId: "someOtherId" });
+    await send(room, p1Conn, { type: "AUDIO_FAILED", screenId: "not-the-tv", videoId: current });
+    expect(room.guessState!.totalRounds).toBe(3);
+    await send(room, hostConn, { type: "START_GUESS_ROUND", hostId: "host-uuid" });
+    await send(room, hostConn, { type: "SHOW_GUESS_RESULTS", hostId: "host-uuid" });
+    await send(room, tv, { type: "AUDIO_FAILED", screenId: "tv-token", videoId: current });
+    expect(room.guessState).toMatchObject({ phase: "results", totalRounds: 3 });
+  });
+});
+
 describe("Timeline START_GAME over a finished or previewed Lyrics/Guess game", () => {
   beforeEach(() => vi.clearAllMocks());
 
