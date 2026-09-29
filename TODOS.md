@@ -2,18 +2,6 @@
 
 ## Timed rounds (Lyrics + Guess)
 
-### TV results list can overflow with 9+ players
-
-**What:** TV results list can overflow with 9+ players.
-
-**Why:** Bigger groups lose the bottom of the results list on the TV.
-
-**Context:** `GuessScreen` (and Lyrics) results use `overflowY: auto` inside the fixed 960×540 Stage — a TV can't scroll. Verify with ~10 players; then tighten rows, two columns, or top-N + "+N more". _Deferred from /ship design review, 2026-09-24._
-
-**Effort:** S
-**Priority:** P3
-**Depends on:** None
-
 ### Guess grading tuning after playtest
 
 **What:** Guess grading tuning after playtest.
@@ -34,19 +22,6 @@
 
 **Context:** Headless QA could not test this path (requires playerCount ≥ 1). Load `hitster://cpop-test` in Lyrics Mode with a second tab as player, click Start Lyrics, check server logs for `[lyrics-resolver] lrclib hits: N/8`.
 _Deferred from /qa on feat/lyrics-api 2026-09-17_
-
-**Effort:** S
-**Priority:** P3
-**Depends on:** None
-
-### Add 429/rate-limit handling for lrclib.net
-
-**What:** Add 429/rate-limit handling for lrclib.net.
-
-**Why:** Rate limits silently drop lyric lookups.
-
-**Context:** With concurrency=8, rapid deploys can hit rate limits. A 429 silently drops the window (logs no warning). Add backoff or at least log `[lyrics-resolver] rate limited`.
-_Surfaced by adversarial review on feat/lyrics-api 2026-09-17_
 
 **Effort:** S
 **Priority:** P3
@@ -100,18 +75,6 @@ _Surfaced by adversarial review on feat/lyrics-api 2026-09-17_
 **Priority:** P3
 **Depends on:** None
 
-### Host keeps the lobby vinyl background during Lyrics/Guess play (DESIGN.md)
-
-**What:** Host keeps the lobby vinyl background during Lyrics/Guess play (DESIGN.md).
-
-**Why:** DESIGN.md keeps the lobby pattern out of gameplay.
-
-**Context:** `.bg-vinyl-pattern` is keyed on `state.phase === "lobby"`, which stays "lobby" through Lyrics/Guess games; DESIGN.md keeps the pattern out of active gameplay. Key it on "no timed game in play" too. _Found by /qa ISSUE-003, 2026-09-24._
-
-**Effort:** S
-**Priority:** P3
-**Depends on:** None
-
 ### The screen and host credentials trust whoever asks first, not that they're actually the TV/host
 
 **What:** The screen and host credentials trust whoever asks first, not that they're actually the TV/host.
@@ -125,18 +88,6 @@ _Surfaced by adversarial review on feat/lyrics-api 2026-09-17_
 **Depends on:** None
 
 ## Playlists & Library
-
-### Reject malformed video ids when a playlist is saved or loaded
-
-**What:** Reject malformed video ids when a playlist is saved or loaded.
-
-**Why:** A malformed video id can reach the player.
-
-**Context:** `LOAD_SAVED_PLAYLIST` and the playlist party only check that `videoId` is a non-empty string. A server-side `/^[\w-]{11}$/` check would stop a bad id reaching the player at all. Found by /ship adversarial review on 2026-09-21.
-
-**Effort:** S
-**Priority:** P3
-**Depends on:** None
 
 ### Library index drifts on playlist rename or song add/remove via PUT
 
@@ -246,6 +197,63 @@ _Deferred from plan: foamy-crafting-bonbon.md_
 **Depends on:** None
 
 ## Completed
+
+### TV results list can overflow with 9+ players
+
+**What:** TV results list can overflow with 9+ players.
+
+**Why:** Bigger groups lose the bottom of the results list on the TV.
+
+**Context:** `GuessScreen` (and Lyrics) results use `overflowY: auto` inside the fixed 960×540 Stage — a TV can't scroll. Verify with ~10 players; then tighten rows, two columns, or top-N + "+N more". _Deferred from /ship design review, 2026-09-24._
+
+**Effort:** S
+**Priority:** P3
+**Depends on:** None
+
+**Completed:** v0.14.10.0 (2026-09-29) — the room caps at 8 players (`MAX_PLAYERS_SOFT`), but the Lyrics results list and the end screen only fit about 6 full-width rows: #7 and #8 fell off (confirmed with an 8-player screenshot). Above 4 players those lists use two columns (`tvListStyle` in `components/TimedRound.tsx`); the Guess results column already fits 8.
+
+### Add 429/rate-limit handling for lrclib.net
+
+**What:** Add 429/rate-limit handling for lrclib.net.
+
+**Why:** Rate limits silently drop lyric lookups.
+
+**Context:** With concurrency=8, rapid deploys can hit rate limits. A 429 silently drops the window (logs no warning). Add backoff or at least log `[lyrics-resolver] rate limited`.
+_Surfaced by adversarial review on feat/lyrics-api 2026-09-17_
+
+**Effort:** S
+**Priority:** P3
+**Depends on:** None
+
+**Completed:** v0.14.10.0 (2026-09-29) — a 429 waits (Retry-After, capped at 3s) and retries once with a warning; a second one throws `LrclibRateLimited` (no search on top), and `fetchLyricsBatch` stops starting new windows and logs how many songs it skipped.
+
+### Host keeps the lobby vinyl background during Lyrics/Guess play (DESIGN.md)
+
+**What:** Host keeps the lobby vinyl background during Lyrics/Guess play (DESIGN.md).
+
+**Why:** DESIGN.md keeps the lobby pattern out of gameplay.
+
+**Context:** `.bg-vinyl-pattern` is keyed on `state.phase === "lobby"`, which stays "lobby" through Lyrics/Guess games; DESIGN.md keeps the pattern out of active gameplay. Key it on "no timed game in play" too. _Found by /qa ISSUE-003, 2026-09-24._
+
+**Effort:** S
+**Priority:** P3
+**Depends on:** None
+
+**Completed:** v0.14.10.0 (2026-09-29) — the host page's lobby look also ends once a Guess game exists or a Lyrics game is past loading/preview.
+
+### Reject malformed video ids when a playlist is saved or loaded
+
+**What:** Reject malformed video ids when a playlist is saved or loaded.
+
+**Why:** A malformed video id can reach the player.
+
+**Context:** `LOAD_SAVED_PLAYLIST` and the playlist party only check that `videoId` is a non-empty string. A server-side `/^[\w-]{11}$/` check would stop a bad id reaching the player at all. Found by /ship adversarial review on 2026-09-21.
+
+**Effort:** S
+**Priority:** P3
+**Depends on:** None
+
+**Completed:** v0.14.10.0 (2026-09-29) — `isValidVideoId` (`lib/utils.ts`, exactly 11 of `[A-Za-z0-9_-]`): the playlist party rejects a save with any other id and `LOAD_SAVED_PLAYLIST` drops such songs. The `hitster://test` seed now uses real-shaped ids.
 
 ### Share timed-round UI helpers between Lyrics and Guess
 

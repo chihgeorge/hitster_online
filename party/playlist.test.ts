@@ -134,7 +134,7 @@ describe("PlaylistParty: POST — save playlist", () => {
   });
 
   it("rejects a playlist with a malformed video id", async () => {
-    const party = new PlaylistParty(makeRoom() as any);
+    const party = new PlaylistParty(makeRoom());
     const res = await createPlaylist(party, [song("vid00000001"), song("not-an-id")]);
     expect(res.status).toBe(400);
   });
