@@ -10,6 +10,7 @@ import { Qr } from "@/components/Qr";
 import { GuessHostControls, QuitGameButton } from "@/components/GuessMode";
 import { SkipNotice } from "@/components/TimedRound";
 import { getOrCreatePersistedId } from "@/lib/device-id";
+import { watchScreens } from "@/lib/screen-presence";
 import { importLocalPlaylistsToLibrary } from "@/lib/playlist-library-migration";
 import { rankPlayers } from "@/lib/game";
 import type { GameState, ServerMessage, ClientMessage, SongDiagnostic, EditableSong, PublicLyricsGameState, PublicLyricsRound, LyricsGameConfig, PublicGuessGameState, SongEditDiff, EditableLyricRound, LyricEditDiff } from "@/lib/game";
@@ -36,6 +37,17 @@ export default function HostPage() {
   useEffect(() => setOrigin(window.location.origin), []);
   const screenPath = `/room/${params.code}/screen`;
   const screenTab = `hitster-screen-${params.code}`;
+  // A screen tab for this room is open in this browser, maybe one this tab can't reach (see
+  // lib/screen-presence.ts). Read in the link's click handler, so a ref, not state.
+  const screenOpenRef = useRef(false);
+  useEffect(() => watchScreens(params.code, (open) => { screenOpenRef.current = open; }), [params.code]);
+  // Shown after a tap found the screen already open in a tab this page can't switch to.
+  const [screenElsewhere, setScreenElsewhere] = useState(false);
+  useEffect(() => {
+    if (!screenElsewhere) return;
+    const t = setTimeout(() => setScreenElsewhere(false), 6000);
+    return () => clearTimeout(t);
+  }, [screenElsewhere]);
   const [state, setState] = useState<GameState | null>(null);
   const [playlistUrl, setPlaylistUrl] = useState("");
   const [targetCount, setTargetCount] = useState(10);
@@ -525,7 +537,19 @@ export default function HostPage() {
               } catch {
                 // The tab moved to another origin (e.g. clicked through from the YouTube embed).
               }
-              if (!onScreen) tab.location.href = screenPath;
+              if (!onScreen) {
+                let fresh = false;
+                try { fresh = tab.location.href === "about:blank"; } catch { /* other origin */ }
+                // window.open made a new blank tab, but a screen is already open in another tab
+                // (this page was reloaded or reopened, so it's no longer that tab's opener).
+                // Opening a second screen would play every song twice.
+                if (fresh && screenOpenRef.current) {
+                  tab.close();
+                  setScreenElsewhere(true);
+                  return;
+                }
+                tab.location.href = screenPath;
+              }
               tab.focus();
             }}
             // An empty touch listener lets iOS Safari apply :active (pressed feedback).
@@ -546,6 +570,11 @@ export default function HostPage() {
               </span>
             </div>
           </a>
+          {screenElsewhere && (
+            <p role="status" data-testid="screen-elsewhere" style={{ fontSize: 13, color: "var(--text2)", fontWeight: 700, maxWidth: 260, lineHeight: 1.4 }}>
+              大螢幕已在另一個分頁開啟 · The screen is already open in another tab
+            </p>
+          )}
         </div>
         <div style={{ textAlign: "right", fontSize: 13, display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 3, flexShrink: 1, minWidth: 0 }}>
           {Object.values(state?.players ?? {}).length === 0 ? (

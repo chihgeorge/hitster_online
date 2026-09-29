@@ -14,6 +14,7 @@ import { Stage } from "@/components/Stage";
 import { GuessScreen, guessAudioProps } from "@/components/GuessMode";
 import { useCountdown, TvScoreRow, TvFinal, tvListStyle, SkipNotice } from "@/components/TimedRound";
 import { getOrCreatePersistedId } from "@/lib/device-id";
+import { announceScreen } from "@/lib/screen-presence";
 import { syncServerClock } from "@/lib/server-clock";
 import { rankPlayers, type GameState, type ServerMessage, type PublicLyricsGameState, type PublicGuessGameState } from "@/lib/game";
 
@@ -45,6 +46,9 @@ export default function ScreenPage() {
   useEffect(() => {
     screenIdRef.current = getOrCreatePersistedId("hitster_screen_id");
   }, []);
+
+  // Lets a reopened host page see that this tab is already the screen (lib/screen-presence.ts).
+  useEffect(() => announceScreen(params.code), [params.code]);
 
   const socket = usePartySocket({
     host: process.env.NEXT_PUBLIC_PARTYKIT_HOST ?? "localhost:1999",

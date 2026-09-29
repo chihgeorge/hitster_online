@@ -86,4 +86,25 @@ test.describe("Host screen link", () => {
     await expect(newTab).rejects.toThrow();
     expect(await screenTab.evaluate(() => (window as unknown as { __kept?: boolean }).__kept)).toBe(true);
   });
+
+  // The host page reopened in a new tab isn't the screen tab's opener, so window.open("", name)
+  // can't find it. Without the BroadcastChannel check this opened a second screen (songs twice).
+  test("a reopened host page doesn't open a second screen tab", async ({ page, context }) => {
+    const code = await createRoomAsHost(page);
+    const [screenTab] = await Promise.all([context.waitForEvent("page"), page.getByTestId("screen-link").click()]);
+    await expect(screenTab.getByText("掃描加入 · Scan to join")).toBeVisible({ timeout: 10_000 });
+    await screenTab.evaluate(() => { (window as unknown as { __kept: boolean }).__kept = true; });
+
+    const hostUrl = page.url();
+    await page.close();
+    const host2 = await context.newPage();
+    await host2.goto(hostUrl);
+    const link = host2.getByTestId("screen-link");
+    await expect(link).toContainText(`/room/${code}/screen`);
+    await host2.waitForTimeout(300); // the open screen answers the host's ping
+    await link.click();
+    await expect(host2.getByTestId("screen-elsewhere")).toBeVisible();
+    await expect.poll(() => context.pages().filter((p) => !p.isClosed()).length).toBe(2); // host + the one screen
+    expect(await screenTab.evaluate(() => (window as unknown as { __kept?: boolean }).__kept)).toBe(true);
+  });
 });

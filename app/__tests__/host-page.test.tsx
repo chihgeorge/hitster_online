@@ -18,6 +18,7 @@ vi.mock("next/navigation", () => ({
 }));
 
 import HostPage from "@/app/room/[code]/host/page";
+import { announceScreen } from "@/lib/screen-presence";
 
 function serverSends(msg: object) {
   act(() => { socketOpts.onMessage({ data: JSON.stringify(msg) } as MessageEvent); });
@@ -365,6 +366,43 @@ describe("HostPage: screen link reuses an open screen tab", () => {
     render(<HostPage />);
     fireEvent.click(await waitFor(() => screen.getByTestId("screen-link")));
     expect(tab.location.href).toBe("/room/ABCD/screen");
+  });
+
+  // Host page reloaded/reopened: it's no longer the screen tab's opener, so window.open("", name)
+  // makes a new blank tab even though a screen is already playing in another one.
+  it("closes the new blank tab and says so when a screen is already open in a tab it can't reach", async () => {
+    const stop = announceScreen("ABCD");
+    try {
+      const tab = { location: { pathname: "blank", href: "about:blank" }, focus: vi.fn(), close: vi.fn() };
+      vi.spyOn(window, "open").mockReturnValue(tab as unknown as Window);
+      render(<HostPage />);
+      const link = await waitFor(() => screen.getByTestId("screen-link"));
+      await new Promise((r) => setTimeout(r, 20)); // the screen answers the host's ping
+      const notPrevented = fireEvent.click(link);
+      expect(notPrevented).toBe(false);
+      expect(tab.close).toHaveBeenCalled();
+      expect(tab.location.href).toBe("about:blank"); // no second screen
+      expect(screen.getByTestId("screen-elsewhere").textContent).toContain("already open in another tab");
+    } finally {
+      stop();
+    }
+  });
+
+  it("still focuses the screen tab it can reach, even while that tab announces itself", async () => {
+    const stop = announceScreen("ABCD");
+    try {
+      const tab = { location: { pathname: "/room/ABCD/screen", href: "keep" }, focus: vi.fn(), close: vi.fn() };
+      vi.spyOn(window, "open").mockReturnValue(tab as unknown as Window);
+      render(<HostPage />);
+      const link = await waitFor(() => screen.getByTestId("screen-link"));
+      await new Promise((r) => setTimeout(r, 20));
+      fireEvent.click(link);
+      expect(tab.close).not.toHaveBeenCalled();
+      expect(tab.focus).toHaveBeenCalled();
+      expect(screen.queryByTestId("screen-elsewhere")).toBeNull();
+    } finally {
+      stop();
+    }
   });
 });
 
