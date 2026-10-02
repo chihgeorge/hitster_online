@@ -37,6 +37,15 @@ test.describe("Landing page", () => {
     await page.locator("[data-testid='join-room-btn']").click();
     await expect(page.getByText("請輸入 4 碼房間代碼")).toBeVisible();
   });
+
+  // Value: protects=visible keyboard focus ring on text fields (WCAG 2.4.7); fails_when=an inline outline:"none" or the globals.css :focus-visible rule is removed; why_new=no test checks focus styling and happy-dom can't compute :focus-visible; seam=none
+  test("keyboard focus on a text field shows the orange focus ring", async ({ page }) => {
+    await page.goto("/");
+    const code = page.locator("[data-testid='join-code-input']");
+    await code.focus(); // text inputs match :focus-visible on any focus, so no Tab dance (keeps the test off tab order)
+    await expect(code).toHaveCSS("outline-style", "solid");
+    await expect(code).toHaveCSS("outline-color", "rgb(232, 85, 32)");
+  });
 });
 
 test.describe("Host lobby", () => {
@@ -57,6 +66,15 @@ test.describe("Host lobby", () => {
     await page.locator("[data-testid='load-playlist-btn']").click();
     await expect(page.getByText(/已載入/i)).toBeVisible({ timeout: 5_000 });
     await expect(page.locator("[data-testid='start-game-btn']")).toBeDisabled();
+  });
+
+  // Value: protects=host-lobby playlist URL field keeps a visible keyboard focus ring (WCAG 2.4.7); fails_when=outline:"none" returns to the host page's shared inp style; why_new=landing-page test only covers app/page.tsx inputs, host page has its own inline style object; seam=none
+  test("keyboard focus on the playlist URL field shows the orange focus ring", async ({ page }) => {
+    await createRoomAsHost(page);
+    const urlInput = page.locator('input[type="url"]');
+    await urlInput.focus();
+    await expect(urlInput).toHaveCSS("outline-style", "solid");
+    await expect(urlInput).toHaveCSS("outline-color", "rgb(232, 85, 32)");
   });
 });
 

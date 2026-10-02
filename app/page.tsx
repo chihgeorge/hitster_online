@@ -105,7 +105,7 @@ function HomePageContent() {
           maxLength={20}
           style={{
             background: "var(--surface2)", border: "2px solid rgba(255,107,53,.2)", borderRadius: 14,
-            padding: "13px 16px", fontSize: 15, color: "var(--ink)", outline: "none",
+            padding: "13px 16px", fontSize: 15, color: "var(--ink)",
             fontFamily: "var(--font-zh)",
           }}
           onFocus={(e) => (e.target.style.borderColor = "var(--orange)")}
@@ -122,7 +122,7 @@ function HomePageContent() {
               maxLength={4}
               style={{
                 flex: 1, minWidth: 0, background: "var(--surface2)", border: "2px solid rgba(255,107,53,.2)", borderRadius: 14,
-                padding: "13px 16px", fontSize: 16, color: "var(--ink)", outline: "none",
+                padding: "13px 16px", fontSize: 16, color: "var(--ink)",
                 fontFamily: "var(--font-mono)", letterSpacing: ".18em", textAlign: "center", textTransform: "uppercase",
               }}
               onFocus={(e) => (e.target.style.borderColor = "var(--orange)")}

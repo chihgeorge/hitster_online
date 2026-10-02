@@ -6,7 +6,7 @@
 
 export const focusFieldBox: React.CSSProperties = {
   background: "var(--surface2)", border: "2px solid rgba(255,107,53,.2)", borderRadius: 14,
-  padding: "12px 16px", outline: "none", fontFamily: "var(--font-zh)", color: "var(--ink)",
+  padding: "12px 16px", fontFamily: "var(--font-zh)", color: "var(--ink)",
   textAlign: "center", width: "100%",
 };
 

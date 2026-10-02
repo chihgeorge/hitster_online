@@ -113,6 +113,17 @@ test.describe("Playlist party HTTP API", () => {
 
 // ─── Host UI: save and reload ─────────────────────────────────────────────────
 
+test.describe("Playlist library page", () => {
+  // Value: protects=/playlists create-form fields keep a visible keyboard focus ring (WCAG 2.4.7); fails_when=outline:"none" returns to the /playlists page's shared inp style; why_new=landing-page test only covers app/page.tsx inputs, /playlists has its own inline style object; seam=none
+  test("keyboard focus on the playlist URL field shows the orange focus ring", async ({ page }) => {
+    await page.goto("/playlists");
+    const url = page.getByPlaceholder("https://www.youtube.com/playlist?list=...");
+    await url.focus();
+    await expect(url).toHaveCSS("outline-style", "solid");
+    await expect(url).toHaveCSS("outline-color", "rgb(232, 85, 32)");
+  });
+});
+
 test.describe("Host lobby: save and load playlist", () => {
   test("loads a playlist and shows the Save playlist button", async ({ page }) => {
     await createRoomAsHost(page);
