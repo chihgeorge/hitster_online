@@ -9,17 +9,8 @@ import Vinyl from "@/components/Vinyl";
 import { GuessPlay, SUBMIT_ACK_TIMEOUT_MS } from "@/components/GuessMode";
 import { useCountdown, isLeader, Standings, WonOnTimeNote, SkipNotice } from "@/components/TimedRound";
 import { syncServerClock } from "@/lib/server-clock";
+import { getOrCreatePersistedId } from "@/lib/device-id";
 import { rankPlayers, type GameState, type ServerMessage, type ClientMessage, type Player, type PublicLyricsGameState, type PublicGuessGameState } from "@/lib/game";
-
-function getOrCreatePlayerId(): string {
-  const key = "hitster_player_id";
-  let id = localStorage.getItem(key);
-  if (!id) {
-    id = crypto.randomUUID();
-    localStorage.setItem(key, id);
-  }
-  return id;
-}
 
 export default function PlayPage() {
   const params = useParams<{ code: string }>();
@@ -56,7 +47,7 @@ export default function PlayPage() {
   const playerIdRef = useRef<string>("");
 
   useEffect(() => {
-    playerIdRef.current = getOrCreatePlayerId();
+    playerIdRef.current = getOrCreatePersistedId("hitster_player_id");
   }, []);
 
   useEffect(() => {
@@ -93,7 +84,7 @@ export default function PlayPage() {
       if (stored) {
         send({ type: "REJOIN", playerId: stored, name: playerName });
       } else {
-        playerIdRef.current = getOrCreatePlayerId();
+        playerIdRef.current = getOrCreatePersistedId("hitster_player_id");
         send({ type: "JOIN", playerId: playerIdRef.current, name: playerName });
       }
     },
@@ -472,7 +463,7 @@ export default function PlayPage() {
           </p>
           <ul style={{ display: "flex", flexDirection: "column", gap: 8 }}>
             {Object.entries(state.players)
-              .sort(([, a], [, b]) => b.cardCount - a.cardCount)
+              .sort(([, a], [, b]) => b.timeline.length - a.timeline.length)
               .map(([id, player], idx) => (
                 <li key={id} style={{
                   display: "flex", alignItems: "center", gap: 12,
@@ -488,7 +479,7 @@ export default function PlayPage() {
                   }}>{idx + 1}</span>
                   <span style={{ fontWeight: 700, color: "var(--ink)", fontSize: 14, flex: 1 }}>{player.name}</span>
                   <span style={{ fontFamily: "var(--font-mono)", color: "var(--orange)", fontWeight: 700, fontSize: 16 }}>
-                    {player.cardCount}
+                    {player.timeline.length}
                   </span>
                 </li>
               ))}
@@ -517,7 +508,7 @@ export default function PlayPage() {
           background: "var(--ink)", borderRadius: 14, padding: "8px 16px", textAlign: "center",
         }}>
           <p style={{ fontFamily: "var(--font-mono)", color: "var(--gold)", fontWeight: 700, fontSize: 22, lineHeight: 1 }}>
-            {myPlayer?.cardCount ?? 0}
+            {myPlayer?.timeline.length ?? 0}
           </p>
           <p style={{ fontSize: 9, color: "var(--text2)", textTransform: "uppercase", letterSpacing: ".08em" }}>cards</p>
         </div>

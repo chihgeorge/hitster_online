@@ -1,6 +1,6 @@
 /**
  * Reads a persisted per-browser id from localStorage, generating and storing one if missing.
- * Used for both the host credential (hostId) and the screen credential (screenId) — same
+ * Used for the host credential (hostId), the screen credential (screenId) and the player id — same
  * "one random token per device, kept in localStorage" shape, different keys.
  */
 export function getOrCreatePersistedId(key: string): string {

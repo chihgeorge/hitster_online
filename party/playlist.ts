@@ -9,26 +9,10 @@ import {
   PLAYLIST_ID_PATTERN,
 } from "../lib/playlist-resolver";
 import { proposeEdits } from "../lib/ai-metadata";
+import { CORS_HEADERS, json, err } from "./http";
 
 const MAX_SONGS = 500;
 const MAX_NAME_LEN = 80;
-
-const CORS_HEADERS = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
-  "Access-Control-Allow-Headers": "Content-Type",
-};
-
-function json(body: unknown, status = 200): Response {
-  return new Response(JSON.stringify(body), {
-    status,
-    headers: { "Content-Type": "application/json", ...CORS_HEADERS },
-  });
-}
-
-function err(msg: string, status = 400): Response {
-  return json({ error: msg }, status);
-}
 
 function validateSongs(songs: unknown): songs is EditableSong[] {
   if (!Array.isArray(songs)) return false;
@@ -220,7 +204,7 @@ export default class PlaylistParty implements Party.Server {
 
       // PROPOSE_EDITS: AI chat-to-diff editing (T3, docs/designs/full-page-focus-editor.md;
       // HTTP-shaped like RESOLVE_FROM_URL above, not WebSocket-shaped like party/index.ts's
-      // handleProposeEdits, which this mirrors otherwise). Never mutates the stored playlist —
+      // proposeDiff (the PROPOSE_EDITS case), which this mirrors otherwise). Never mutates the stored playlist —
       // returns a diff for the client to review and PUT back via UPDATE_SONG, same contract
       // as the room's own chat-to-diff editing.
       if (action === "PROPOSE_EDITS") {

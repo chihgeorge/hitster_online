@@ -179,7 +179,7 @@ describe("PlayPage: timeline placement double-submit guard", () => {
     phase: "guessing",
     activePlayerId: PLAYER,
     currentSong: { id: "s1", videoId: "s1", title: "Song", artist: "Artist", year: 2000 },
-    players: { [PLAYER]: { name: "QA", cardCount: 1, timeline: [{ id: "c1", videoId: "c1", title: "Old", artist: "A", year: 1990 }], connected: true } },
+    players: { [PLAYER]: { name: "QA", timeline: [{ id: "c1", videoId: "c1", title: "Old", artist: "A", year: 1990 }], connected: true } },
   };
 
   function selectFirstDropZone() {

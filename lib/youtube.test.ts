@@ -276,7 +276,7 @@ describe("fetchEmbeddableVideoIds", () => {
   });
 
   it("assumes all embeddable when no API key is provided", async () => {
-    const result = await fetchEmbeddableVideoIds(["vid1", "vid2"]);
+    const result = await fetchEmbeddableVideoIds(["vid1", "vid2"], undefined);
     expect(result).toEqual(new Set(["vid1", "vid2"]));
   });
 });

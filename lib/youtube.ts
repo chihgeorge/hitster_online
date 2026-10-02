@@ -1,14 +1,8 @@
-// YouTube Data API v3 client — server-side only (uses YOUTUBE_API_KEY env var).
+// YouTube Data API v3 client — server-side only (callers pass the key from resolveEnv).
 // Fetches playlist items and returns video metadata.
 
 import { isValidYear } from "./utils";
-
-interface YouTubeTrack {
-  videoId: string;
-  title: string;
-  description: string;
-  channelTitle: string;
-}
+import type { TrackItem } from "./playlist-resolver";
 
 const BASE = "https://www.googleapis.com/youtube/v3";
 
@@ -18,12 +12,11 @@ const BASE = "https://www.googleapis.com/youtube/v3";
  */
 export async function fetchPlaylistItems(
   playlistId: string,
-  apiKey?: string
-): Promise<YouTubeTrack[]> {
-  const key = apiKey ?? process.env.YOUTUBE_API_KEY;
+  key: string | undefined // from resolveEnv, which already falls back to process.env
+): Promise<TrackItem[]> {
   if (!key) throw new Error("YOUTUBE_API_KEY is not set");
 
-  const tracks: YouTubeTrack[] = [];
+  const tracks: TrackItem[] = [];
   let pageToken: string | undefined;
 
   do {
@@ -218,9 +211,8 @@ export function parseYouTubeMusicDescription(description: string): {
  */
 export async function fetchEmbeddableVideoIds(
   videoIds: string[],
-  apiKey?: string
+  key: string | undefined
 ): Promise<Set<string>> {
-  const key = apiKey ?? process.env.YOUTUBE_API_KEY;
   if (!key) return new Set(videoIds); // no key → assume all embeddable
   if (videoIds.length === 0) return new Set();
 

@@ -61,7 +61,7 @@ const guessingState: GameState = {
   ...lobbyState,
   phase: "guessing",
   currentRound: 2,
-  players: { [P1]: { name: "Alice", cardCount: 1, timeline: [], connected: true } },
+  players: { [P1]: { name: "Alice", timeline: [], connected: true } },
   activePlayerId: P1,
   currentSong: { id: "v1", videoId: "v1", title: "那些年", artist: "胡夏", year: 2012 },
 };
@@ -147,7 +147,7 @@ describe("ScreenPage: waiting / lobby", () => {
     render(<ScreenPage />);
     serverSends({
       type: "STATE",
-      state: { ...lobbyState, players: { [P1]: { name: "Alice", cardCount: 0, timeline: [], connected: true } } },
+      state: { ...lobbyState, players: { [P1]: { name: "Alice", timeline: [], connected: true } } },
     });
     expect(screen.getByText("Alice")).toBeTruthy();
     // Still the waiting screen, not gameplay — the QR/join prompt stays visible alongside the chips.
@@ -161,8 +161,8 @@ describe("ScreenPage: waiting / lobby", () => {
       state: {
         ...lobbyState,
         players: {
-          [P1]: { name: "Alice", cardCount: 0, timeline: [], connected: true },
-          [P2]: { name: "Bob", cardCount: 0, timeline: [], connected: true },
+          [P1]: { name: "Alice", timeline: [], connected: true },
+          [P2]: { name: "Bob", timeline: [], connected: true },
         },
       },
     });

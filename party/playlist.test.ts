@@ -459,7 +459,7 @@ describe("PlaylistParty: DELETE — delete playlist", () => {
 
 // T3 (docs/designs/full-page-focus-editor.md): closes T8, the standalone /playlists page's
 // AI chat-to-diff editing. HTTP-shaped like RESOLVE_FROM_URL, not WebSocket-shaped like
-// party/index.ts's handleProposeEdits — same underlying lib/ai-metadata.proposeEdits call.
+// party/index.ts's proposeDiff (PROPOSE_EDITS) — same underlying lib/ai-metadata.proposeEdits call.
 describe("PlaylistParty: PUT PROPOSE_EDITS — AI chat-to-diff editing", () => {
   beforeEach(() => vi.clearAllMocks());
 

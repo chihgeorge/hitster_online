@@ -18,7 +18,6 @@ import {
   type GuessGameConfig,
   type GuessRound,
   type PublicGuessGameState,
-  type EditableLyricRound,
   type GameMode,
   type LyricOverride,
 } from "../lib/game";
@@ -39,6 +38,7 @@ import {
   resolveEnv,
   parseResolveErrorCode,
   storageBatchGet,
+  storageBatchPut,
   buildCardsFromAI,
   PLAYLIST_ID_PATTERN,
   type TrackItem,
@@ -318,10 +318,12 @@ export default class HitsterRoom implements Party.Server {
         this.handleLoadSavedPlaylist(sender, msg.hostId, msg.playlistId, msg.songs);
         break;
       case "PROPOSE_EDITS":
-        await this.handleProposeEdits(sender, msg.hostId, msg.instruction, msg.songs);
+        await this.proposeDiff(sender, msg.hostId, msg.instruction, msg.songs, proposeEdits,
+          (diff) => ({ type: "EDITS_PROPOSED", diff }), (error) => ({ type: "EDITS_PROPOSAL_FAILED", error }));
         break;
       case "PROPOSE_LYRIC_EDITS":
-        await this.handleProposeLyricEdits(sender, msg.hostId, msg.instruction, msg.rounds);
+        await this.proposeDiff(sender, msg.hostId, msg.instruction, msg.rounds, proposeLyricEdits,
+          (diff) => ({ type: "LYRIC_EDITS_PROPOSED", diff }), (error) => ({ type: "LYRIC_EDITS_PROPOSAL_FAILED", error }));
         break;
       case "START_GAME":
         await this.handleStartGame(sender, msg.hostId, msg.playlistUrl, msg.targetCardCount, msg.songs);
@@ -340,7 +342,7 @@ export default class HitsterRoom implements Party.Server {
         await this.handleStartLyricsGame(sender, msg.hostId, msg.playlistUrl, msg.config, msg.lyricOverrides);
         break;
       case "CONFIRM_LYRICS_PREVIEW":
-        this.handleConfirmLyricsPreview(sender, msg.hostId);
+        this.lyricsStep(sender, msg.hostId, timedRound.confirmPreview);
         break;
       case "GET_LYRICS_AUDIO":
         this.handleGetLyricsAudio(sender, msg.screenId);
@@ -349,16 +351,16 @@ export default class HitsterRoom implements Party.Server {
         this.handleJoinScreen(sender, msg.screenId, msg.hostId);
         break;
       case "START_LYRICS_ROUND":
-        this.handleStartLyricsRound(sender, msg.hostId);
+        this.lyricsStep(sender, msg.hostId, (s) => timedRound.startRound(s, Date.now()));
         break;
       case "SUBMIT_LYRICS_ANSWER":
         this.handleSubmitLyricsAnswer(sender, msg.playerId, msg.text);
         break;
       case "SHOW_LYRICS_RESULTS":
-        this.handleShowLyricsResults(sender, msg.hostId);
+        this.lyricsStep(sender, msg.hostId, this.scoreLyricsRound);
         break;
       case "NEXT_LYRICS_ROUND":
-        this.handleNextLyricsRound(sender, msg.hostId);
+        this.lyricsStep(sender, msg.hostId, timedRound.nextRound);
         break;
       case "RESET_LYRICS_GAME":
         this.handleResetLyricsGame(sender, msg.hostId);
@@ -368,16 +370,16 @@ export default class HitsterRoom implements Party.Server {
         this.handleStartGuessGame(sender, msg.hostId, msg.config, msg.songs);
         break;
       case "START_GUESS_ROUND":
-        this.handleStartGuessRound(sender, msg.hostId);
+        this.guessStep(sender, msg.hostId, (s) => timedRound.startRound(s, Date.now()));
         break;
       case "SUBMIT_GUESS":
         this.handleSubmitGuess(sender, msg.playerId, msg.title, msg.artist);
         break;
       case "SHOW_GUESS_RESULTS":
-        this.handleShowGuessResults(sender, msg.hostId);
+        this.guessStep(sender, msg.hostId, this.scoreGuessRound);
         break;
       case "NEXT_GUESS_ROUND":
-        this.handleNextGuessRound(sender, msg.hostId);
+        this.guessStep(sender, msg.hostId, timedRound.nextRound);
         break;
       case "RESET_GUESS_GAME":
         this.handleResetGuessGame(sender, msg.hostId);
@@ -413,7 +415,6 @@ export default class HitsterRoom implements Party.Server {
     const startingCard = this.pickStartingCard(playerId);
     this.state.players[playerId] = {
       name,
-      cardCount: startingCard ? 1 : 0,
       timeline: startingCard ? [startingCard] : [],
       connected: true,
     };
@@ -620,7 +621,7 @@ export default class HitsterRoom implements Party.Server {
       this.startPlaylistLoad(); // cancels any in-flight real load so it can't overwrite this
       this.playlistLoading = false;
       this.pendingPlaylist = { playlistId, songs: seedCards, allSongs: testSongs, diagnostics: [] };
-      this.sendTo(conn, { type: "PLAYLIST_READY", songCount: testSongs.length, songs: testSongs });
+      this.sendTo(conn, { type: "PLAYLIST_READY", songs: testSongs });
       return;
     }
 
@@ -629,9 +630,7 @@ export default class HitsterRoom implements Party.Server {
       return;
     }
 
-    // Reset abort flag and clear any previous cached result.
-    this.abortLoad = false;
-    const mySeq = this.startPlaylistLoad();
+    const mySeq = this.startPlaylistLoad(); // also resets abortLoad
     this.pendingPlaylist = null;
     this.playlistLoading = true;
 
@@ -664,10 +663,8 @@ export default class HitsterRoom implements Party.Server {
         if (this.abortLoad && mySeq === this.loadSeq) {
           // "Use what's loaded": the deck must be exactly what the host was just shown.
           this.pendingPlaylist = { playlistId, songs: result.songs, allSongs: result.allSongs, diagnostics: result.diagnostics };
-        }
-        if (this.abortLoad && mySeq === this.loadSeq) {
           this.sendTo(conn, result.allSongs.length >= 2
-            ? { type: "PLAYLIST_READY", songCount: result.allSongs.length, songs: result.allSongs }
+            ? { type: "PLAYLIST_READY", songs: result.allSongs }
             : { type: "PLAYLIST_LOAD_ERROR", error: "not_enough_songs" });
         }
         return;
@@ -681,19 +678,14 @@ export default class HitsterRoom implements Party.Server {
         return;
       }
 
-      this.sendTo(conn, {
-        type: "PLAYLIST_READY",
-        songCount: allSongs.length,
-        songs: allSongs,
-      });
+      this.sendTo(conn, { type: "PLAYLIST_READY", songs: allSongs });
 
       // Kick off lyrics generation in background immediately after playlist is ready — but only
       // when the host is actually in Lyrics mode. This used to run unconditionally on every
       // load, spending real Anthropic calls generating lyric questions even for a host who only
       // ever plays timeline mode.
       if (gameMode === "lyrics") {
-        const { anthropicKey: lyricsKey } = resolveEnv(this.room.env);
-        void this.generateLyricsPreview(allSongs, aiResults, lyricsKey);
+        void this.generateLyricsPreview(allSongs, aiResults, anthropicKey);
       }
     } catch (err) {
       this.sendTo(conn, { type: "PLAYLIST_LOAD_ERROR", error: parseResolveErrorCode(err) });
@@ -709,15 +701,14 @@ export default class HitsterRoom implements Party.Server {
     return enrichedTracks.flatMap((t) => {
       const lyric = lyrics.get(t.videoId);
       if (!lyric) return [];
-      const r: PublicLyricsRound = {
+      return [{
         videoId: t.videoId,
         title: lyric.title || t.title,
         artist: lyric.artist || t.artist,
         language: lyric.language,
         lyricContext: lyric.lyricContext,
         blankSentence: lyric.blankSentence,
-      };
-      return [r];
+      }];
     });
   }
 
@@ -767,16 +758,10 @@ export default class HitsterRoom implements Party.Server {
 
       // Cache only the newly generated entries.
       const freshEntries = [...accumulated].filter(([id]) => !cachedLyrics.has(id));
-      if (freshEntries.length > 0) {
-        const storageEntries = freshEntries.map(([id, l]) => [`lyrics:${id}`, l] as const);
-        for (let i = 0; i < storageEntries.length; i += 128) {
-          this.room.storage.put(Object.fromEntries(storageEntries.slice(i, i + 128))).catch(() => {});
-        }
-      }
+      storageBatchPut(this.room.storage, "lyrics:", freshEntries);
 
-      const allLyrics = accumulated;
-      this.lyricsPreviewMap = allLyrics;
-      this.sendPrivileged({ type: "LYRICS_PREVIEW", rounds: this.buildPreviewRounds(enrichedTracks, allLyrics), loading: false });
+      this.lyricsPreviewMap = accumulated;
+      this.sendPrivileged({ type: "LYRICS_PREVIEW", rounds: this.buildPreviewRounds(enrichedTracks, accumulated), loading: false });
     } else {
       this.lyricsPreviewMap = cachedLyrics;
       this.sendPrivileged({ type: "LYRICS_PREVIEW", rounds: this.buildPreviewRounds(enrichedTracks, cachedLyrics), loading: false });
@@ -803,27 +788,15 @@ export default class HitsterRoom implements Party.Server {
       return;
     }
 
-    const validSongs = songs.filter(
-      (s) =>
-        isValidVideoId(s.videoId) && // a malformed id must never reach the player
-        typeof s.title === "string" &&
-        s.title.trim().length > 0
-    );
-    const cards: Card[] = validSongs
-      .filter((s) => typeof s.year === "number" && isValidYear(s.year))
+    const allSongs: EditableSong[] = songs
+      .filter((s) => isValidVideoId(s.videoId) && typeof s.title === "string" && s.title.trim().length > 0) // a malformed id must never reach the player
       .map((s) => ({
-        id: s.videoId,
         videoId: s.videoId,
         title: sanitizeText(s.title, 200),
         artist: sanitizeText(s.artist ?? "", 100),
-        year: s.year as number,
+        year: typeof s.year === "number" && isValidYear(s.year) ? s.year : null,
       }));
-    const allSongs: EditableSong[] = validSongs.map((s) => ({
-      videoId: s.videoId,
-      title: sanitizeText(s.title, 200),
-      artist: sanitizeText(s.artist ?? "", 100),
-      year: typeof s.year === "number" && isValidYear(s.year) ? s.year : null,
-    }));
+    const cards: Card[] = allSongs.flatMap((s) => (s.year === null ? [] : [{ ...s, id: s.videoId, year: s.year }]));
 
     if (allSongs.length < 2) {
       this.sendTo(conn, { type: "PLAYLIST_LOAD_ERROR", error: "not_enough_songs" });
@@ -836,83 +809,38 @@ export default class HitsterRoom implements Party.Server {
       playlistId,
       songs: cards,
       allSongs,
-      diagnostics: allSongs.map((s) => ({
-        title: s.title,
-        artist: s.artist,
-        year: s.year,
-        yearSource: null,
-      })),
+      diagnostics: allSongs.map(({ title, artist, year }) => ({ title, artist, year, yearSource: null })),
     };
 
-    this.sendTo(conn, {
-      type: "PLAYLIST_READY",
-      songCount: allSongs.length,
-      songs: allSongs,
-    });
+    this.sendTo(conn, { type: "PLAYLIST_READY", songs: allSongs });
   }
 
   /**
-   * Chat-to-diff editing (see docs/designs/ai-assisted-quiz-generation.md, Approach A):
-   * proposes field-level edits to the host's current song list from a natural-language
-   * instruction. Never mutates room state itself — the diff is sent only to the requesting
-   * connection, which renders it as a reviewable change (PlaylistEditor's existing dirty-row
-   * state) before the host explicitly saves it, same as a manually typed edit would be.
+   * Chat-to-diff editing (see docs/designs/ai-assisted-quiz-generation.md, Approach A) for the
+   * host's song list (PROPOSE_EDITS) or lyric rounds (PROPOSE_LYRIC_EDITS): same gate and error
+   * ladder, different AI call and replies. Never mutates room state — the diff goes only to the
+   * requesting connection, which shows it as a reviewable change before the host saves it.
    */
-  private async handleProposeEdits(
+  private async proposeDiff<I, D>(
     conn: Party.Connection,
     hostId: string,
     instruction: string,
-    songs: EditableSong[]
+    items: I[],
+    propose: (instruction: string, items: I[], apiKey: string) => Promise<D>,
+    ok: (diff: D) => ServerMessage,
+    fail: (error: string) => ServerMessage
   ) {
-    if (!this.authorizeHost(conn, hostId)) {
-      this.sendTo(conn, { type: "EDITS_PROPOSAL_FAILED", error: "unauthorized" });
-      return;
+    if (!this.authorizeHost(conn, hostId)) return this.sendTo(conn, fail("unauthorized"));
+    if (!Array.isArray(items) || items.length === 0 || typeof instruction !== "string" || !instruction.trim()) {
+      return this.sendTo(conn, fail("invalid_request"));
     }
-    if (!Array.isArray(songs) || songs.length === 0 || typeof instruction !== "string" || !instruction.trim()) {
-      this.sendTo(conn, { type: "EDITS_PROPOSAL_FAILED", error: "invalid_request" });
-      return;
-    }
-
     try {
       const { anthropicKey } = resolveEnv(this.room.env);
-      if (!anthropicKey) {
-        this.sendTo(conn, { type: "EDITS_PROPOSAL_FAILED", error: "api_key_missing" });
-        return;
-      }
-      const diff = await proposeEdits(instruction, songs, anthropicKey);
-      this.sendTo(conn, { type: "EDITS_PROPOSED", diff });
+      if (!anthropicKey) return this.sendTo(conn, fail("api_key_missing"));
+      this.sendTo(conn, ok(await propose(instruction, items, anthropicKey)));
     } catch (err) {
-      console.error(`[handleProposeEdits] ${err instanceof Error ? err.message : "unknown_error"}`);
-      this.sendTo(conn, { type: "EDITS_PROPOSAL_FAILED", error: "propose_failed" });
-    }
-  }
-
-  private async handleProposeLyricEdits(
-    conn: Party.Connection,
-    hostId: string,
-    instruction: string,
-    rounds: EditableLyricRound[]
-  ) {
-    if (!this.authorizeHost(conn, hostId)) {
-      this.sendTo(conn, { type: "LYRIC_EDITS_PROPOSAL_FAILED", error: "unauthorized" });
-      return;
-    }
-    if (!Array.isArray(rounds) || rounds.length === 0 || typeof instruction !== "string" || !instruction.trim()) {
-      this.sendTo(conn, { type: "LYRIC_EDITS_PROPOSAL_FAILED", error: "invalid_request" });
-      return;
-    }
-
-    try {
-      const { anthropicKey } = resolveEnv(this.room.env);
-      if (!anthropicKey) {
-        this.sendTo(conn, { type: "LYRIC_EDITS_PROPOSAL_FAILED", error: "api_key_missing" });
-        return;
-      }
-      const diff = await proposeLyricEdits(instruction, rounds, anthropicKey);
-      this.sendTo(conn, { type: "LYRIC_EDITS_PROPOSED", diff });
-    } catch (err) {
-      console.error(`[handleProposeLyricEdits] ${err instanceof Error ? err.message : "unknown_error"}`);
-      this.sendTo(conn, { type: "LYRIC_EDITS_PROPOSAL_FAILED", error: "propose_failed" });
+      console.error(`[proposeDiff] ${err instanceof Error ? err.message : "unknown_error"}`);
+      this.sendTo(conn, fail("propose_failed"));
     }
   }
 
@@ -1011,7 +939,7 @@ export default class HitsterRoom implements Party.Server {
     for (const [playerId, player] of Object.entries(this.state.players)) {
       if (player.timeline.length === 0) {
         const startingCard = this.pickStartingCard(playerId);
-        if (startingCard) { player.timeline = [startingCard]; player.cardCount = 1; }
+        if (startingCard) player.timeline = [startingCard];
       }
     }
     this.startNextRound();
@@ -1097,8 +1025,8 @@ export default class HitsterRoom implements Party.Server {
     let topPlayer = "";
     let topCount = 0;
     for (const [playerId, player] of Object.entries(this.state.players)) {
-      if (player.cardCount > topCount) {
-        topCount = player.cardCount;
+      if (player.timeline.length > topCount) {
+        topCount = player.timeline.length;
         topPlayer = playerId;
       }
     }
@@ -1212,10 +1140,7 @@ export default class HitsterRoom implements Party.Server {
     this.lyricsConfig = timedRound.clampConfig(config);
 
     const playlistId = extractPlaylistId(playlistUrl);
-    const players: LyricsGameState["players"] = {};
-    for (const [pid, p] of Object.entries(this.state.players)) {
-      players[pid] = { name: p.name, score: 0, connected: p.connected, timeMs: 0 };
-    }
+    const players = this.freshTimedPlayers();
 
     this.lyricsState = {
       mode: "lyrics",
@@ -1280,7 +1205,6 @@ export default class HitsterRoom implements Party.Server {
         enrichedTracks.map((t) => `lyrics:${t.videoId}`)
       );
       const cachedLyrics = fairRounds(lyricsCacheRaw, "lyrics:");
-      const uncachedTracks = enrichedTracks.filter((t) => !cachedLyrics.has(t.videoId));
 
       // Use preloaded Haiku preview as the candidate pool.
       // Then re-resolve the actual game deck songs with Sonnet for higher quality.
@@ -1289,10 +1213,8 @@ export default class HitsterRoom implements Party.Server {
         : new Map([...cachedLyrics]);
 
       // Pick which tracks will be in the deck (shuffle, take totalRounds).
-      const candidateTracks = enrichedTracks.filter((t) => {
-        const ov = (lyricOverrides ?? []).find((o) => o.videoId === t.videoId);
-        return !ov?.skip;
-      });
+      const overrideMap = new Map((lyricOverrides ?? []).map((o) => [o.videoId, o]));
+      const candidateTracks = enrichedTracks.filter((t) => !overrideMap.get(t.videoId)?.skip);
       const deckCandidates = shuffle(candidateTracks)
         .slice(0, this.lyricsConfig.totalRounds * 3); // oversample to handle Sonnet skips
 
@@ -1322,10 +1244,7 @@ export default class HitsterRoom implements Party.Server {
         if (popularityUncached.length > 0) {
           const fresh = await fetchPopularitySummaries(popularityUncached, anthropicKey);
           if (fresh.size > 0) {
-            const entries = [...fresh].map(([id, s]) => [`lyrics-popularity:${id}`, s] as const);
-            for (let i = 0; i < entries.length; i += 128) {
-              this.room.storage.put(Object.fromEntries(entries.slice(i, i + 128))).catch(() => {});
-            }
+            storageBatchPut(this.room.storage, "lyrics-popularity:", fresh);
             for (const [id, s] of fresh) popularitySummaries.set(id, s);
           }
         }
@@ -1338,12 +1257,7 @@ export default class HitsterRoom implements Party.Server {
         : new Map<string, LyricsResult>();
       if (sonnetUnusable.size > 0) putNoResult(this.room.storage, NO_RESULT.lyricsSonnet, sonnetUnusable);
 
-      if (sonnetFresh.size > 0) {
-        const entries = [...sonnetFresh].map(([id, l]) => [`lyrics-sonnet:${id}`, l] as const);
-        for (let i = 0; i < entries.length; i += 128) {
-          this.room.storage.put(Object.fromEntries(entries.slice(i, i + 128))).catch(() => {});
-        }
-      }
+      storageBatchPut(this.room.storage, "lyrics-sonnet:", sonnetFresh);
 
       // For the deck: prefer Sonnet result, fall back to Haiku preview, then raw cache.
       const sonnetAll = new Map([...sonnetCached, ...sonnetFresh]);
@@ -1354,7 +1268,6 @@ export default class HitsterRoom implements Party.Server {
       }
 
       // Build deck: apply lyricOverrides, filter skipped songs
-      const overrideMap = new Map((lyricOverrides ?? []).map((o) => [o.videoId, o]));
       const deck: LyricsRound[] = [];
       for (const t of enrichedTracks) {
         const ov = overrideMap.get(t.videoId);
@@ -1433,30 +1346,6 @@ export default class HitsterRoom implements Party.Server {
     });
   }
 
-  private handleConfirmLyricsPreview(conn: Party.Connection, hostId: string) {
-    if (!this.authorizeHost(conn, hostId) || !this.lyricsState) {
-      this.sendTo(conn, { type: "ERROR", error: "unauthorized" });
-      return;
-    }
-    if (!timedRound.confirmPreview(this.lyricsState)) {
-      this.sendTo(conn, { type: "ERROR", error: "wrong_phase" });
-      return;
-    }
-    this.broadcastLyricsState();
-  }
-
-  private handleStartLyricsRound(conn: Party.Connection, hostId: string) {
-    if (!this.authorizeHost(conn, hostId) || !this.lyricsState) {
-      this.sendTo(conn, { type: "ERROR", error: "unauthorized" });
-      return;
-    }
-    if (!timedRound.startRound(this.lyricsState, Date.now())) {
-      this.sendTo(conn, { type: "ERROR", error: "wrong_phase" });
-      return;
-    }
-    this.broadcastLyricsState();
-  }
-
   private handleSubmitLyricsAnswer(conn: Party.Connection, playerId: string, text: string) {
     if (!isValidPlayerId(playerId)) return;
     if (typeof text !== "string") return;
@@ -1473,35 +1362,39 @@ export default class HitsterRoom implements Party.Server {
     if (result === "ok") this.broadcastLyricsState();
   }
 
-  private handleShowLyricsResults(conn: Party.Connection, hostId: string) {
-    if (!this.authorizeHost(conn, hostId) || !this.lyricsState) {
-      this.sendTo(conn, { type: "ERROR", error: "unauthorized" });
-      return;
-    }
-    const { timerSeconds } = this.lyricsState;
-    const scored = timedRound.showResults(this.lyricsState, (round, ans, roundStart) => {
-      const correct = isCorrect(ans.text, round.blankSentence, round.acceptableVariants, this.lyricsConfig.fuzzyEnabled);
-      const points = correct ? computePoints(roundStart, ans.ts, timerSeconds) : 0;
-      return { answer: { ...ans, correct, points }, points };
-    });
-    if (!scored) {
-      this.sendTo(conn, { type: "ERROR", error: "wrong_phase" });
-      return;
-    }
-    this.broadcastLyricsState();
+  /** Every room player at the start of a timed-round game: zero score and time, current connection state. */
+  private freshTimedPlayers(): LyricsGameState["players"] {
+    return Object.fromEntries(Object.entries(this.state.players)
+      .map(([pid, p]) => [pid, { name: p.name, score: 0, connected: p.connected, timeMs: 0 }]));
   }
 
-  private handleNextLyricsRound(conn: Party.Connection, hostId: string) {
-    if (!this.authorizeHost(conn, hostId) || !this.lyricsState) {
-      this.sendTo(conn, { type: "ERROR", error: "unauthorized" });
-      return;
-    }
-    if (!timedRound.nextRound(this.lyricsState)) {
-      this.sendTo(conn, { type: "ERROR", error: "wrong_phase" });
-      return;
-    }
-    this.broadcastLyricsState();
+  /** Host-only timed-round step: "unauthorized" or "wrong_phase" errors, else broadcast. */
+  private hostStep<S>(conn: Party.Connection, hostId: string, state: S | null, step: (s: S) => boolean, broadcast: () => void) {
+    if (!this.authorizeHost(conn, hostId) || !state) return this.sendTo(conn, { type: "ERROR", error: "unauthorized" });
+    if (!step(state)) return this.sendTo(conn, { type: "ERROR", error: "wrong_phase" });
+    broadcast();
   }
+
+  private lyricsStep(conn: Party.Connection, hostId: string, step: (s: LyricsGameState) => boolean) {
+    this.hostStep(conn, hostId, this.lyricsState, step, () => this.broadcastLyricsState());
+  }
+
+  private guessStep(conn: Party.Connection, hostId: string, step: (s: GuessGameState) => boolean) {
+    this.hostStep(conn, hostId, this.guessState, step, () => this.broadcastGuessState());
+  }
+
+  private scoreLyricsRound = (s: LyricsGameState) =>
+    timedRound.showResults(s, (round, ans, roundStart) => {
+      const correct = isCorrect(ans.text, round.blankSentence, round.acceptableVariants, this.lyricsConfig.fuzzyEnabled);
+      const points = correct ? computePoints(roundStart, ans.ts, s.timerSeconds) : 0;
+      return { answer: { ...ans, correct, points }, points };
+    });
+
+  private scoreGuessRound = (s: GuessGameState) =>
+    timedRound.showResults(s, (round, ans, roundStart) => {
+      const score = scoreGuess(ans, round, roundStart, s.timerSeconds, this.guessConfig.fuzzyEnabled);
+      return { answer: { ...ans, ...score }, points: score.points };
+    });
 
   private handleResetLyricsGame(conn: Party.Connection, hostId: string) {
     if (!this.authorizeHost(conn, hostId)) {
@@ -1593,10 +1486,7 @@ export default class HitsterRoom implements Party.Server {
       this.sendTo(conn, { type: "ERROR", error: "not_enough_songs" });
       return;
     }
-    const players: GuessGameState["players"] = {};
-    for (const [pid, p] of Object.entries(this.state.players)) {
-      players[pid] = { name: p.name, score: 0, connected: p.connected, timeMs: 0 };
-    }
+    const players = this.freshTimedPlayers();
     this.guessState = {
       mode: "guess",
       phase: "playing",
@@ -1650,18 +1540,6 @@ export default class HitsterRoom implements Party.Server {
     });
   }
 
-  private handleStartGuessRound(conn: Party.Connection, hostId: string) {
-    if (!this.authorizeHost(conn, hostId) || !this.guessState) {
-      this.sendTo(conn, { type: "ERROR", error: "unauthorized" });
-      return;
-    }
-    if (!timedRound.startRound(this.guessState, Date.now())) {
-      this.sendTo(conn, { type: "ERROR", error: "wrong_phase" });
-      return;
-    }
-    this.broadcastGuessState();
-  }
-
   private handleSubmitGuess(conn: Party.Connection, playerId: string, title: string, artist: string) {
     if (!isValidPlayerId(playerId)) return;
     if (typeof title !== "string" || typeof artist !== "string") return;
@@ -1673,35 +1551,6 @@ export default class HitsterRoom implements Party.Server {
     }));
     if (result === "too_late") this.sendTo(conn, { type: "TOO_LATE" });
     if (result === "ok") this.broadcastGuessState();
-  }
-
-  private handleShowGuessResults(conn: Party.Connection, hostId: string) {
-    if (!this.authorizeHost(conn, hostId) || !this.guessState) {
-      this.sendTo(conn, { type: "ERROR", error: "unauthorized" });
-      return;
-    }
-    const { timerSeconds } = this.guessState;
-    const scored = timedRound.showResults(this.guessState, (round, ans, roundStart) => {
-      const score = scoreGuess(ans, round, roundStart, timerSeconds, this.guessConfig.fuzzyEnabled);
-      return { answer: { ...ans, ...score }, points: score.points };
-    });
-    if (!scored) {
-      this.sendTo(conn, { type: "ERROR", error: "wrong_phase" });
-      return;
-    }
-    this.broadcastGuessState();
-  }
-
-  private handleNextGuessRound(conn: Party.Connection, hostId: string) {
-    if (!this.authorizeHost(conn, hostId) || !this.guessState) {
-      this.sendTo(conn, { type: "ERROR", error: "unauthorized" });
-      return;
-    }
-    if (!timedRound.nextRound(this.guessState)) {
-      this.sendTo(conn, { type: "ERROR", error: "wrong_phase" });
-      return;
-    }
-    this.broadcastGuessState();
   }
 
   private handleResetGuessGame(conn: Party.Connection, hostId: string) {
@@ -1735,7 +1584,6 @@ export default class HitsterRoom implements Party.Server {
     for (const [playerId, player] of Object.entries(players)) {
       this.state.players[playerId] = {
         name: player.name,
-        cardCount: 0,
         timeline: [],
         connected: player.connected,
       };

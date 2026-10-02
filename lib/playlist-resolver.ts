@@ -104,16 +104,25 @@ export function buildCardsFromAI(
   return { songs, allSongs, diagnostics };
 }
 
+/** PartyKit storage get/put accept at most 128 keys per call. */
+const STORAGE_BATCH = 128;
+
 /** Batched storage.get — PartyKit's Storage.get caps out around 128 keys per call. Shared by
  * the AI-metadata cache below and by any lyrics-cache read a caller does on the side. */
 export async function storageBatchGet<T>(storage: PartyStorage, keys: string[]): Promise<Map<string, T>> {
   const result = new Map<string, T>();
-  for (let i = 0; i < keys.length; i += 128) {
-    const chunk = keys.slice(i, i + 128);
+  for (let i = 0; i < keys.length; i += STORAGE_BATCH) {
+    const chunk = keys.slice(i, i + STORAGE_BATCH);
     const partial = (await storage.get<T>(chunk)) as Map<string, T>;
     for (const [k, v] of partial) result.set(k, v);
   }
   return result;
+}
+
+/** Fire-and-forget put of `prefix + id → value`, STORAGE_BATCH keys per call. */
+export function storageBatchPut(storage: PartyStorage, prefix: string, entries: Iterable<readonly [string, unknown]>) {
+  const all = [...entries].map(([id, v]) => [prefix + id, v] as const);
+  for (let i = 0; i < all.length; i += STORAGE_BATCH) storage.put(Object.fromEntries(all.slice(i, i + STORAGE_BATCH))).catch(() => {});
 }
 
 /**
@@ -140,10 +149,7 @@ export async function getNoResult(storage: PartyStorage, prefix: string, videoId
 
 /** Records "no usable result" for these video ids (value: when, for the TTL). Fire-and-forget. */
 export function putNoResult(storage: PartyStorage, prefix: string, videoIds: Iterable<string>, now = Date.now()) {
-  const entries = [...videoIds].map((id) => [prefix + id, now] as const);
-  for (let i = 0; i < entries.length; i += 128) {
-    storage.put(Object.fromEntries(entries.slice(i, i + 128))).catch(() => {});
-  }
+  storageBatchPut(storage, prefix, [...videoIds].map((id) => [id, now] as const));
 }
 
 /** Exported for callers that already have `tracks` (e.g. handleStartLyricsGame's
@@ -166,13 +172,7 @@ export async function resolveAIWithCache(
         : undefined, unusable)
     : new Map<string, AITrackMeta>();
   if (unusable.size > 0) putNoResult(storage, NO_RESULT.aiMeta, unusable);
-  if (freshAI.size > 0) {
-    const entries = [...freshAI].map(([id, meta]) => [`aiMeta:${id}`, meta] as const);
-    for (let i = 0; i < entries.length; i += 128) {
-      const chunk = Object.fromEntries(entries.slice(i, i + 128));
-      storage.put(chunk).catch(() => {});
-    }
-  }
+  storageBatchPut(storage, "aiMeta:", freshAI);
   return new Map([...cachedAI, ...freshAI]);
 }
 

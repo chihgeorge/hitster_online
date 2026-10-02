@@ -32,7 +32,7 @@ function clickStartGame() {
 }
 
 const lobbyStateWithPlayer: GameState = {
-  phase: "lobby", players: { p1: { name: "Alice", cardCount: 0, timeline: [], connected: true } },
+  phase: "lobby", players: { p1: { name: "Alice", timeline: [], connected: true } },
   targetCardCount: 10, currentRound: 0, playlistId: "", songs: [], currentSong: null,
   placements: {}, activePlayerId: null, hostId: "host-uuid", hostClaimed: true, winner: null,
 };
@@ -59,7 +59,7 @@ function loadLyricsPlaylistWithPlayer() {
   fireEvent.change(screen.getByPlaceholderText(/youtube.com\/playlist/), { target: { value: "hitster://cpop-test" } });
   fireEvent.click(screen.getByText("載入 Load"));
   serverSends({
-    type: "PLAYLIST_READY", songCount: 2,
+    type: "PLAYLIST_READY",
     songs: [{ videoId: "v1", title: "Song A", artist: "Artist A", year: 2000 }, { videoId: "v2", title: "Song B", artist: "Artist B", year: 2001 }],
   });
   serverSends({
@@ -106,7 +106,7 @@ describe("HostPage: loaded-playlist line matches the game mode", () => {
     fireEvent.change(screen.getByPlaceholderText(/youtube.com\/playlist/), { target: { value: "hitster://cpop-test" } });
     fireEvent.click(screen.getByText("載入 Load"));
     serverSends({
-      type: "PLAYLIST_READY", songCount: 3,
+      type: "PLAYLIST_READY",
       songs: [
         { videoId: "v1", title: "A", artist: "X", year: 2000 },
         { videoId: "v2", title: "B", artist: "X", year: 2001 },
@@ -215,7 +215,7 @@ describe("HostPage: Ask AI includes songs with no existing lyrics data (regressi
     fireEvent.change(screen.getByPlaceholderText(/youtube.com\/playlist/), { target: { value: "hitster://cpop-test" } });
     fireEvent.click(screen.getByText("載入 Load"));
     serverSends({
-      type: "PLAYLIST_READY", songCount: 3,
+      type: "PLAYLIST_READY",
       songs: [
         { videoId: "v1", title: "Song A", artist: "Artist A", year: 2000 },
         { videoId: "v2", title: "Song B (no data)", artist: "Artist B", year: 2001 },
@@ -265,7 +265,7 @@ describe("HostPage: cross-session playlist dedup by source URL", () => {
     fireEvent.change(screen.getByPlaceholderText(/youtube.com\/playlist/), { target: { value: sourceUrl } });
     fireEvent.click(screen.getByText("載入 Load"));
     serverSends({
-      type: "PLAYLIST_READY", songCount: 2,
+      type: "PLAYLIST_READY",
       songs: [{ videoId: "v1", title: "Song A", artist: "Artist A", year: 2000 }, { videoId: "v2", title: "Song B", artist: "Artist B", year: 2001 }],
     });
 
@@ -290,7 +290,7 @@ describe("HostPage: Guess Mode start", () => {
     fireEvent.click(screen.getByText("🎧 猜歌模式"));
     fireEvent.change(screen.getByPlaceholderText(/youtube.com\/playlist/), { target: { value: "hitster://cpop-test" } });
     fireEvent.click(screen.getByText("載入 Load"));
-    serverSends({ type: "PLAYLIST_READY", songCount: 2, songs: [{ videoId: "v1", title: "Song A", artist: "A", year: 2000 }, { videoId: "v2", title: "Song B", artist: "B", year: 2001 }] });
+    serverSends({ type: "PLAYLIST_READY", songs: [{ videoId: "v1", title: "Song A", artist: "A", year: 2000 }, { videoId: "v2", title: "Song B", artist: "B", year: 2001 }] });
     serverSends({ type: "STATE", state: lobbyStateWithPlayer });
     clickStartGame();
     const sent = sendSpy.mock.calls.map((c) => JSON.parse(c[0] as string));
@@ -299,6 +299,44 @@ describe("HostPage: Guess Mode start", () => {
     expect((screen.getByTestId("start-game-btn") as HTMLButtonElement).disabled).toBe(true);
     serverSends({ type: "ERROR", error: "not_enough_songs" });
     expect((screen.getByTestId("start-game-btn") as HTMLButtonElement).disabled).toBe(false);
+  });
+});
+
+// Value: protects=each Lyrics/Timeline host button sends its own command (a swapped command silently stalls the game); fails_when=a hostSend("…") call site names the wrong command; why_new=Lyrics round buttons and Timeline Play Again had no test at any layer (Guess buttons and Reveal/Next are e2e-covered); seam=none
+describe("HostPage: host step buttons send their command", () => {
+  const round = { videoId: "v1", title: "Song A", artist: "Artist A", language: "en", lyricContext: "I want ___", blankSentence: "you" };
+  const lyrics = (phase: string) => ({
+    type: "LYRICS_STATE", serverNow: Date.now(),
+    state: {
+      mode: "lyrics", phase, players: { p1: { name: "Alice", score: 0, connected: true, timeMs: 0 } },
+      rounds: [round], currentRound: round, roundStart: phase === "guessing" ? Date.now() : null,
+      timerSeconds: 60, answers: {}, totalRounds: 2, currentRoundIndex: 0,
+    },
+  });
+  const lastSent = () => JSON.parse(sendSpy.mock.calls.at(-1)![0] as string);
+
+  it("Lyrics confirm / Cut / Show Results / Next, and Timeline Play Again", () => {
+    loadLyricsPlaylistWithPlayer();
+    serverSends(lyrics("preview"));
+    fireEvent.click(screen.getByTestId("start-game-btn"));
+    expect(lastSent()).toEqual({ type: "CONFIRM_LYRICS_PREVIEW", hostId: expect.any(String) });
+
+    serverSends(lyrics("playing"));
+    fireEvent.click(screen.getByText(/Cut!/));
+    expect(lastSent().type).toBe("START_LYRICS_ROUND");
+
+    serverSends(lyrics("guessing"));
+    fireEvent.click(screen.getByText(/Show Results/));
+    expect(lastSent().type).toBe("SHOW_LYRICS_RESULTS");
+
+    serverSends(lyrics("results"));
+    fireEvent.click(screen.getByText(/Next Round/));
+    expect(lastSent().type).toBe("NEXT_LYRICS_ROUND");
+
+    serverSends({ type: "LYRICS_ABORTED" });
+    serverSends({ type: "STATE", state: { ...lobbyStateWithPlayer, phase: "ended", winner: "p1" } });
+    fireEvent.click(screen.getByText(/Play Again/));
+    expect(lastSent()).toEqual({ type: "RESET_GAME", hostId: expect.any(String) });
   });
 });
 

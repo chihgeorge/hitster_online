@@ -17,10 +17,12 @@ function card(id: string, year: number): Card {
   return { id, videoId: id, title: id, artist: "Test", year };
 }
 
+/** n placeholder cards, for winner checks that only care about timeline length */
+const cards = (n: number) => Array.from({ length: n }, (_, i) => card(`c${i}`, 1900 + i));
+
 function player(overrides: Partial<Player> = {}): Player {
   return {
     name: "Test",
-    cardCount: 0,
     timeline: [],
     connected: true,
     ...overrides,
@@ -82,7 +84,6 @@ describe("evaluateRound", () => {
     const placements = { p1: 1 }; // between 1975 and 1995 — correct for 1985
 
     const result = evaluateRound(placements, song, players);
-    expect(result.p1.cardCount).toBe(1);
     expect(result.p1.timeline).toHaveLength(3);
     expect(result.p1.timeline[1].year).toBe(1985);
   });
@@ -94,7 +95,6 @@ describe("evaluateRound", () => {
     const placements = { p1: 0 }; // before 1975 — wrong for 1985
 
     const result = evaluateRound(placements, song, players);
-    expect(result.p1.cardCount).toBe(0);
     expect(result.p1.timeline).toHaveLength(2);
   });
 
@@ -103,7 +103,6 @@ describe("evaluateRound", () => {
     const placements = {}; // p1 didn't place
 
     const result = evaluateRound(placements, song, players);
-    expect(result.p1.cardCount).toBe(0);
     expect(result.p1.timeline).toHaveLength(1);
   });
 
@@ -118,8 +117,8 @@ describe("evaluateRound", () => {
     };
     // p2 has only [2000], placing at position 0 with year 1985 → before 2000, correct
     const result = evaluateRound(placements, song, players);
-    expect(result.p1.cardCount).toBe(1);
-    expect(result.p2.cardCount).toBe(1);
+    expect(result.p1.timeline).toHaveLength(3); // both placements correct: each kept the card
+    expect(result.p2.timeline).toHaveLength(2);
   });
 });
 
@@ -128,24 +127,24 @@ describe("evaluateRound", () => {
 describe("checkWinner", () => {
   it("returns null when no one has reached targetCardCount", () => {
     const players = {
-      p1: player({ cardCount: 5 }),
-      p2: player({ cardCount: 7 }),
+      p1: player({ timeline: cards(5) }),
+      p2: player({ timeline: cards(7) }),
     };
     expect(checkWinner(players, 10)).toBeNull();
   });
 
   it("returns the playerId of the winner", () => {
     const players = {
-      p1: player({ cardCount: 9 }),
-      p2: player({ cardCount: 10 }),
+      p1: player({ timeline: cards(9) }),
+      p2: player({ timeline: cards(10) }),
     };
     expect(checkWinner(players, 10)).toBe("p2");
   });
 
   it("returns first winner found when multiple players hit the target", () => {
     const players = {
-      p1: player({ cardCount: 10 }),
-      p2: player({ cardCount: 10 }),
+      p1: player({ timeline: cards(10) }),
+      p2: player({ timeline: cards(10) }),
     };
     // Result is deterministic (Object.entries order)
     const winner = checkWinner(players, 10);

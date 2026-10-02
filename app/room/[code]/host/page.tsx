@@ -53,7 +53,6 @@ export default function HostPage() {
   const [targetCount, setTargetCount] = useState(10);
   const [error, setError] = useState("");
   const [loadStatus, setLoadStatus] = useState<LoadStatus>("idle");
-  const [readySongCount, setReadySongCount] = useState(0);
   const [starting, setStarting] = useState(false);
   const [diagnostic, setDiagnostic] = useState<SongDiagnostic[] | null>(null);
   const [showDiagnostic, setShowDiagnostic] = useState(false);
@@ -173,7 +172,6 @@ export default function HostPage() {
         if (msg.skippedEmbeddingCount) setSkippedEmbeddingCount(msg.skippedEmbeddingCount);
       }
       if (msg.type === "PLAYLIST_READY") {
-        setReadySongCount(msg.songCount);
         setReadySongs(Array.isArray(msg.songs) ? msg.songs : []);
         setLoadStatus("ready");
         setShowSavePanel(false);
@@ -321,21 +319,10 @@ export default function HostPage() {
     });
   }
 
-  function handleConfirmLyricsPreview() {
-    send({ type: "CONFIRM_LYRICS_PREVIEW", hostId: hostIdRef.current });
-  }
-
-  function handleStartLyricsRound() {
-    send({ type: "START_LYRICS_ROUND", hostId: hostIdRef.current });
-  }
-
-  function handleShowLyricsResults() {
-    send({ type: "SHOW_LYRICS_RESULTS", hostId: hostIdRef.current });
-  }
-
-  function handleNextLyricsRound() {
-    send({ type: "NEXT_LYRICS_ROUND", hostId: hostIdRef.current });
-  }
+  // Host commands that carry nothing but the host credential.
+  type HostCommand = "CONFIRM_LYRICS_PREVIEW" | "START_LYRICS_ROUND" | "SHOW_LYRICS_RESULTS" | "NEXT_LYRICS_ROUND"
+    | "START_GUESS_ROUND" | "SHOW_GUESS_RESULTS" | "NEXT_GUESS_ROUND" | "REVEAL" | "NEXT_ROUND" | "RESET_GAME";
+  const hostSend = (type: HostCommand) => () => send({ type, hostId: hostIdRef.current });
 
   function handleResetLyricsGame() {
     send({ type: "RESET_LYRICS_GAME", hostId: hostIdRef.current });
@@ -345,18 +332,6 @@ export default function HostPage() {
   function handleResetGuessGame() {
     send({ type: "RESET_GUESS_GAME", hostId: hostIdRef.current });
     setGuessState(null);
-  }
-
-  function handleReveal() {
-    send({ type: "REVEAL", hostId: hostIdRef.current });
-  }
-
-  function handleNextRound() {
-    send({ type: "NEXT_ROUND", hostId: hostIdRef.current });
-  }
-
-  function handleResetGame() {
-    send({ type: "RESET_GAME", hostId: hostIdRef.current });
   }
 
   async function handleSavePlaylist() {
@@ -722,10 +697,10 @@ export default function HostPage() {
                 <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                   <span style={{ color: "var(--mint)", fontSize: 16 }}>✓</span>
                   <p style={{ color: "var(--mint)", fontWeight: 700, fontSize: 13 }}>
-                    {/* Release years only matter in Timeline; songCount counts every loaded song. */}
+                    {/* Release years only matter in Timeline; the song count is every loaded song. */}
                     {gameMode === "timeline"
-                      ? `已載入 — ${readySongCount} 首歌曲，${readySongs.filter((s) => s.year).length} 首有確認年份`
-                      : `已載入 — ${readySongCount} 首歌曲`}
+                      ? `已載入 — ${readySongs.length} 首歌曲，${readySongs.filter((s) => s.year).length} 首有確認年份`
+                      : `已載入 — ${readySongs.length} 首歌曲`}
                   </p>
                 </div>
                 {savedId ? (
@@ -857,7 +832,7 @@ export default function HostPage() {
 
           {/* Start Game — two states for lyrics: generate lyrics, then confirm to begin */}
           {loadStatus === "ready" && lyricsState?.phase === "preview" && (
-            <button type="button" data-testid="start-game-btn" onClick={handleConfirmLyricsPreview} disabled={playerCount === 0}
+            <button type="button" data-testid="start-game-btn" onClick={hostSend("CONFIRM_LYRICS_PREVIEW")} disabled={playerCount === 0}
               style={{ background: playerCount === 0 ? "rgba(255,107,53,.35)" : "var(--orange)", color: "white", border: "none", borderRadius: 14, padding: "15px", fontSize: 16, fontWeight: 900, cursor: playerCount === 0 ? "not-allowed" : "pointer", fontFamily: "var(--font-zh)", boxShadow: playerCount > 0 ? "0 4px 16px rgba(255,107,53,.3)" : "none" }}>
               ▶ 開始遊戲 · Start Game
             </button>
@@ -941,7 +916,7 @@ export default function HostPage() {
           <p style={{ fontSize: 11, color: "var(--text3)", textTransform: "uppercase", letterSpacing: ".1em" }}>
             第 {lyricsState.currentRoundIndex + 1} / {lyricsState.totalRounds} 回合 · {lyricsState.currentRound.title}
           </p>
-          <button onClick={handleStartLyricsRound}
+          <button onClick={hostSend("START_LYRICS_ROUND")}
             style={{ background: "var(--orange)", color: "white", border: "none", borderRadius: 14, padding: "15px", fontSize: 16, fontWeight: 900, cursor: "pointer", fontFamily: "var(--font-zh)", boxShadow: "0 4px 16px rgba(255,107,53,.3)" }}>
             ✂️ 切歌！Cut!
           </button>
@@ -955,7 +930,7 @@ export default function HostPage() {
           <p style={{ fontSize: 11, color: "var(--text3)", textTransform: "uppercase", letterSpacing: ".1em" }}>
             第 {lyricsState.currentRoundIndex + 1} / {lyricsState.totalRounds} 回合 · 搶答中 — 已作答 {Object.keys(lyricsState.answers).length} / {Object.keys(lyricsState.players).length}
           </p>
-          <button onClick={handleShowLyricsResults}
+          <button onClick={hostSend("SHOW_LYRICS_RESULTS")}
             style={{ background: "var(--ink)", color: "white", border: "none", borderRadius: 14, padding: "14px", fontSize: 15, fontWeight: 900, cursor: "pointer", fontFamily: "var(--font-zh)" }}>
             🔍 揭曉答案 · Show Results
           </button>
@@ -969,7 +944,7 @@ export default function HostPage() {
           <p style={{ fontSize: 11, color: "var(--text3)", textTransform: "uppercase", letterSpacing: ".1em" }}>
             第 {lyricsState.currentRoundIndex + 1} / {lyricsState.totalRounds} 回合 · 結果 — 答案：{lyricsState.currentRound.blankSentence ?? "（已揭曉）"}
           </p>
-          <button onClick={handleNextLyricsRound}
+          <button onClick={hostSend("NEXT_LYRICS_ROUND")}
             style={{ background: "var(--orange)", color: "white", border: "none", borderRadius: 14, padding: "14px", fontSize: 15, fontWeight: 900, cursor: "pointer", fontFamily: "var(--font-zh)", boxShadow: "0 4px 16px rgba(255,107,53,.3)" }}>
             {lyricsState.currentRoundIndex + 1 >= lyricsState.totalRounds ? "🏆 查看排名 · See Rankings" : "▶ 下一回合 · Next Round"}
           </button>
@@ -996,9 +971,9 @@ export default function HostPage() {
         <GuessHostControls
           state={guessState}
           panel={panel}
-          onStartRound={() => send({ type: "START_GUESS_ROUND", hostId: hostIdRef.current })}
-          onShowResults={() => send({ type: "SHOW_GUESS_RESULTS", hostId: hostIdRef.current })}
-          onNext={() => send({ type: "NEXT_GUESS_ROUND", hostId: hostIdRef.current })}
+          onStartRound={hostSend("START_GUESS_ROUND")}
+          onShowResults={hostSend("SHOW_GUESS_RESULTS")}
+          onNext={hostSend("NEXT_GUESS_ROUND")}
           onReset={handleResetGuessGame}
         />
       )}
@@ -1012,7 +987,7 @@ export default function HostPage() {
           {phase === "guessing" && (
             <button
               data-testid="reveal-btn"
-              onClick={handleReveal}
+              onClick={hostSend("REVEAL")}
               disabled={Object.keys(state?.placements ?? {}).length === 0}
               style={{
                 background: Object.keys(state?.placements ?? {}).length === 0 ? "rgba(255,107,53,.35)" : "var(--orange)",
@@ -1026,7 +1001,7 @@ export default function HostPage() {
             </button>
           )}
           {phase === "reveal" && (
-            <button data-testid="next-round-btn" onClick={handleNextRound}
+            <button data-testid="next-round-btn" onClick={hostSend("NEXT_ROUND")}
               style={{ background: "var(--ink)", color: "white", border: "none", borderRadius: 14, padding: "14px", fontSize: 15, fontWeight: 900, cursor: "pointer", fontFamily: "var(--font-zh)" }}>
               下一回合 · Next Round
             </button>
@@ -1041,7 +1016,7 @@ export default function HostPage() {
           <h2 className="title-outlined" style={{ fontSize: 32, lineHeight: 1.05 }}>
             {state.players[state.winner ?? ""]?.name ?? "Unknown"}
           </h2>
-          <button onClick={handleResetGame}
+          <button onClick={hostSend("RESET_GAME")}
             style={{ background: "var(--orange)", color: "white", border: "none", borderRadius: 14, padding: "14px 32px", fontSize: 15, fontWeight: 900, cursor: "pointer", fontFamily: "var(--font-zh)" }}>
             再玩一次 · Play Again
           </button>
