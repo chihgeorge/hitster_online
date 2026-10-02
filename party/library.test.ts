@@ -176,10 +176,14 @@ describe("LibraryParty: misc", () => {
     expect(status).toBe(400);
   });
 
+  // Value: protects=browser preflight lets the host page (another origin) PUT a save and send JSON; fails_when=shared CORS_HEADERS in party/http.ts drops PUT, Content-Type, or the * origin; why_new=preflight test only checked the 204 status; seam=none
   it("handles OPTIONS preflight", async () => {
     const party = new LibraryParty(makeRoom());
     const res = await party.onRequest(makeRequest("OPTIONS"));
     expect(res.status).toBe(204);
+    expect(res.headers.get("Access-Control-Allow-Origin")).toBe("*");
+    expect(res.headers.get("Access-Control-Allow-Methods")).toContain("PUT");
+    expect(res.headers.get("Access-Control-Allow-Headers")).toContain("Content-Type");
   });
 
   it("rejects other methods", async () => {

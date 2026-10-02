@@ -11,6 +11,7 @@ import {
   buildCardsFromAI,
   parseTrackMetas,
   storageBatchGet,
+  storageBatchPut,
   resolveEnv,
   type TrackItem,
 } from "./playlist-resolver";
@@ -235,6 +236,17 @@ describe("parseTrackMetas / storageBatchGet", () => {
     const result = await storageBatchGet<string>(storage, Object.keys(entries));
     expect(result.size).toBe(150);
     expect(result.get("k149")).toBe("v149");
+  });
+
+  // Value: protects=cache writes over 128 keys land (storage.put rejects >128 keys and the rejection is swallowed); fails_when=storageBatchPut sends one oversized put or drops the tail chunk; why_new=only storageBatchGet's chunking was tested; seam=none
+  it("storageBatchPut splits >128 entries into ≤128-key puts, prefixing every key", async () => {
+    const storage = fakeStorage();
+    storageBatchPut(storage, "lyrics:", Array.from({ length: 300 }, (_, i) => [`v${i}`, i] as const));
+    const calls = vi.mocked(storage.put).mock.calls.map(([v]) => Object.keys(v as Record<string, unknown>));
+    expect(calls.map((k) => k.length)).toEqual([128, 128, 44]);
+    const result = await storageBatchGet<number>(storage, Array.from({ length: 300 }, (_, i) => `lyrics:v${i}`));
+    expect(result.size).toBe(300);
+    expect(result.get("lyrics:v299")).toBe(299);
   });
 });
 

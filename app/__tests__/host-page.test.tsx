@@ -302,6 +302,44 @@ describe("HostPage: Guess Mode start", () => {
   });
 });
 
+// Value: protects=each Lyrics/Timeline host button sends its own command (a swapped command silently stalls the game); fails_when=a hostSend("…") call site names the wrong command; why_new=Lyrics round buttons and Timeline Play Again had no test at any layer (Guess buttons and Reveal/Next are e2e-covered); seam=none
+describe("HostPage: host step buttons send their command", () => {
+  const round = { videoId: "v1", title: "Song A", artist: "Artist A", language: "en", lyricContext: "I want ___", blankSentence: "you" };
+  const lyrics = (phase: string) => ({
+    type: "LYRICS_STATE", serverNow: Date.now(),
+    state: {
+      mode: "lyrics", phase, players: { p1: { name: "Alice", score: 0, connected: true, timeMs: 0 } },
+      rounds: [round], currentRound: round, roundStart: phase === "guessing" ? Date.now() : null,
+      timerSeconds: 60, answers: {}, totalRounds: 2, currentRoundIndex: 0,
+    },
+  });
+  const lastSent = () => JSON.parse(sendSpy.mock.calls.at(-1)![0] as string);
+
+  it("Lyrics confirm / Cut / Show Results / Next, and Timeline Play Again", () => {
+    loadLyricsPlaylistWithPlayer();
+    serverSends(lyrics("preview"));
+    fireEvent.click(screen.getByTestId("start-game-btn"));
+    expect(lastSent()).toEqual({ type: "CONFIRM_LYRICS_PREVIEW", hostId: expect.any(String) });
+
+    serverSends(lyrics("playing"));
+    fireEvent.click(screen.getByText(/Cut!/));
+    expect(lastSent().type).toBe("START_LYRICS_ROUND");
+
+    serverSends(lyrics("guessing"));
+    fireEvent.click(screen.getByText(/Show Results/));
+    expect(lastSent().type).toBe("SHOW_LYRICS_RESULTS");
+
+    serverSends(lyrics("results"));
+    fireEvent.click(screen.getByText(/Next Round/));
+    expect(lastSent().type).toBe("NEXT_LYRICS_ROUND");
+
+    serverSends({ type: "LYRICS_ABORTED" });
+    serverSends({ type: "STATE", state: { ...lobbyStateWithPlayer, phase: "ended", winner: "p1" } });
+    fireEvent.click(screen.getByText(/Play Again/));
+    expect(lastSent()).toEqual({ type: "RESET_GAME", hostId: expect.any(String) });
+  });
+});
+
 describe("HostPage: screen link", () => {
   it("shows the full screen URL as a link to one named screen tab, and keeps it after the game starts", async () => {
     render(<HostPage />);

@@ -204,7 +204,7 @@ export default class PlaylistParty implements Party.Server {
 
       // PROPOSE_EDITS: AI chat-to-diff editing (T3, docs/designs/full-page-focus-editor.md;
       // HTTP-shaped like RESOLVE_FROM_URL above, not WebSocket-shaped like party/index.ts's
-      // handleProposeEdits, which this mirrors otherwise). Never mutates the stored playlist —
+      // proposeDiff (the PROPOSE_EDITS case), which this mirrors otherwise). Never mutates the stored playlist —
       // returns a diff for the client to review and PUT back via UPDATE_SONG, same contract
       // as the room's own chat-to-diff editing.
       if (action === "PROPOSE_EDITS") {

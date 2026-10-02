@@ -723,7 +723,7 @@ describe("REVEAL handler", () => {
     const { room, conn } = await startedRoom();
     room.state.targetCardCount = room.state.players[P1].timeline.length + 1; // one correct placement wins
 
-    // Make an unconditionally correct placement: set up song year to fit before player's timeline
+    // An always-correct placement: just before the first timeline card that isn't older than the song
     const songYear = room.state.currentSong!.year;
     const timeline = room.state.players[P1].timeline;
     const pos = timeline.findIndex((c) => c.year >= songYear);
@@ -731,10 +731,9 @@ describe("REVEAL handler", () => {
     await send(room, conn, { type: "PLACE", playerId: P1, position: safePos });
     await send(room, conn, { type: "REVEAL", hostId: "host-uuid" });
 
-    if (room.state.players[P1].timeline.length >= room.state.targetCardCount) {
-      expect(room.state.phase).toBe("ended");
-      expect(room.state.winner).toBe(P1);
-    }
+    expect(room.state.players[P1].timeline).toHaveLength(room.state.targetCardCount);
+    expect(room.state.phase).toBe("ended");
+    expect(room.state.winner).toBe(P1);
   });
 });
 
@@ -823,7 +822,6 @@ describe("RESET_GAME handler", () => {
     expect(room.state.phase).toBe("lobby");
     expect(room.state.winner).toBeNull();
     expect(room.state.players[P1].name).toBe("Alice");
-    expect(room.state.players[P1].timeline).toHaveLength(0);
     expect(room.state.players[P1].timeline).toHaveLength(0);
   });
 
@@ -3257,6 +3255,30 @@ describe("Guess Mode: review hardening", () => {
       await send(room, stranger, { type, hostId: "bad-id" });
       expect(lastSentTo(stranger)).toMatchObject({ type: "ERROR", error: "unauthorized" });
       expect(room.guessState).toMatchObject({ phase: before.phase, currentRoundIndex: before.idx });
+    });
+
+  // Value: protects=out-of-phase host taps in Guess mode can't score or skip a round; fails_when=guessStep broadcasts/advances without the timed-round phase gate; why_new=only Lyrics exercised hostStep's wrong_phase branch; seam=none
+  it.each([
+    ["SHOW_GUESS_RESULTS", "playing"],
+    ["NEXT_GUESS_ROUND", "playing"],
+    ["START_GUESS_ROUND", "guessing"],
+  ])("%s while %s is wrong_phase and changes nothing", async (type, phase) => {
+    const { room, hostConn } = await setupGuessGame();
+    if (phase === "guessing") await send(room, hostConn, { type: "START_GUESS_ROUND", hostId: "host-uuid" });
+    const before = { phase: room.guessState!.phase, idx: room.guessState!.currentRoundIndex, roundStart: room.guessState!.roundStart };
+    await send(room, hostConn, { type, hostId: "host-uuid" });
+    expect(lastSentTo(hostConn)).toMatchObject({ type: "ERROR", error: "wrong_phase" });
+    expect(room.guessState).toMatchObject({ phase: before.phase, currentRoundIndex: before.idx, roundStart: before.roundStart });
+  });
+
+  // Value: protects=a stray host step with no timed game running gets a clean ERROR, not a server throw; fails_when=hostStep drops its null-state guard and calls step(null); why_new=no test sends a step command with no game; seam=none
+  it.each(["CONFIRM_LYRICS_PREVIEW", "START_LYRICS_ROUND", "SHOW_LYRICS_RESULTS", "NEXT_LYRICS_ROUND", "START_GUESS_ROUND", "SHOW_GUESS_RESULTS", "NEXT_GUESS_ROUND"])(
+    "%s with no game running is refused without throwing", async (type) => {
+      const room = new HitsterRoom(makeRoom() as any);
+      const hostConn = makeConn("host-conn");
+      await send(room, hostConn, { type: "LOAD_PLAYLIST", hostId: "host-uuid", playlistUrl: "hitster://test" });
+      await send(room, hostConn, { type, hostId: "host-uuid" });
+      expect(lastSentTo(hostConn)).toMatchObject({ type: "ERROR", error: "unauthorized" });
     });
 
   it("START_GUESS_GAME from a non-host is unauthorized", async () => {

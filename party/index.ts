@@ -816,13 +816,11 @@ export default class HitsterRoom implements Party.Server {
   }
 
   /**
-   * Chat-to-diff editing (see docs/designs/ai-assisted-quiz-generation.md, Approach A):
-   * proposes field-level edits to the host's current song list from a natural-language
-   * instruction. Never mutates room state itself — the diff is sent only to the requesting
-   * connection, which renders it as a reviewable change (PlaylistEditor's existing dirty-row
-   * state) before the host explicitly saves it, same as a manually typed edit would be.
+   * Chat-to-diff editing (see docs/designs/ai-assisted-quiz-generation.md, Approach A) for the
+   * host's song list (PROPOSE_EDITS) or lyric rounds (PROPOSE_LYRIC_EDITS): same gate and error
+   * ladder, different AI call and replies. Never mutates room state — the diff goes only to the
+   * requesting connection, which shows it as a reviewable change before the host saves it.
    */
-  /** AI chat-to-diff editing (songs or lyric rounds): same gate and error ladder, different AI call and replies. */
   private async proposeDiff<I, D>(
     conn: Party.Connection,
     hostId: string,
