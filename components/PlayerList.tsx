@@ -36,7 +36,7 @@ export default function PlayerList({ players, placements, targetCardCount, activ
                 )}
               </div>
               <div style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0, fontSize: 14 }}>
-                <span style={{ fontWeight: 900, color: "var(--orange)", fontFamily: "var(--font-mono)" }}>{player.cardCount}</span>
+                <span style={{ fontWeight: 900, color: "var(--orange)", fontFamily: "var(--font-mono)" }}>{player.timeline.length}</span>
                 <span style={{ color: "#4A4A5A" }}>/{targetCardCount}</span>
                 <span style={{ color: hasPlaced ? "var(--mint)" : "#4A4A5A" }}>{hasPlaced ? "✓" : "…"}</span>
               </div>

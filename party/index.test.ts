@@ -253,7 +253,7 @@ describe("REJOIN handler", () => {
 describe("PLACE handler", () => {
   function roomInGuessing() {
     const r = new HitsterRoom(makeRoom() as any);
-    r.state.players[P1] = { name: "Alice", cardCount: 0, timeline: [], connected: true };
+    r.state.players[P1] = { name: "Alice", timeline: [], connected: true };
     r.state.phase = "guessing";
     r.state.activePlayerId = P1;
     r.state.currentSong = {
@@ -286,7 +286,7 @@ describe("PLACE handler", () => {
 
   it("handles two concurrent PLACE messages from the active player without crashing", async () => {
     const r = new HitsterRoom(makeRoom() as any);
-    r.state.players[P1] = { name: "Alice", cardCount: 0, timeline: [], connected: true };
+    r.state.players[P1] = { name: "Alice", timeline: [], connected: true };
     r.state.phase = "guessing";
     r.state.activePlayerId = P1;
     r.state.currentSong = {
@@ -314,7 +314,7 @@ describe("PLACE handler", () => {
 
   it("last of two concurrent PLACE messages at different positions wins (handlePlace is synchronous, no interleaving)", async () => {
     const r = new HitsterRoom(makeRoom() as any);
-    r.state.players[P1] = { name: "Alice", cardCount: 0, timeline: [{ id: "c1", videoId: "c1", title: "Old", artist: "A", year: 1990 }], connected: true };
+    r.state.players[P1] = { name: "Alice", timeline: [{ id: "c1", videoId: "c1", title: "Old", artist: "A", year: 1990 }], connected: true };
     r.state.phase = "guessing";
     r.state.activePlayerId = P1;
     r.state.currentSong = { id: "v1", videoId: "v1", title: "Song", artist: "Artist", year: 1985 };
@@ -342,8 +342,8 @@ describe("PLACE handler", () => {
 
   it("rejects PLACE from a non-active player (spectator)", async () => {
     const r = new HitsterRoom(makeRoom() as any);
-    r.state.players[P1] = { name: "Alice", cardCount: 0, timeline: [], connected: true };
-    r.state.players[P2] = { name: "Bob", cardCount: 0, timeline: [], connected: true };
+    r.state.players[P1] = { name: "Alice", timeline: [], connected: true };
+    r.state.players[P2] = { name: "Bob", timeline: [], connected: true };
     r.state.phase = "guessing";
     r.state.activePlayerId = P1;
     r.state.currentSong = {
@@ -705,11 +705,10 @@ describe("REVEAL handler", () => {
     const { room, conn } = await startedRoom();
     // p1 has 1 starting card; placing at position 0 or 1 is within bounds
     await send(room, conn, { type: "PLACE", playerId: P1, position: 0 });
-    const cardsBefore = room.state.players[P1].cardCount;
+    const cardsBefore = room.state.players[P1].timeline.length;
     await send(room, conn, { type: "REVEAL", hostId: "host-uuid" });
-    // cardCount may have changed (correct or incorrect) — just verify no crash
-    expect(typeof room.state.players[P1].cardCount).toBe("number");
-    expect(room.state.players[P1].cardCount).toBeGreaterThanOrEqual(cardsBefore);
+    // the timeline may have grown (correct) or not (incorrect) — just verify no crash
+    expect(room.state.players[P1].timeline.length).toBeGreaterThanOrEqual(cardsBefore);
   });
 
   it("rejects REVEAL from non-host", async () => {
@@ -722,8 +721,7 @@ describe("REVEAL handler", () => {
 
   it("transitions to ended when a player wins", async () => {
     const { room, conn } = await startedRoom();
-    room.state.players[P1].cardCount = 9;
-    room.state.targetCardCount = 10;
+    room.state.targetCardCount = room.state.players[P1].timeline.length + 1; // one correct placement wins
 
     // Make an unconditionally correct placement: set up song year to fit before player's timeline
     const songYear = room.state.currentSong!.year;
@@ -733,7 +731,7 @@ describe("REVEAL handler", () => {
     await send(room, conn, { type: "PLACE", playerId: P1, position: safePos });
     await send(room, conn, { type: "REVEAL", hostId: "host-uuid" });
 
-    if (room.state.players[P1].cardCount >= 10) {
+    if (room.state.players[P1].timeline.length >= room.state.targetCardCount) {
       expect(room.state.phase).toBe("ended");
       expect(room.state.winner).toBe(P1);
     }
@@ -825,7 +823,7 @@ describe("RESET_GAME handler", () => {
     expect(room.state.phase).toBe("lobby");
     expect(room.state.winner).toBeNull();
     expect(room.state.players[P1].name).toBe("Alice");
-    expect(room.state.players[P1].cardCount).toBe(0);
+    expect(room.state.players[P1].timeline).toHaveLength(0);
     expect(room.state.players[P1].timeline).toHaveLength(0);
   });
 
@@ -853,8 +851,8 @@ describe("RESET_GAME handler", () => {
 describe("PLACE edge cases", () => {
   function roomInGuessing() {
     const r = new HitsterRoom(makeRoom() as any);
-    r.state.players[P1] = { name: "Alice", cardCount: 0, timeline: [], connected: true };
-    r.state.players[P2] = { name: "Bob", cardCount: 0, timeline: [], connected: true };
+    r.state.players[P1] = { name: "Alice", timeline: [], connected: true };
+    r.state.players[P2] = { name: "Bob", timeline: [], connected: true };
     r.state.phase = "guessing";
     r.state.activePlayerId = P1;
     r.state.currentSong = {
@@ -938,7 +936,7 @@ describe("START_GAME song year override reaches placement evaluation", () => {
     await send(room, conn, { type: "PLACE", playerId: P1, position: 0 });
     await send(room, conn, { type: "REVEAL", hostId: "host-uuid" });
 
-    expect(room.state.players[P1].cardCount).toBe(expectedCorrect ? 2 : 1);
+    expect(room.state.players[P1].timeline).toHaveLength(expectedCorrect ? 2 : 1);
   });
 });
 
@@ -1156,7 +1154,7 @@ describe("UUID validation on JOIN/REJOIN/PLACE", () => {
   it("rejects PLACE with non-UUID playerId", async () => {
     const room = new HitsterRoom(makeRoom() as any);
     room.state.phase = "guessing";
-    room.state.players[P1] = { name: "Alice", cardCount: 0, timeline: [], connected: true };
+    room.state.players[P1] = { name: "Alice", timeline: [], connected: true };
     room.state.activePlayerId = P1;
     room.state.currentSong = { id: "s1", videoId: "s1", title: "Song", artist: "Artist", year: 1985 };
     const conn = makeConn();
@@ -1188,7 +1186,8 @@ describe("LOAD_SAVED_PLAYLIST handler", () => {
       type: "LOAD_SAVED_PLAYLIST", hostId: "host-uuid", playlistId: "pl-bad",
       songs: [...validSongs, { videoId: "javascript:alert(1)", title: "Evil", artist: "X", year: 2000 }],
     });
-    expect(lastSentTo(conn)).toMatchObject({ type: "PLAYLIST_READY", songCount: 2 });
+    expect(lastSentTo(conn)).toMatchObject({ type: "PLAYLIST_READY" });
+    expect(lastSentTo(conn)?.songs).toHaveLength(2);
     expect(JSON.stringify(lastSentTo(conn))).not.toContain("javascript:");
   });
 
@@ -1202,7 +1201,7 @@ describe("LOAD_SAVED_PLAYLIST handler", () => {
       songs: validSongs,
     });
     expect(lastSentTo(conn)?.type).toBe("PLAYLIST_READY");
-    expect(lastSentTo(conn)?.songCount).toBe(2);
+    expect(lastSentTo(conn)?.songs).toHaveLength(2);
   });
 
   it("rejects in non-lobby phase", async () => {
@@ -1270,7 +1269,7 @@ describe("LOAD_SAVED_PLAYLIST handler", () => {
     const msg = lastSentTo(conn);
     expect(msg?.type).toBe("PLAYLIST_READY");
     // All 3 songs shown in PlaylistEditor (invalid year stored as null so host can fix it)
-    expect(msg?.songCount).toBe(3);
+    expect(msg?.songs).toHaveLength(3);
     // Invalid year song has year: null in the list
     const badSong = msg?.songs?.find((s: { videoId: string }) => s.videoId === "vid00000003");
     expect(badSong?.year).toBeNull();
@@ -3014,7 +3013,7 @@ describe("AUDIO_FAILED in Timeline: deal the same player another song", () => {
     const tv = makeConn("tv");
     await send(room, tv, { type: "JOIN_SCREEN", screenId: "tv-token" });
     room.state.hostId = "host-uuid";
-    room.state.players[P1] = { name: "Alice", cardCount: 1, timeline: [card("c0", 1990)], connected: true };
+    room.state.players[P1] = { name: "Alice", timeline: [card("c0", 1990)], connected: true };
     room.state.phase = "guessing";
     room.state.activePlayerId = P1;
     room.state.currentRound = 3;

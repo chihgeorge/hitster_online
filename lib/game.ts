@@ -110,7 +110,6 @@ export interface Card {
 
 export interface Player {
   name: string;
-  cardCount: number;
   timeline: Card[]; // chronologically ordered cards the player has kept
   connected: boolean;
 }
@@ -269,7 +268,7 @@ export type ServerMessage =
   | { type: "PLACEMENT_ACK"; playerId: string }
   | { type: "ERROR"; error: string }
   | { type: "DIAGNOSTIC"; songs: SongDiagnostic[]; skippedEmbeddingCount?: number }
-  | { type: "PLAYLIST_READY"; songCount: number; songs: EditableSong[] }
+  | { type: "PLAYLIST_READY"; songs: EditableSong[] }
   | { type: "PLAYLIST_LOAD_ERROR"; error: string }
   | { type: "TOO_LATE" }
   | { type: "LYRICS_PREVIEW"; rounds: PublicLyricsRound[]; loading: boolean }
@@ -332,7 +331,6 @@ export function evaluateRound(
       newTimeline.splice(position, 0, { ...revealedSong });
       updated[playerId] = {
         ...player,
-        cardCount: player.cardCount + 1,
         timeline: newTimeline,
       };
     } else {
@@ -352,7 +350,7 @@ export function checkWinner(
   targetCardCount: number
 ): string | null {
   for (const [playerId, player] of Object.entries(players)) {
-    if (player.cardCount >= targetCardCount) return playerId;
+    if (player.timeline.length >= targetCardCount) return playerId;
   }
   return null;
 }

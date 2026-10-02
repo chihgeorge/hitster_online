@@ -32,7 +32,7 @@ function clickStartGame() {
 }
 
 const lobbyStateWithPlayer: GameState = {
-  phase: "lobby", players: { p1: { name: "Alice", cardCount: 0, timeline: [], connected: true } },
+  phase: "lobby", players: { p1: { name: "Alice", timeline: [], connected: true } },
   targetCardCount: 10, currentRound: 0, playlistId: "", songs: [], currentSong: null,
   placements: {}, activePlayerId: null, hostId: "host-uuid", hostClaimed: true, winner: null,
 };
@@ -59,7 +59,7 @@ function loadLyricsPlaylistWithPlayer() {
   fireEvent.change(screen.getByPlaceholderText(/youtube.com\/playlist/), { target: { value: "hitster://cpop-test" } });
   fireEvent.click(screen.getByText("載入 Load"));
   serverSends({
-    type: "PLAYLIST_READY", songCount: 2,
+    type: "PLAYLIST_READY",
     songs: [{ videoId: "v1", title: "Song A", artist: "Artist A", year: 2000 }, { videoId: "v2", title: "Song B", artist: "Artist B", year: 2001 }],
   });
   serverSends({
@@ -106,7 +106,7 @@ describe("HostPage: loaded-playlist line matches the game mode", () => {
     fireEvent.change(screen.getByPlaceholderText(/youtube.com\/playlist/), { target: { value: "hitster://cpop-test" } });
     fireEvent.click(screen.getByText("載入 Load"));
     serverSends({
-      type: "PLAYLIST_READY", songCount: 3,
+      type: "PLAYLIST_READY",
       songs: [
         { videoId: "v1", title: "A", artist: "X", year: 2000 },
         { videoId: "v2", title: "B", artist: "X", year: 2001 },
@@ -215,7 +215,7 @@ describe("HostPage: Ask AI includes songs with no existing lyrics data (regressi
     fireEvent.change(screen.getByPlaceholderText(/youtube.com\/playlist/), { target: { value: "hitster://cpop-test" } });
     fireEvent.click(screen.getByText("載入 Load"));
     serverSends({
-      type: "PLAYLIST_READY", songCount: 3,
+      type: "PLAYLIST_READY",
       songs: [
         { videoId: "v1", title: "Song A", artist: "Artist A", year: 2000 },
         { videoId: "v2", title: "Song B (no data)", artist: "Artist B", year: 2001 },
@@ -265,7 +265,7 @@ describe("HostPage: cross-session playlist dedup by source URL", () => {
     fireEvent.change(screen.getByPlaceholderText(/youtube.com\/playlist/), { target: { value: sourceUrl } });
     fireEvent.click(screen.getByText("載入 Load"));
     serverSends({
-      type: "PLAYLIST_READY", songCount: 2,
+      type: "PLAYLIST_READY",
       songs: [{ videoId: "v1", title: "Song A", artist: "Artist A", year: 2000 }, { videoId: "v2", title: "Song B", artist: "Artist B", year: 2001 }],
     });
 
@@ -290,7 +290,7 @@ describe("HostPage: Guess Mode start", () => {
     fireEvent.click(screen.getByText("🎧 猜歌模式"));
     fireEvent.change(screen.getByPlaceholderText(/youtube.com\/playlist/), { target: { value: "hitster://cpop-test" } });
     fireEvent.click(screen.getByText("載入 Load"));
-    serverSends({ type: "PLAYLIST_READY", songCount: 2, songs: [{ videoId: "v1", title: "Song A", artist: "A", year: 2000 }, { videoId: "v2", title: "Song B", artist: "B", year: 2001 }] });
+    serverSends({ type: "PLAYLIST_READY", songs: [{ videoId: "v1", title: "Song A", artist: "A", year: 2000 }, { videoId: "v2", title: "Song B", artist: "B", year: 2001 }] });
     serverSends({ type: "STATE", state: lobbyStateWithPlayer });
     clickStartGame();
     const sent = sendSpy.mock.calls.map((c) => JSON.parse(c[0] as string));

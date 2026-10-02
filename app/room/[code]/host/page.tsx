@@ -53,7 +53,6 @@ export default function HostPage() {
   const [targetCount, setTargetCount] = useState(10);
   const [error, setError] = useState("");
   const [loadStatus, setLoadStatus] = useState<LoadStatus>("idle");
-  const [readySongCount, setReadySongCount] = useState(0);
   const [starting, setStarting] = useState(false);
   const [diagnostic, setDiagnostic] = useState<SongDiagnostic[] | null>(null);
   const [showDiagnostic, setShowDiagnostic] = useState(false);
@@ -173,7 +172,6 @@ export default function HostPage() {
         if (msg.skippedEmbeddingCount) setSkippedEmbeddingCount(msg.skippedEmbeddingCount);
       }
       if (msg.type === "PLAYLIST_READY") {
-        setReadySongCount(msg.songCount);
         setReadySongs(Array.isArray(msg.songs) ? msg.songs : []);
         setLoadStatus("ready");
         setShowSavePanel(false);
@@ -699,10 +697,10 @@ export default function HostPage() {
                 <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                   <span style={{ color: "var(--mint)", fontSize: 16 }}>✓</span>
                   <p style={{ color: "var(--mint)", fontWeight: 700, fontSize: 13 }}>
-                    {/* Release years only matter in Timeline; songCount counts every loaded song. */}
+                    {/* Release years only matter in Timeline; the song count is every loaded song. */}
                     {gameMode === "timeline"
-                      ? `已載入 — ${readySongCount} 首歌曲，${readySongs.filter((s) => s.year).length} 首有確認年份`
-                      : `已載入 — ${readySongCount} 首歌曲`}
+                      ? `已載入 — ${readySongs.length} 首歌曲，${readySongs.filter((s) => s.year).length} 首有確認年份`
+                      : `已載入 — ${readySongs.length} 首歌曲`}
                   </p>
                 </div>
                 {savedId ? (

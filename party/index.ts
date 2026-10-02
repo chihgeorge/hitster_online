@@ -415,7 +415,6 @@ export default class HitsterRoom implements Party.Server {
     const startingCard = this.pickStartingCard(playerId);
     this.state.players[playerId] = {
       name,
-      cardCount: startingCard ? 1 : 0,
       timeline: startingCard ? [startingCard] : [],
       connected: true,
     };
@@ -622,7 +621,7 @@ export default class HitsterRoom implements Party.Server {
       this.startPlaylistLoad(); // cancels any in-flight real load so it can't overwrite this
       this.playlistLoading = false;
       this.pendingPlaylist = { playlistId, songs: seedCards, allSongs: testSongs, diagnostics: [] };
-      this.sendTo(conn, { type: "PLAYLIST_READY", songCount: testSongs.length, songs: testSongs });
+      this.sendTo(conn, { type: "PLAYLIST_READY", songs: testSongs });
       return;
     }
 
@@ -665,7 +664,7 @@ export default class HitsterRoom implements Party.Server {
           // "Use what's loaded": the deck must be exactly what the host was just shown.
           this.pendingPlaylist = { playlistId, songs: result.songs, allSongs: result.allSongs, diagnostics: result.diagnostics };
           this.sendTo(conn, result.allSongs.length >= 2
-            ? { type: "PLAYLIST_READY", songCount: result.allSongs.length, songs: result.allSongs }
+            ? { type: "PLAYLIST_READY", songs: result.allSongs }
             : { type: "PLAYLIST_LOAD_ERROR", error: "not_enough_songs" });
         }
         return;
@@ -679,11 +678,7 @@ export default class HitsterRoom implements Party.Server {
         return;
       }
 
-      this.sendTo(conn, {
-        type: "PLAYLIST_READY",
-        songCount: allSongs.length,
-        songs: allSongs,
-      });
+      this.sendTo(conn, { type: "PLAYLIST_READY", songs: allSongs });
 
       // Kick off lyrics generation in background immediately after playlist is ready — but only
       // when the host is actually in Lyrics mode. This used to run unconditionally on every
@@ -817,11 +812,7 @@ export default class HitsterRoom implements Party.Server {
       diagnostics: allSongs.map(({ title, artist, year }) => ({ title, artist, year, yearSource: null })),
     };
 
-    this.sendTo(conn, {
-      type: "PLAYLIST_READY",
-      songCount: allSongs.length,
-      songs: allSongs,
-    });
+    this.sendTo(conn, { type: "PLAYLIST_READY", songs: allSongs });
   }
 
   /**
@@ -950,7 +941,7 @@ export default class HitsterRoom implements Party.Server {
     for (const [playerId, player] of Object.entries(this.state.players)) {
       if (player.timeline.length === 0) {
         const startingCard = this.pickStartingCard(playerId);
-        if (startingCard) { player.timeline = [startingCard]; player.cardCount = 1; }
+        if (startingCard) player.timeline = [startingCard];
       }
     }
     this.startNextRound();
@@ -1036,8 +1027,8 @@ export default class HitsterRoom implements Party.Server {
     let topPlayer = "";
     let topCount = 0;
     for (const [playerId, player] of Object.entries(this.state.players)) {
-      if (player.cardCount > topCount) {
-        topCount = player.cardCount;
+      if (player.timeline.length > topCount) {
+        topCount = player.timeline.length;
         topPlayer = playerId;
       }
     }
@@ -1595,7 +1586,6 @@ export default class HitsterRoom implements Party.Server {
     for (const [playerId, player] of Object.entries(players)) {
       this.state.players[playerId] = {
         name: player.name,
-        cardCount: 0,
         timeline: [],
         connected: player.connected,
       };

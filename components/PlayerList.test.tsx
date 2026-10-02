@@ -4,7 +4,7 @@ import PlayerList from "./PlayerList";
 import type { Card, Player } from "@/lib/game";
 
 const card = (id: string, year: number): Card => ({ id, videoId: id, title: `t${id}`, artist: `a${id}`, year });
-const player = (name: string, timeline: Card[]): Player => ({ name, cardCount: timeline.length, timeline, connected: true });
+const player = (name: string, timeline: Card[]): Player => ({ name, timeline, connected: true });
 
 describe("PlayerList: guess marker", () => {
   it("shows a '?' in the guessing player's timeline row at the placed position", () => {
