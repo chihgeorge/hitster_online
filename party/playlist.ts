@@ -9,26 +9,10 @@ import {
   PLAYLIST_ID_PATTERN,
 } from "../lib/playlist-resolver";
 import { proposeEdits } from "../lib/ai-metadata";
+import { CORS_HEADERS, json, err } from "./http";
 
 const MAX_SONGS = 500;
 const MAX_NAME_LEN = 80;
-
-const CORS_HEADERS = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
-  "Access-Control-Allow-Headers": "Content-Type",
-};
-
-function json(body: unknown, status = 200): Response {
-  return new Response(JSON.stringify(body), {
-    status,
-    headers: { "Content-Type": "application/json", ...CORS_HEADERS },
-  });
-}
-
-function err(msg: string, status = 400): Response {
-  return json({ error: msg }, status);
-}
 
 function validateSongs(songs: unknown): songs is EditableSong[] {
   if (!Array.isArray(songs)) return false;

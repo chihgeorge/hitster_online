@@ -116,6 +116,12 @@ export async function storageBatchGet<T>(storage: PartyStorage, keys: string[]):
   return result;
 }
 
+/** Fire-and-forget put of `prefix + id → value`, 128 keys per call (storage.put's per-call limit). */
+export function storageBatchPut(storage: PartyStorage, prefix: string, entries: Iterable<readonly [string, unknown]>) {
+  const all = [...entries].map(([id, v]) => [prefix + id, v] as const);
+  for (let i = 0; i < all.length; i += 128) storage.put(Object.fromEntries(all.slice(i, i + 128))).catch(() => {});
+}
+
 /**
  * "The AI answered but gave nothing usable" markers, so those songs aren't re-sent on every load
  * (TODOS.md P2). Each kind has its own key prefix with a version: bump the version when the
@@ -140,10 +146,7 @@ export async function getNoResult(storage: PartyStorage, prefix: string, videoId
 
 /** Records "no usable result" for these video ids (value: when, for the TTL). Fire-and-forget. */
 export function putNoResult(storage: PartyStorage, prefix: string, videoIds: Iterable<string>, now = Date.now()) {
-  const entries = [...videoIds].map((id) => [prefix + id, now] as const);
-  for (let i = 0; i < entries.length; i += 128) {
-    storage.put(Object.fromEntries(entries.slice(i, i + 128))).catch(() => {});
-  }
+  storageBatchPut(storage, prefix, [...videoIds].map((id) => [id, now] as const));
 }
 
 /** Exported for callers that already have `tracks` (e.g. handleStartLyricsGame's
@@ -166,13 +169,7 @@ export async function resolveAIWithCache(
         : undefined, unusable)
     : new Map<string, AITrackMeta>();
   if (unusable.size > 0) putNoResult(storage, NO_RESULT.aiMeta, unusable);
-  if (freshAI.size > 0) {
-    const entries = [...freshAI].map(([id, meta]) => [`aiMeta:${id}`, meta] as const);
-    for (let i = 0; i < entries.length; i += 128) {
-      const chunk = Object.fromEntries(entries.slice(i, i + 128));
-      storage.put(chunk).catch(() => {});
-    }
-  }
+  storageBatchPut(storage, "aiMeta:", freshAI);
   return new Map([...cachedAI, ...freshAI]);
 }
 
