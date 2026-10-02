@@ -49,7 +49,7 @@ export default function LyricsTable({
               onKeyDown={(e) => { if (e.key === "Enter") onProposeLyricEdits(); }}
               placeholder="例如：「第2首的答案打錯了，應該是愛你」 · e.g. round 2's answer has a typo"
               disabled={proposingLyricEdits}
-              style={{ flex: 1, borderRadius: 8, padding: "6px 10px", fontSize: 12, outline: "none", background: "rgba(26,26,46,.04)", color: "var(--ink)", border: "1.5px solid rgba(255,107,53,.15)" }}
+              style={{ flex: 1, borderRadius: 8, padding: "6px 10px", fontSize: 12, background: "rgba(26,26,46,.04)", color: "var(--ink)", border: "1.5px solid rgba(255,107,53,.15)" }}
             />
             <button
               type="button"
@@ -94,7 +94,7 @@ export default function LyricsTable({
                 const qValue = ov.lyricContext ?? lr?.lyricContext ?? "";
                 const aValue = ov.blankSentence ?? lr?.blankSentence ?? "";
                 const hasData = !!(lr?.lyricContext || lr?.blankSentence);
-                const cellBase: React.CSSProperties = { padding: "4px 8px", fontFamily: "var(--font-zh)", fontSize: 12, width: "100%", border: "none", outline: "none", borderRadius: 4, background: "transparent" };
+                const cellBase: React.CSSProperties = { padding: "4px 8px", fontFamily: "var(--font-zh)", fontSize: 12, width: "100%", border: "none", borderRadius: 4, background: "transparent" };
                 return (
                   <tr key={s.videoId} style={{ borderBottom: "1px solid rgba(255,107,53,.07)", background: i % 2 === 0 ? "transparent" : "rgba(255,107,53,.02)" }}>
                     <td style={{ padding: "8px 14px", color: "var(--text3)", fontFamily: "var(--font-mono)", width: 32 }}>{i + 1}</td>

@@ -111,7 +111,7 @@ export default function LyricRoundItemEditor({
             onKeyDown={(e) => { if (e.key === "Enter") onProposeLyricEdits(); }}
             placeholder="例如：「第2首的答案打錯了，應該是愛你」 · e.g. round 2's answer has a typo"
             disabled={proposingLyricEdits}
-            style={{ flex: 1, borderRadius: 8, padding: "8px 12px", fontSize: 12, outline: "none", background: "rgba(26,26,46,.04)", color: "var(--ink)", border: "1.5px solid rgba(255,107,53,.15)" }} />
+            style={{ flex: 1, borderRadius: 8, padding: "8px 12px", fontSize: 12, background: "rgba(26,26,46,.04)", color: "var(--ink)", border: "1.5px solid rgba(255,107,53,.15)" }} />
           <button type="button" onClick={onProposeLyricEdits} disabled={proposingLyricEdits || !lyricInstruction.trim()}
             style={{ flexShrink: 0, borderRadius: 8, background: "var(--orange)", padding: "8px 16px", fontSize: 12, fontWeight: 900, color: "white", border: "none", cursor: "pointer", opacity: proposingLyricEdits || !lyricInstruction.trim() ? 0.6 : 1 }}>
             {proposingLyricEdits ? "詢問中…" : "✨ Ask AI"}

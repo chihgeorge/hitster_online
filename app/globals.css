@@ -90,3 +90,11 @@ input[type="range"] { accent-color: var(--orange); }
 @media (max-width: 479px) {
   .hide-xs { display: none !important; }
 }
+
+/* ── focus ring on fields: inline outline:none used to hide it, leaving keyboard users nothing ── */
+input:focus-visible,
+textarea:focus-visible,
+select:focus-visible {
+  outline: 2px solid var(--orange-dk); /* ~3.5:1 on cream; --orange is ~2.7:1, under WCAG 1.4.11 */
+  outline-offset: 2px;
+}

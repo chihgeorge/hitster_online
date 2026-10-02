@@ -123,7 +123,7 @@ export default function SongItemEditor({ playlistId, songs, hostId, partyKitHost
             onKeyDown={(e) => { if (e.key === "Enter") void handleAskAI(); }}
             placeholder="例如：「年份錯了，應該是1998」 · e.g. fix the year, it's 1998"
             disabled={proposing}
-            style={{ flex: 1, borderRadius: 8, padding: "8px 12px", fontSize: 12, outline: "none", background: "rgba(26,26,46,.04)", color: "var(--ink)", border: "1.5px solid rgba(255,107,53,.15)" }} />
+            style={{ flex: 1, borderRadius: 8, padding: "8px 12px", fontSize: 12, background: "rgba(26,26,46,.04)", color: "var(--ink)", border: "1.5px solid rgba(255,107,53,.15)" }} />
           <button type="button" onClick={() => void handleAskAI()} disabled={proposing || !instruction.trim()}
             style={{ flexShrink: 0, borderRadius: 8, background: "var(--orange)", padding: "8px 16px", fontSize: 12, fontWeight: 900, color: "white", border: "none", cursor: "pointer", opacity: proposing || !instruction.trim() ? 0.6 : 1 }}>
             {proposing ? "詢問中…" : "✨ Ask AI"}
