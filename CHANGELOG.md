@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.14.15.1] — 2026-10-01
+
+### Fixed
+- **Unit tests run on Node 25 and newer:** Node 25+ has its own built-in `localStorage`, which hid the browser stand-in the tests use, so 97 tests crashed before checking anything. The test runner now turns Node's version off where it exists, and older Node runs as before. All 796 tests pass on Node 20, 22 and 26. Nothing changes for players
+- **The app's `package.json` version matches the release again:** it had stayed at 0.14.3 since v0.14.3.0
+
 ## [0.14.15.0] — 2026-09-29
 
 ### Fixed
