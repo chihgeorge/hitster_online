@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.14.17.0] — 2026-10-01
+
+### Changed
+- **About 400 fewer lines of code, same game:** a complexity audit cut duplicated and dead code across the server, host page and helpers. The seven host buttons that step a Lyrics or Guess round now share one server path, the two "edit with AI" requests share another, and repeated storage-write loops, CORS headers and one-line wrappers each live in one place. Unused message types, hook methods, re-exports and the unused test-coverage package are gone
+- **The server no longer sends two counts it already sent in another form:** the loaded-songs total and each player's card count are now read from the song list and the player's timeline. Pages that were open before this release show blank counts until they're reloaded; nothing else changes
+
 ## [0.14.16.0] — 2026-10-01
 
 ### Fixed
