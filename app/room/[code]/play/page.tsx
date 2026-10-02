@@ -9,17 +9,8 @@ import Vinyl from "@/components/Vinyl";
 import { GuessPlay, SUBMIT_ACK_TIMEOUT_MS } from "@/components/GuessMode";
 import { useCountdown, isLeader, Standings, WonOnTimeNote, SkipNotice } from "@/components/TimedRound";
 import { syncServerClock } from "@/lib/server-clock";
+import { getOrCreatePersistedId } from "@/lib/device-id";
 import { rankPlayers, type GameState, type ServerMessage, type ClientMessage, type Player, type PublicLyricsGameState, type PublicGuessGameState } from "@/lib/game";
-
-function getOrCreatePlayerId(): string {
-  const key = "hitster_player_id";
-  let id = localStorage.getItem(key);
-  if (!id) {
-    id = crypto.randomUUID();
-    localStorage.setItem(key, id);
-  }
-  return id;
-}
 
 export default function PlayPage() {
   const params = useParams<{ code: string }>();
@@ -56,7 +47,7 @@ export default function PlayPage() {
   const playerIdRef = useRef<string>("");
 
   useEffect(() => {
-    playerIdRef.current = getOrCreatePlayerId();
+    playerIdRef.current = getOrCreatePersistedId("hitster_player_id");
   }, []);
 
   useEffect(() => {
@@ -93,7 +84,7 @@ export default function PlayPage() {
       if (stored) {
         send({ type: "REJOIN", playerId: stored, name: playerName });
       } else {
-        playerIdRef.current = getOrCreatePlayerId();
+        playerIdRef.current = getOrCreatePersistedId("hitster_player_id");
         send({ type: "JOIN", playerId: playerIdRef.current, name: playerName });
       }
     },

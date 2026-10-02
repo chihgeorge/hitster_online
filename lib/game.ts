@@ -271,7 +271,6 @@ export type ServerMessage =
   | { type: "DIAGNOSTIC"; songs: SongDiagnostic[]; skippedEmbeddingCount?: number }
   | { type: "PLAYLIST_READY"; songCount: number; songs: EditableSong[] }
   | { type: "PLAYLIST_LOAD_ERROR"; error: string }
-  | { type: "PLAYLIST_SAVED"; playlistId: string }
   | { type: "TOO_LATE" }
   | { type: "LYRICS_PREVIEW"; rounds: PublicLyricsRound[]; loading: boolean }
   | { type: "EDITS_PROPOSED"; diff: SongEditDiff[] }

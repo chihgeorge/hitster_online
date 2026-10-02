@@ -11,9 +11,6 @@ import { decodeEntities } from "@/lib/utils";
 import { rankPlayers, type GuessAnswer, type PublicGuessGameState } from "@/lib/game";
 import { useCountdown, isLeader, Standings, WonOnTimeNote, TvScoreRow, TvFinal } from "@/components/TimedRound";
 
-// Re-exported: pages and tests import these from here as well.
-export { useCountdown, isLeader };
-
 type AudioReply = { videoId: string | null; roundIndex: number };
 
 /** Where the TV shows the song's video at the reveal (canvas units); GuessScreen reserves the same spot. */

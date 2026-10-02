@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
 import { render, screen, cleanup, fireEvent, act } from "@testing-library/react";
-import { GuessPlay, GuessScreen, GuessHostControls, guessAudioProps, isLeader, REVEAL_VIDEO, SUBMIT_ACK_TIMEOUT_MS } from "./GuessMode";
+import { GuessPlay, GuessScreen, GuessHostControls, guessAudioProps, REVEAL_VIDEO, SUBMIT_ACK_TIMEOUT_MS } from "./GuessMode";
+import { isLeader } from "./TimedRound";
 import type { GuessAnswer, PublicGuessGameState } from "@/lib/game";
 
 afterEach(cleanup);

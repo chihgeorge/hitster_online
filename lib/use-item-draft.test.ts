@@ -67,15 +67,6 @@ describe("useItemDraft", () => {
     expect(result.current.getDraft(SONGS[1])).toEqual(SONGS[1]);
   });
 
-  it("dirtyCount counts only items with an actual pending change", () => {
-    const { result } = renderHook(() => useItemDraft<FakeSong>());
-    expect(result.current.dirtyCount(SONGS)).toBe(0);
-    act(() => result.current.setField("v1", "year", 1995));
-    expect(result.current.dirtyCount(SONGS)).toBe(1);
-    act(() => result.current.setField("v2", "artist", "The Beatles (Remastered)"));
-    expect(result.current.dirtyCount(SONGS)).toBe(2);
-  });
-
   it("works over a completely different field shape (lyric round), not just EditableSong", () => {
     interface FakeRound {
       videoId: string;
