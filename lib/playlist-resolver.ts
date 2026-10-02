@@ -104,22 +104,25 @@ export function buildCardsFromAI(
   return { songs, allSongs, diagnostics };
 }
 
+/** PartyKit storage get/put accept at most 128 keys per call. */
+const STORAGE_BATCH = 128;
+
 /** Batched storage.get — PartyKit's Storage.get caps out around 128 keys per call. Shared by
  * the AI-metadata cache below and by any lyrics-cache read a caller does on the side. */
 export async function storageBatchGet<T>(storage: PartyStorage, keys: string[]): Promise<Map<string, T>> {
   const result = new Map<string, T>();
-  for (let i = 0; i < keys.length; i += 128) {
-    const chunk = keys.slice(i, i + 128);
+  for (let i = 0; i < keys.length; i += STORAGE_BATCH) {
+    const chunk = keys.slice(i, i + STORAGE_BATCH);
     const partial = (await storage.get<T>(chunk)) as Map<string, T>;
     for (const [k, v] of partial) result.set(k, v);
   }
   return result;
 }
 
-/** Fire-and-forget put of `prefix + id → value`, 128 keys per call (storage.put's per-call limit). */
+/** Fire-and-forget put of `prefix + id → value`, STORAGE_BATCH keys per call. */
 export function storageBatchPut(storage: PartyStorage, prefix: string, entries: Iterable<readonly [string, unknown]>) {
   const all = [...entries].map(([id, v]) => [prefix + id, v] as const);
-  for (let i = 0; i < all.length; i += 128) storage.put(Object.fromEntries(all.slice(i, i + 128))).catch(() => {});
+  for (let i = 0; i < all.length; i += STORAGE_BATCH) storage.put(Object.fromEntries(all.slice(i, i + STORAGE_BATCH))).catch(() => {});
 }
 
 /**
