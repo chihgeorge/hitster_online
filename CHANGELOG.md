@@ -4,6 +4,7 @@
 
 ### Fixed
 - **Keyboard users can see which field they're typing in:** every text field (home page join form, host setup, playlist library and editors) now shows a dark-orange ring when focused. Before, the fields hid the browser's focus outline, so tabbing through a form gave no visual cue. The ring uses the darker brand orange so it stays visible against the cream background
+
 ## [0.14.15.2] — 2026-10-01
 
 ### Fixed
