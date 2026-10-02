@@ -135,19 +135,6 @@ _Surfaced by /cso on 2026-09-16_
 
 ## Design & Docs
 
-### Fix keyboard focus indicators on all text inputs
-
-**What:** Fix keyboard focus indicators on all text inputs.
-
-**Why:** Keyboard users get no focus ring on the host and home pages.
-
-**Context:** All `<input type="text">` elements use `outline: "none"` as inline style with no `:focus-visible` CSS fallback. JS `onFocus/onBlur` border-color change provides visual feedback but bypasses CSS. Fix: move `outline: none` to CSS class and add `:focus-visible { outline: 2px solid var(--orange); }`. Touches `app/page.tsx` and `app/room/[code]/host/page.tsx`.
-_Surfaced by /design-review on 2026-09-16_
-
-**Effort:** S
-**Priority:** P3
-**Depends on:** None
-
 ### Update DESIGN.md to reflect v0.3.0.0 architecture
 
 **What:** Update DESIGN.md to reflect v0.3.0.0 architecture.
@@ -175,6 +162,21 @@ _Deferred from plan: foamy-crafting-bonbon.md_
 **Depends on:** None
 
 ## Completed
+
+### Fix keyboard focus indicators on all text inputs
+
+**What:** Fix keyboard focus indicators on all text inputs.
+
+**Why:** Keyboard users get no focus ring on the host and home pages.
+
+**Context:** All `<input type="text">` elements use `outline: "none"` as inline style with no `:focus-visible` CSS fallback. JS `onFocus/onBlur` border-color change provides visual feedback but bypasses CSS. Fix: move `outline: none` to CSS class and add `:focus-visible { outline: 2px solid var(--orange); }`. Touches `app/page.tsx` and `app/room/[code]/host/page.tsx`.
+_Surfaced by /design-review on 2026-09-16_
+
+**Effort:** S
+**Priority:** P3
+**Depends on:** None
+
+**Completed:** v0.14.16.0 (2026-10-01) — inline `outline: none` removed from all fields; one `:focus-visible` rule in `app/globals.css` (2px `--orange-dk`, 2px offset, chosen for 3:1 contrast). Recorded in DESIGN.md. Editor inputs have no dedicated e2e yet.
 
 ### Library index drifts on playlist rename or song add/remove via PUT
 
