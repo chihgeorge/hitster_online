@@ -25,12 +25,14 @@ Rules:
 
 ## How to bump
 
-1. **Edit `VERSION`** — single line, e.g. `0.2.0.0`
-2. **Add a section to `CHANGELOG.md`** — date format `YYYY-MM-DD`, version matches VERSION exactly
-3. **Commit** — message format: `chore: release vX.Y.Z.B`
-4. **Tag** — `git tag vX.Y.Z.B` (push with `git push origin vX.Y.Z.B`)
+`/ship` does all of this on the feature branch; by hand it is:
 
-No automated scripts — the four steps above are fast enough to do by hand.
+1. **Edit `VERSION`** — single line, e.g. `0.2.0.0`
+2. **Sync `package.json` and `package-lock.json`** — npm takes the first three parts, so `0.14.15.1` becomes `0.14.15`
+3. **Add a section to `CHANGELOG.md`** — `## [X.Y.Z.B] — YYYY-MM-DD`, version matches VERSION exactly
+4. **Commit and open the PR** — the PR title starts with the version, e.g. `v0.14.15.1 fix: …`; the squash merge keeps that as the commit on `main`
+
+No git tags: the version-prefixed squash commit on `main` is the release marker.
 
 ---
 

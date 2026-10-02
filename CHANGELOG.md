@@ -4,6 +4,14 @@
 
 ### Fixed
 - **Keyboard users can see which field they're typing in:** every text field (home page join form, host setup, playlist library and editors) now shows a dark-orange ring when focused. Before, the fields hid the browser's focus outline, so tabbing through a form gave no visual cue. The ring uses the darker brand orange so it stays visible against the cream background
+## [0.14.15.2] — 2026-10-01
+
+### Fixed
+- **`npm run lint` passes again:** the winner-screen confetti no longer picks random positions while drawing, which the React compiler flags as an error. Pieces now spread across the screen one per column (each placed somewhere within its column) with mixed colors, and look the same every time
+- **Tests no longer depend on your shell's API keys:** an `ANTHROPIC_API_KEY` or `YOUTUBE_API_KEY` exported in your terminal used to make some unit tests fail. Tests now run with both keys set to empty unless a test sets one itself, and each test's key setup is undone automatically afterward
+
+### Changed
+- **VERSIONING.md describes how releases actually work:** `/ship` bumps VERSION, syncs the 3-part version into `package.json`, and opens a PR whose title starts with the version. There are no git tags
 
 ## [0.14.15.1] — 2026-10-01
 
