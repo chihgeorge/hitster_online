@@ -4,19 +4,24 @@ import { useMemo } from "react";
 
 const COLORS = ["var(--orange)", "var(--gold)", "var(--mint)", "var(--orange-dk)", "var(--red)"];
 
+// Deterministic 0..1 noise: render stays pure (React compiler) and pieces never jump between renders.
+const noise = (n: number) => {
+  const x = Math.sin(n * 12.9898) * 43758.5453;
+  return x - Math.floor(x);
+};
+
 /** Falling confetti overlay for the winner screen — pure CSS, no assets. */
 export default function Confetti({ count = 40 }: { count?: number }) {
-  // Randomize once per mount, not per render, so pieces don't jump around on every re-render.
   const pieces = useMemo(
     () =>
       Array.from({ length: count }, (_, i) => ({
         id: i,
-        left: Math.random() * 100,
-        color: COLORS[i % COLORS.length],
-        size: 6 + Math.random() * 8,
-        duration: 2.5 + Math.random() * 2.5,
-        delay: Math.random() * 3,
-        round: Math.random() > 0.5,
+        left: ((i + noise(i + 1)) / count) * 100, // one piece per column slot, jittered: no clumps
+        color: COLORS[Math.floor(noise(i + 501) * COLORS.length)], // independent of i so colors don't stripe across columns
+        size: 6 + noise(i + 101) * 8,
+        duration: 2.5 + noise(i + 201) * 2.5,
+        delay: noise(i + 301) * 3,
+        round: noise(i + 401) > 0.5,
       })),
     [count]
   );

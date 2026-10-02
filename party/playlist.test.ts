@@ -497,6 +497,7 @@ describe("PlaylistParty: PUT PROPOSE_EDITS — AI chat-to-diff editing", () => {
 
   it("returns 503 when no Anthropic key is configured", async () => {
     const room = makeRoom(); // env: {} — no key
+    vi.stubEnv("ANTHROPIC_API_KEY", ""); // resolveEnv falls back to process.env; a key exported in the shell must not leak in
     const party = new PlaylistParty(room);
     await createPlaylist(party, [song("vid00000001")]);
 
