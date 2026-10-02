@@ -239,9 +239,6 @@ describe("parseTrackMetas / storageBatchGet", () => {
 });
 
 describe("resolveEnv", () => {
-  const ORIGINAL_ENV = process.env;
-  beforeEach(() => { process.env = { ...ORIGINAL_ENV }; });
-
   it("prefers the pkvar- prefixed var over a plain one", () => {
     const keys = resolveEnv({ "pkvar-YOUTUBE_API_KEY": "pk-key", YOUTUBE_API_KEY: "plain-key" });
     expect(keys.youtubeKey).toBe("pk-key");
@@ -253,13 +250,13 @@ describe("resolveEnv", () => {
   });
 
   it("falls back to process.env as a last resort", () => {
-    process.env.YOUTUBE_API_KEY = "process-env-key";
+    vi.stubEnv("YOUTUBE_API_KEY", "process-env-key");
     const keys = resolveEnv(undefined);
     expect(keys.youtubeKey).toBe("process-env-key");
   });
 
   it("returns undefined for a key set nowhere", () => {
-    delete process.env.ANTHROPIC_API_KEY;
+    vi.stubEnv("ANTHROPIC_API_KEY", undefined);
     const keys = resolveEnv({});
     expect(keys.anthropicKey).toBeUndefined();
   });

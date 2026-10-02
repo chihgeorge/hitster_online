@@ -517,7 +517,7 @@ describe("START_GAME handler", () => {
       ["v2", { title: "Another Song", artist: "Artist", year: 1982 }],
     ]));
 
-    process.env.ANTHROPIC_API_KEY = "test-key";
+    vi.stubEnv("ANTHROPIC_API_KEY", "test-key");
     const room = new HitsterRoom(makeRoom() as any);
     const conn = makeConn();
     await send(room, conn, {
@@ -529,7 +529,6 @@ describe("START_GAME handler", () => {
     expect(resolveTracksWithAI).toHaveBeenCalled();
     expect(room.state.phase).toBe("guessing");
 
-    delete process.env.ANTHROPIC_API_KEY;
   });
 
   it("skips AI call for tracks already in storage cache", async () => {
@@ -542,7 +541,7 @@ describe("START_GAME handler", () => {
       ["v2", { title: "Another Song", artist: "Artist", year: 1990 }],
     ]));
 
-    process.env.ANTHROPIC_API_KEY = "test-key";
+    vi.stubEnv("ANTHROPIC_API_KEY", "test-key");
     const room = new HitsterRoom(makeRoom() as any);
     // Seed storage with v1 already cached
     (room.room.storage.get as ReturnType<typeof vi.fn>).mockImplementation((keys: unknown) =>
@@ -560,7 +559,6 @@ describe("START_GAME handler", () => {
     expect(callArg.map((t) => t.videoId)).toEqual(["v2"]);
     expect(room.state.phase).toBe("guessing");
 
-    delete process.env.ANTHROPIC_API_KEY;
   });
 
   it("writes fresh AI results to storage cache", async () => {
@@ -571,7 +569,7 @@ describe("START_GAME handler", () => {
       ["v1", { title: "A Song", artist: "Artist", year: 2001 }],
     ]));
 
-    process.env.ANTHROPIC_API_KEY = "test-key";
+    vi.stubEnv("ANTHROPIC_API_KEY", "test-key");
     const room = new HitsterRoom(makeRoom() as any);
     // Seed a second track so the game can start (needs ≥2 songs)
     vi.mocked(fetchPlaylistItems).mockResolvedValue([
@@ -595,7 +593,6 @@ describe("START_GAME handler", () => {
     expect(stored["aiMeta:v1"]).toBeDefined();
     expect(stored["aiMeta:v2"]).toBeDefined();
 
-    delete process.env.ANTHROPIC_API_KEY;
   });
 
   it("all tracks cached — AI not called and storage.put not called", async () => {
@@ -604,7 +601,7 @@ describe("START_GAME handler", () => {
       { videoId: "v2", title: "Song B", description: "no year", channelTitle: "Artist" },
     ]);
 
-    process.env.ANTHROPIC_API_KEY = "test-key";
+    vi.stubEnv("ANTHROPIC_API_KEY", "test-key");
     const room = new HitsterRoom(makeRoom() as any);
     (room.room.storage.get as ReturnType<typeof vi.fn>).mockImplementation((keys: unknown) =>
       Promise.resolve(Array.isArray(keys)
@@ -627,7 +624,6 @@ describe("START_GAME handler", () => {
     expect(putCalls.length).toBe(0);
     expect(room.state.phase).toBe("guessing");
 
-    delete process.env.ANTHROPIC_API_KEY;
   });
 
   it("cached metadata (title, artist, year) used in final song cards", async () => {
@@ -636,7 +632,7 @@ describe("START_GAME handler", () => {
       { videoId: "v2", title: "Song B", description: "no year", channelTitle: "Artist" },
     ]);
 
-    process.env.ANTHROPIC_API_KEY = "test-key";
+    vi.stubEnv("ANTHROPIC_API_KEY", "test-key");
     const room = new HitsterRoom(makeRoom() as any);
     (room.room.storage.get as ReturnType<typeof vi.fn>).mockImplementation((keys: unknown) =>
       Promise.resolve(Array.isArray(keys)
@@ -664,7 +660,6 @@ describe("START_GAME handler", () => {
     expect(v1Card?.title).toBe("Clean Title");
     expect(v1Card?.artist).toBe("Clean Artist");
 
-    delete process.env.ANTHROPIC_API_KEY;
   });
 
   it("handles quota exceeded error from YouTube API", async () => {
@@ -1313,11 +1308,7 @@ describe("LOAD_PLAYLIST handler — AI metadata cache", () => {
     vi.mocked(fetchPlaylistItems).mockResolvedValue(TWO_TRACKS);
     vi.mocked(fetchEmbeddableVideoIds).mockResolvedValue(new Set(["v1", "v2"]));
     vi.mocked(resolveTracksWithAI).mockResolvedValue(new Map());
-    process.env.ANTHROPIC_API_KEY = "test-key";
-  });
-
-  afterEach(() => {
-    delete process.env.ANTHROPIC_API_KEY;
+    vi.stubEnv("ANTHROPIC_API_KEY", "test-key");
   });
 
   it("cache hit — skips AI for cached tracks", async () => {
@@ -1407,11 +1398,7 @@ describe("PROPOSE_EDITS handler", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.mocked(proposeEdits).mockResolvedValue([]);
-    process.env.ANTHROPIC_API_KEY = "test-key";
-  });
-
-  afterEach(() => {
-    delete process.env.ANTHROPIC_API_KEY;
+    vi.stubEnv("ANTHROPIC_API_KEY", "test-key");
   });
 
   async function hostedRoom() {
@@ -1468,7 +1455,7 @@ describe("PROPOSE_EDITS handler", () => {
   });
 
   it("fails gracefully when the Anthropic API key isn't configured", async () => {
-    delete process.env.ANTHROPIC_API_KEY;
+    vi.stubEnv("ANTHROPIC_API_KEY", undefined);
     const { room, conn } = await hostedRoom();
     await send(room, conn, { type: "PROPOSE_EDITS", hostId: "host-uuid", instruction: "fix it", songs: SONGS });
 
@@ -1507,11 +1494,7 @@ describe("PROPOSE_LYRIC_EDITS handler", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.mocked(proposeLyricEdits).mockResolvedValue([]);
-    process.env.ANTHROPIC_API_KEY = "test-key";
-  });
-
-  afterEach(() => {
-    delete process.env.ANTHROPIC_API_KEY;
+    vi.stubEnv("ANTHROPIC_API_KEY", "test-key");
   });
 
   async function hostedRoom() {
@@ -1566,7 +1549,7 @@ describe("PROPOSE_LYRIC_EDITS handler", () => {
   });
 
   it("fails gracefully when the Anthropic API key isn't configured", async () => {
-    delete process.env.ANTHROPIC_API_KEY;
+    vi.stubEnv("ANTHROPIC_API_KEY", undefined);
     const { room, conn } = await hostedRoom();
     await send(room, conn, { type: "PROPOSE_LYRIC_EDITS", hostId: "host-uuid", instruction: "fix it", rounds: ROUNDS });
 
@@ -1745,7 +1728,7 @@ describe("Lyrics Mode: START_LYRICS_GAME", () => {
   });
 
   it("fetches and caches popularity summaries for songs needing a fresh Sonnet resolve (docs/designs/lyrics-question-search-grounding.md)", async () => {
-    process.env.ANTHROPIC_API_KEY = "test-key";
+    vi.stubEnv("ANTHROPIC_API_KEY", "test-key");
     vi.mocked(fetchPlaylistItems).mockResolvedValue([fakeLyricsTrack()]);
     vi.mocked(fetchEmbeddableVideoIds).mockResolvedValue(new Set(["vid1"]));
     vi.mocked(resolveLyricsForTracks).mockResolvedValue(
@@ -1786,7 +1769,6 @@ describe("Lyrics Mode: START_LYRICS_GAME", () => {
     const cachedPopularity = putCalls.find((c: any[]) => "lyrics-popularity:vid1" in (c[0] as object));
     expect(cachedPopularity).toBeDefined();
 
-    delete process.env.ANTHROPIC_API_KEY;
   });
 
   it("skips a cached round whose answer gives the title away, falling back to the next source", async () => {
@@ -1811,7 +1793,7 @@ describe("Lyrics Mode: START_LYRICS_GAME", () => {
   });
 
   it("treats a cached giveaway round as uncached, so Sonnet regenerates it", async () => {
-    process.env.ANTHROPIC_API_KEY = "test-key";
+    vi.stubEnv("ANTHROPIC_API_KEY", "test-key");
     vi.mocked(fetchPlaylistItems).mockResolvedValue([fakeLyricsTrack()]);
     vi.mocked(fetchEmbeddableVideoIds).mockResolvedValue(new Set(["vid1"]));
     vi.mocked(resolveLyricsForTracks).mockResolvedValue(new Map([["vid1", CACHED_LYRICS]]));
@@ -1837,7 +1819,6 @@ describe("Lyrics Mode: START_LYRICS_GAME", () => {
     const putCalls = (mockRoom.storage.put as ReturnType<typeof vi.fn>).mock.calls;
     expect(putCalls.some((c: any[]) =>
       (c[0] as Record<string, { blankSentence?: string }>)["lyrics-sonnet:vid1"]?.blankSentence === CACHED_LYRICS.blankSentence)).toBe(true);
-    delete process.env.ANTHROPIC_API_KEY;
   });
 
   it("errors with not_enough_songs when every cached round gives the title away", async () => {
@@ -1862,10 +1843,9 @@ describe("Lyrics Mode: START_LYRICS_GAME", () => {
   });
 
   it("skips fetching popularity when the sonnet cache already has everything", async () => {
-    process.env.ANTHROPIC_API_KEY = "test-key";
+    vi.stubEnv("ANTHROPIC_API_KEY", "test-key");
     await setupLyricsGame(); // pre-caches lyrics: and lyrics-sonnet: — no uncached tracks
     expect(vi.mocked(fetchPopularitySummaries)).not.toHaveBeenCalled();
-    delete process.env.ANTHROPIC_API_KEY;
   });
 
   it("returns error when no lyrics resolved and no cache", async () => {
@@ -1927,7 +1907,7 @@ describe("Lyrics Mode: START_LYRICS_GAME", () => {
   });
 
   it("records a Sonnet answer with no usable round, and skips that song's Sonnet call next time", async () => {
-    process.env.ANTHROPIC_API_KEY = "test-key";
+    vi.stubEnv("ANTHROPIC_API_KEY", "test-key");
     try {
       vi.mocked(fetchPlaylistItems).mockResolvedValue([fakeLyricsTrack()]);
       const stored = new Map<string, unknown>([["lyrics:vid1", CACHED_LYRICS]]); // Haiku preview round only
@@ -1961,7 +1941,6 @@ describe("Lyrics Mode: START_LYRICS_GAME", () => {
       expect(fetchPopularitySummaries).not.toHaveBeenCalled();
       expect(second.lyricsState?.phase).toBe("preview");
     } finally {
-      delete process.env.ANTHROPIC_API_KEY;
       vi.mocked(resolveLyricsForTracks).mockResolvedValue(new Map());
     }
   });
@@ -2489,10 +2468,7 @@ describe("Lyrics Mode: RESET_LYRICS_GAME wrong phase", () => {
 describe("Lyrics Mode: generateLyricsPreview broadcasts LYRICS_PREVIEW", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    process.env.ANTHROPIC_API_KEY = "test-key";
-  });
-  afterEach(() => {
-    delete process.env.ANTHROPIC_API_KEY;
+    vi.stubEnv("ANTHROPIC_API_KEY", "test-key");
   });
 
   it("leaves a cached round that gives the title away out of the host preview", async () => {
