@@ -119,7 +119,7 @@ export interface GameState {
   players: Record<string, Player>; // keyed by playerId
   targetCardCount: number; // first to reach this wins (default 10)
   currentRound: number;
-  playlistId: string;
+  playlistId: string; // server-side: always "" in STATE (sanitizedState), no page reads it
   songs: Card[]; // server-side deck: always [] in STATE (sanitizedState), no page reads it
   currentSong: Card | null;
   // playerId → 0-based insertion position on that player's own timeline.
@@ -231,6 +231,7 @@ export type ClientMessage =
   | { type: "AUDIO_FAILED"; screenId: string; videoId: string }
   // hostId: sent when this browser is also the host's, so a TV opened after players joined can claim.
   | { type: "JOIN_SCREEN"; screenId: string; hostId?: string }
+  | { type: "HOST_HELLO"; hostId: string }
   | { type: "PROPOSE_EDITS"; hostId: string; instruction: string; songs: EditableSong[] }
   | { type: "PROPOSE_LYRIC_EDITS"; hostId: string; instruction: string; rounds: EditableLyricRound[] };
 

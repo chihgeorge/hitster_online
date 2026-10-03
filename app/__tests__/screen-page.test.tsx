@@ -227,6 +227,7 @@ describe("ScreenPage: waiting / lobby", () => {
   // Value: protects=a TV opened in the host's browser after players joined but before the host claimed the room still becomes the TV (gets the video) once the host claims; fails_when=the screen page stops re-claiming when hostClaimed flips, or re-claims after a refusal that came once the host had already claimed; why_new=nothing covered a refused TV recovering without a reload; seam=none
   it("re-claims once when the host claims the room after a refusal, but not after a refusal once claimed", () => {
     const joins = () => sendSpy.mock.calls.map((c) => JSON.parse(c[0] as string)).filter((m) => m.type === "JOIN_SCREEN").length;
+    localStorage.setItem("hitster_host_id", "host-uuid"); // this TV tab is in the host's browser
     render(<ScreenPage />);
     act(() => socketOpts.onOpen?.());
     serverSends({ type: "STATE", state: { ...lobbyState, players: { [P1]: { name: "Alice", timeline: [], connected: true } } } });
@@ -241,6 +242,17 @@ describe("ScreenPage: waiting / lobby", () => {
     serverSends({ type: "ERROR", error: "unauthorized" }); // a real impostor: refused again
     serverSends({ type: "STATE", state: { ...lobbyState, hostClaimed: true, currentRound: 1 } });
     expect(joins()).toBe(2);
+    expect(screen.getByTestId("not-the-tv")).toBeTruthy();
+  });
+
+  // Value: protects=a TV on another device (no host id here) keeps its "not this room's TV" notice steady instead of retrying a claim that must fail; fails_when=the re-claim effect retries without a host id; why_new=the retry test above always has a host id; seam=none
+  it("doesn't retry the claim when this browser has no host id", () => {
+    const joins = () => sendSpy.mock.calls.map((c) => JSON.parse(c[0] as string)).filter((m) => m.type === "JOIN_SCREEN").length;
+    render(<ScreenPage />);
+    act(() => socketOpts.onOpen?.());
+    serverSends({ type: "ERROR", error: "unauthorized" });
+    serverSends({ type: "STATE", state: { ...lobbyState, hostClaimed: true } });
+    expect(joins()).toBe(1);
     expect(screen.getByTestId("not-the-tv")).toBeTruthy();
   });
 });
