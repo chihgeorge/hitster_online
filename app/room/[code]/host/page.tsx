@@ -30,6 +30,14 @@ function libraryUrl(hostId: string): string {
 
 type LoadStatus = "idle" | "loading" | "ready" | "error";
 
+// The AI-edit failure line; the server's daily paid-API cap gets its own wording so the host
+// isn't told to retry something that can't work until tomorrow.
+function proposalFailedText(error: string) {
+  return error === "daily_limit"
+    ? "今天的使用額度已用完，明天再試 · Today's limit is used up, try again tomorrow"
+    : "無法處理，請再試一次 · Couldn't process that, try again";
+}
+
 export default function HostPage() {
   const params = useParams<{ code: string }>();
   // Read after mount so server and client render the same text (no hydration mismatch).
@@ -212,7 +220,7 @@ export default function HostPage() {
       }
       if (msg.type === "EDITS_PROPOSAL_FAILED") {
         setProposingEdits(false);
-        setProposeError("無法處理，請再試一次 · Couldn't process that, try again");
+        setProposeError(proposalFailedText(msg.error));
       }
       if (msg.type === "LYRIC_EDITS_PROPOSED") {
         setProposingLyricEdits(false);
@@ -225,7 +233,7 @@ export default function HostPage() {
       }
       if (msg.type === "LYRIC_EDITS_PROPOSAL_FAILED") {
         setProposingLyricEdits(false);
-        setProposeLyricError("無法處理，請再試一次 · Couldn't process that, try again");
+        setProposeLyricError(proposalFailedText(msg.error));
       }
     },
   });
@@ -1132,6 +1140,11 @@ function errorInfo(code: string): { message: string; detail?: string; hint?: str
   if (code === "unauthorized") return {
     message: "此房間已經有主持人了 · This room already has a host",
     detail: "可能是你，用了另一台裝置 · Maybe you, on another device.",
+  };
+  if (code === "daily_limit") return {
+    message: "今天的使用額度已用完 · Today's limit is used up",
+    detail: "所有房間共用每天的額度 · Every room shares one daily limit",
+    hint: "明天再試；已儲存的歌單仍可玩時間軸和猜歌模式 · Try again tomorrow; saved playlists still work in Timeline and Guess mode",
   };
   if (code === "quota_exceeded") return {
     message: "YouTube API quota exceeded",
