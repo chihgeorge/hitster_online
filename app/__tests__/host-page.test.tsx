@@ -354,6 +354,16 @@ describe("HostPage: screen link", () => {
 });
 
 describe("HostPage: in-game song panel", () => {
+  // Value: protects=a reopened or second host tab is recognized as the host on connect (so the server can send it the song list and Lyrics preview it missed); fails_when=the host page stops sending HOST_HELLO with its stored host id on (re)connect; why_new=the host page sent nothing on connect before; seam=none
+  it("says who it is on every (re)connect", () => {
+    localStorage.setItem("hitster_host_id", "host-uuid");
+    render(<HostPage />);
+    act(() => socketOpts.onOpen?.());
+    act(() => socketOpts.onOpen?.());
+    const hellos = sendSpy.mock.calls.map((c) => JSON.parse(c[0] as string)).filter((m) => m.type === "HOST_HELLO");
+    expect(hellos).toEqual([{ type: "HOST_HELLO", hostId: "host-uuid" }, { type: "HOST_HELLO", hostId: "host-uuid" }]);
+  });
+
   // Value: protects=the year guess for a host who also plays (the song panel lists every song); fails_when=the in-game DiagnosticTable shows the Year column again; why_new=no test opened the in-game panel; seam=none
   it("lists the songs mid-game without their years", () => {
     render(<HostPage />);
