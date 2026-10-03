@@ -133,9 +133,12 @@ export default class HitsterRoom implements Party.Server {
   // True while the newest LOAD_PLAYLIST is still resolving (pendingPlaylist may hold partial,
   // not-yet-AI-cleaned titles). Guess mode refuses to start then: its answers ARE those titles.
   private playlistLoading = false;
-  // Latest LYRICS_PREVIEW, replayed to a host that re-proves itself after a reconnect (it isn't
-  // privileged again until its next host message, so it would miss previews sent meanwhile).
+  // Latest LYRICS_PREVIEW, replayed to a host tab when it proves itself (HOST_HELLO on connect,
+  // or any host message), so a reconnected or second tab gets previews sent while it was away.
   private lastLyricsPreview: ServerMessage | null = null;
+  // Same for the latest song list (DIAGNOSTIC, years and all), but never to the TV. Replayed in
+  // authorizeHost only: the claim path runs in the lobby, where there's no song list yet.
+  private lastDiagnostic: ServerMessage | null = null;
   private loadSeq = 0;
   // hostId and screenId (state.hostId / this.screenId below) both claim through the same
   // first-non-empty-value-wins model — see claimOrValidateFirstClaim. Neither depends on
@@ -269,6 +272,7 @@ export default class HitsterRoom implements Party.Server {
 
   /** Every host tab, never the TV or a player: DIAGNOSTIC lists every song's year, and only the host page reads it. */
   private sendToHost(msg: ServerMessage) {
+    if (msg.type === "DIAGNOSTIC") this.lastDiagnostic = msg;
     for (const conn of this.privilegedConns) if (!this.screenConns.has(conn)) this.sendTo(conn, msg);
   }
 
@@ -361,6 +365,12 @@ export default class HitsterRoom implements Party.Server {
         break;
       case "JOIN_SCREEN":
         this.handleJoinScreen(sender, msg.screenId, msg.hostId);
+        break;
+      case "HOST_HELLO":
+        // The host page says who it is on (re)connect, so a second or reopened host tab is
+        // privileged right away and catches up instead of waiting for its next button. A room
+        // the host hasn't claimed yet just ignores it.
+        if (typeof msg.hostId === "string") this.authorizeHost(sender, msg.hostId);
         break;
       case "START_LYRICS_ROUND":
         this.lyricsStep(sender, msg.hostId, (s) => timedRound.startRound(s, Date.now()));
@@ -496,7 +506,10 @@ export default class HitsterRoom implements Party.Server {
    */
   private authorizeHost(conn: Party.Connection, hostId: string): boolean {
     if (!this.isValidHostId(hostId)) return false;
+    // Catch-up: a tab privileged before the song list went out already got it from sendToHost.
+    const isNew = !this.privilegedConns.has(conn);
     this.markPrivileged(conn);
+    if (isNew && this.lastDiagnostic && !this.screenConns.has(conn)) this.sendTo(conn, this.lastDiagnostic);
     return true;
   }
 
@@ -886,7 +899,10 @@ export default class HitsterRoom implements Party.Server {
       this.state.targetCardCount = 3;
       const cpopSongs: Card[] = CPOP_SEED.map((c, i) => ({ id: `cpop-${i}`, ...c }));
       this.state.songs = cpopSongs;
-      this.sendToHost({ type: "DIAGNOSTIC", songs: cpopSongs.map((s) => ({ title: s.title, artist: s.artist, year: s.year, yearSource: "manual" as const })) });
+      // Sorted by title, not deal order: this seed deals in a fixed order (e2e relies on it), so a
+      // list in that order would tell a host who also plays which song comes next.
+      const byTitle = [...cpopSongs].sort((a, b) => a.title.localeCompare(b.title));
+      this.sendToHost({ type: "DIAGNOSTIC", songs: byTitle.map((s) => ({ title: s.title, artist: s.artist, year: s.year, yearSource: "manual" as const })) });
       this.dealStartingCardsAndStart();
       return;
     }
@@ -1025,6 +1041,8 @@ export default class HitsterRoom implements Party.Server {
    */
   private skipTimelineSong() {
     if (this.state.songs.length === 0) {
+      // The skipped song was never played or revealed: don't hand it out as the final card.
+      this.state.currentSong = null;
       this.endOnCardCount();
       return;
     }
@@ -1595,6 +1613,7 @@ export default class HitsterRoom implements Party.Server {
     // Keep the same players but reset game state to lobby
     const players = this.state.players;
     this.state = this.emptyState();
+    this.lastDiagnostic = null; // the finished game's song list must not reach a host tab opened now
     this.state.hostId = hostId;
     // Reconnect all previously joined players (clear their timelines)
     for (const [playerId, player] of Object.entries(players)) {
