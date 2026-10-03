@@ -80,16 +80,27 @@ export default function ScreenPage() {
       // while we were offline): cached audio replies are only valid for this connection's games.
       setLyricsAudio(null);
       setGuessAudio(null);
-      setNotTheTv(false);
-      // Claim the screen credential immediately (mode-independent) so Timeline mode's video id
-      // starts flowing without needing a Lyrics-only GET_LYRICS_AUDIO — see handleJoinScreen.
-      // The host's id, if this browser is also the host's: lets a TV opened after players joined
-      // claim the screen (see claimOrValidateScreen). Read only — never created here.
-      let hostId: string | undefined;
-      try { hostId = localStorage.getItem("hitster_host_id") ?? undefined; } catch { /* storage blocked */ }
-      socket.send(JSON.stringify({ type: "JOIN_SCREEN", screenId: getOrCreatePersistedId("hitster_screen_id"), hostId }));
+      claimScreen();
     },
   });
+
+  // Claim the screen credential (mode-independent) so Timeline mode's video id starts flowing
+  // without needing a Lyrics-only GET_LYRICS_AUDIO — see handleJoinScreen. The host's id, if this
+  // browser is also the host's: lets a TV opened after players joined claim the screen (see
+  // claimOrValidateScreen). Read only — never created here.
+  function claimScreen() {
+    setNotTheTv(false);
+    let hostId: string | undefined;
+    try { hostId = localStorage.getItem("hitster_host_id") ?? undefined; } catch { /* storage blocked */ }
+    socket.send(JSON.stringify({ type: "JOIN_SCREEN", screenId: getOrCreatePersistedId("hitster_screen_id"), hostId }));
+  }
+
+  // That host id only counts once the host has claimed the room, so a TV refused before then
+  // (players joined, no playlist loaded yet) tries once more when the claim lands.
+  useEffect(() => {
+    if (notTheTv && state?.hostClaimed) claimScreen();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- only on the claim flipping; a refusal after it is final
+  }, [state?.hostClaimed]);
 
   // Same retry-safe request pattern as the host page used before the split: fires whenever
   // this round has no reply yet, including after a reconnect.

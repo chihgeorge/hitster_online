@@ -353,6 +353,19 @@ describe("HostPage: screen link", () => {
   });
 });
 
+describe("HostPage: in-game song panel", () => {
+  // Value: protects=the year guess for a host who also plays (the song panel lists every song); fails_when=the in-game DiagnosticTable shows the Year column again; why_new=no test opened the in-game panel; seam=none
+  it("lists the songs mid-game without their years", () => {
+    render(<HostPage />);
+    serverSends({ type: "DIAGNOSTIC", songs: [{ title: "Song A", artist: "Artist", year: 1987, yearSource: "manual" }] });
+    serverSends({ type: "STATE", state: { ...lobbyStateWithPlayer, phase: "guessing" } });
+    fireEvent.click(screen.getByText("▼ 展開"));
+    expect(screen.getByText("Song A")).toBeTruthy();
+    expect(screen.queryByText("1987")).toBeNull();
+    expect(screen.queryByText("Year")).toBeNull();
+  });
+});
+
 describe("HostPage: screen link edges", () => {
   it("QR encodes the same full screen URL as the link, once origin is known", async () => {
     const QRCode = (await import("qrcode")).default;
