@@ -59,7 +59,7 @@ _Deferred from /qa on feat/lyrics-api 2026-09-17_
 
 **Why:** The click handler calls `window.open("", name)` and prevents the default link when it gets a window back. An in-app webview that returns a window object without opening a real tab would make the tap do nothing, with no plain-link fallback.
 
-**Context:** Room links are likely shared over LINE. No spec covers webview `window.open`. If a webview misbehaves, detect it (UA or `tab.closed` right after open) and let the plain link through. _From /ship adversarial review on feat/host-screen-link, 2026-09-26._
+**Context:** Optional: this only affects a host who opens the host page inside an in-app browser; players' pages don't use `window.open`, and the usual setup (TV creates the room, phone takes over in its normal browser) never touches it. Room links are likely shared over LINE. No spec covers webview `window.open`. If a webview misbehaves, detect it (UA or `tab.closed` right after open) and let the plain link through. _From /ship adversarial review on feat/host-screen-link, 2026-09-26._
 
 **Effort:** S
 **Priority:** P3

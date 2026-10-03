@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.14.18.1] — 2026-10-03
+
+### Changed
+- **The LINE in-app browser check is now optional on the game-night checklist:** it only matters if you host from a link tapped inside LINE. Players joining from LINE use a page that doesn't open new tabs, and the usual setup (the TV creates the room, your phone takes over as host in its normal browser) never uses the screen link, so most hosts can skip it
+
 ## [0.14.18.0] — 2026-10-03
 
 ### Fixed
