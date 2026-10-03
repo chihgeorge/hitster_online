@@ -11,6 +11,17 @@
 - **Songs are only asked about once, across every room:** the AI's title, artist and year answers, lyric questions and song-popularity notes for a YouTube video are now kept in one shared store, so a playlist another room already loaded comes back faster and without new AI calls. Songs from a saved playlist (whose titles the host may have edited) still use the room's own store, so made-up titles can't change answers for anyone else
 - **Saved playlists sent to a room are capped at 500 songs, and AI-edit requests at 500 songs and a 1,000-character instruction**, the same sizes the app itself ever sends
 
+## [0.14.19.0] — 2026-10-03
+
+### Fixed
+- **A second or reopened host tab shows the in-game song list right away:** since v0.14.18.0 the list only went to host tabs that had already tapped a host button, so a laptop-plus-phone host, or a host page reopened mid-game, saw an empty panel. The host page now introduces itself as soon as it connects and gets the list (and any Lyrics preview) it missed. The TV and players still never receive it, and Play Again clears it so a new game never shows the last one's songs
+- **A TV on another device no longer blinks its "not this room's TV" notice** when the host loads a playlist: only a TV in the host's own browser tries to re-claim, since only that one can succeed
+- **Skipping the last Timeline song no longer reveals it:** when the TV couldn't play the final song in the deck, the game ended with that never-played song (title, artist and year) as the last card. It now ends without one
+- **The built-in Chinese pop test playlist no longer hints at the next song:** its song list on the host panel is in title order instead of the order the songs are dealt
+
+### Changed
+- **The host's in-game song list is tidier:** the repeated "已解析 X / Y 首" line is gone (the panel's button already shows it), and the column headers read 歌名 · Title, 歌手 · Artist and 年份來源 · Year source
+
 ## [0.14.18.1] — 2026-10-03
 
 ### Changed

@@ -103,6 +103,12 @@ test.describe("TV screen in Timeline mode", () => {
       await expect(screen2.getByText("第 2 回合 · Bob 的回合")).toBeVisible();
       await expect(bob.getByText(/Listen and place it on your timeline/i)).toBeVisible({ timeout: 15_000 });
 
+      // ── A host tab reopened mid-game gets the song list on connect, no button press needed ──
+      // Value: protects=a reopened host tab shows the in-game song panel right away; fails_when=the real socket's onOpen never sends HOST_HELLO or the server stops catching the tab up; why_new=unit tests mock the socket on one side and the page on the other; seam=none
+      const host2 = await hostCtx.newPage();
+      await host2.goto(`/room/${code}/host`);
+      await expect(host2.getByText(/歌曲資料/)).toBeVisible({ timeout: 10_000 });
+
       // Through two deals and a reveal, no phone got any answer key and nothing but the TV touched
       // YouTube. The refused TV tab still mounts its (empty) player, so its YouTube script may load.
       expect(seen.alice.answerKey).toBe(false);

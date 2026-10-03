@@ -20,6 +20,11 @@ import { rankPlayers, type GameState, type ServerMessage, type PublicLyricsGameS
 
 const VICTORY_VIDEO_ID: string | null = "bqon4TM2MgM";
 
+/** The host's id, if this browser is also the host's. Read only — never created here. */
+function readHostId(): string | undefined {
+  try { return localStorage.getItem("hitster_host_id") ?? undefined; } catch { return undefined; /* storage blocked */ }
+}
+
 // Read-only spectator view for a TV/projector — see DESIGN.md. No controls, no hostId: this page
 // never issues a game command, only the screenId credential GET_LYRICS_AUDIO needs.
 export default function ScreenPage() {
@@ -90,15 +95,14 @@ export default function ScreenPage() {
   // claimOrValidateScreen). Read only — never created here.
   function claimScreen() {
     setNotTheTv(false);
-    let hostId: string | undefined;
-    try { hostId = localStorage.getItem("hitster_host_id") ?? undefined; } catch { /* storage blocked */ }
-    socket.send(JSON.stringify({ type: "JOIN_SCREEN", screenId: getOrCreatePersistedId("hitster_screen_id"), hostId }));
+    socket.send(JSON.stringify({ type: "JOIN_SCREEN", screenId: getOrCreatePersistedId("hitster_screen_id"), hostId: readHostId() }));
   }
 
   // That host id only counts once the host has claimed the room, so a TV refused before then
-  // (players joined, no playlist loaded yet) tries once more when the claim lands.
+  // (players joined, no playlist loaded yet) tries once more when the claim lands. Without a
+  // host id in this browser the retry can't succeed (and would blink the notice), so skip it.
   useEffect(() => {
-    if (notTheTv && state?.hostClaimed) claimScreen();
+    if (notTheTv && state?.hostClaimed && readHostId()) claimScreen();
     // eslint-disable-next-line react-hooks/exhaustive-deps -- only on the claim flipping; a refusal after it is final
   }, [state?.hostClaimed]);
 

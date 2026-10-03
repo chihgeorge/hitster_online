@@ -236,6 +236,11 @@ export default function HostPage() {
         setProposeLyricError(proposalFailedText(msg.error));
       }
     },
+    onOpen() {
+      // Say who we are on every (re)connect, so a second or reopened host tab gets the song list
+      // and Lyrics preview it missed right away (the server ignores it until the host has claimed).
+      socket.send(JSON.stringify({ type: "HOST_HELLO", hostId: getOrCreatePersistedId("hitster_host_id") }));
+    },
   });
 
   function send(msg: ClientMessage) {
@@ -1045,8 +1050,7 @@ export default function HostPage() {
           </button>
           {showDiagnostic && (
             <div style={{ padding: "0 20px 20px" }}>
-              {/* No years mid-game: a host who also plays shouldn't see the answer on a glance at this panel. */}
-              <DiagnosticTable songs={diagnostic} hideYears />
+              <DiagnosticTable songs={diagnostic} />
             </div>
           )}
         </div>
@@ -1071,24 +1075,17 @@ export default function HostPage() {
   );
 }
 
-function DiagnosticTable({ songs, compact, hideYears }: { songs: SongDiagnostic[]; compact?: boolean; hideYears?: boolean }) {
-  const resolved = songs.filter((s) => s.year !== null).length;
-  const total = songs.length;
+// In-game only, so no Year column: a host who also plays would see every answer.
+function DiagnosticTable({ songs }: { songs: SongDiagnostic[] }) {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-      {!compact && (
-        <p style={{ fontSize: 12, color: "var(--text2)" }}>
-          已解析 <span style={{ color: "var(--orange)", fontWeight: 900 }}>{resolved}</span> / <span style={{ fontWeight: 700, color: "var(--ink)" }}>{total}</span> 首
-        </p>
-      )}
       <div style={{ overflowX: "auto", borderRadius: 14, border: "2px solid rgba(255,107,53,.1)" }}>
         <table style={{ width: "100%", fontSize: 12, borderCollapse: "collapse" }}>
           <thead>
             <tr style={{ textAlign: "left", borderBottom: "2px solid rgba(255,107,53,.1)" }}>
-              <th style={{ padding: "8px 12px", fontWeight: 700, color: "var(--text3)" }}>Title</th>
-              <th style={{ padding: "8px 12px", fontWeight: 700, color: "var(--text3)" }}>Artist</th>
-              {!hideYears && <th style={{ padding: "8px 12px", fontWeight: 700, color: "var(--text3)" }}>Year</th>}
-              <th style={{ padding: "8px 12px", fontWeight: 700, color: "var(--text3)" }}>Source</th>
+              <th style={{ padding: "8px 12px", fontWeight: 700, color: "var(--text3)" }}>歌名 · Title</th>
+              <th style={{ padding: "8px 12px", fontWeight: 700, color: "var(--text3)" }}>歌手 · Artist</th>
+              <th style={{ padding: "8px 12px", fontWeight: 700, color: "var(--text3)" }}>年份來源 · Year source</th>
             </tr>
           </thead>
           <tbody>
@@ -1096,9 +1093,6 @@ function DiagnosticTable({ songs, compact, hideYears }: { songs: SongDiagnostic[
               <tr key={i} style={{ borderBottom: "1px solid rgba(255,107,53,.06)", opacity: s.year ? 1 : 0.4 }}>
                 <td style={{ padding: "7px 12px", maxWidth: 200, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: "var(--ink)" }} title={s.title}>{s.title}</td>
                 <td style={{ padding: "7px 12px", maxWidth: 120, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: "var(--text2)" }} title={s.artist}>{s.artist}</td>
-                {!hideYears && (
-                  <td style={{ padding: "7px 12px", fontFamily: "var(--font-mono)", color: "var(--orange)", fontWeight: 700 }}>{s.year ?? "—"}</td>
-                )}
                 <td style={{ padding: "7px 12px" }}>
                   {s.yearSource === "description" && <span style={{ color: "var(--mint)" }}>YouTube</span>}
                   {s.yearSource === "title" && <span style={{ color: "#5B8DEF" }}>title</span>}

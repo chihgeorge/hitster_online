@@ -2928,7 +2928,46 @@ describe("Lyrics Mode: GET_LYRICS_AUDIO across rounds", () => {
 
 // ─── Dead-code cleanup: DIAGNOSTIC shape and error mapping ───────────────────
 
-describe("DIAGNOSTIC without the retired status field", () => {
+describe("DIAGNOSTIC: shape, and routing to host tabs only", () => {
+  // Value: protects=a second or reopened host tab shows the in-game song list without waiting for a button press, and the TV never gets it; fails_when=HOST_HELLO stops authorizing the tab, catch-up stops sending lastDiagnostic, or catch-up reaches the TV or repeats; why_new=sendToHost only reaches tabs that were already privileged at game start; seam=none
+  it("HOST_HELLO catches a late host tab up on the song list, once, and never the TV", async () => {
+    const room = new HitsterRoom(makeRoom() as any);
+    const tv = makeConn("tv");
+    await send(room, tv, { type: "JOIN_SCREEN", screenId: "screen-token" });
+    const early = makeConn("early");
+    await send(room, early, { type: "HOST_HELLO", hostId: "host-uuid" }); // room not claimed yet: ignored
+    expect(early.send).not.toHaveBeenCalled();
+    const tab1 = makeConn("h1");
+    await send(room, tab1, { type: "LOAD_PLAYLIST", hostId: "host-uuid", playlistUrl: "hitster://cpop-test" });
+    await send(room, early, { type: "HOST_HELLO", hostId: "host-uuid" }); // claimed, but no list yet: nothing to send
+    expect(early.send).not.toHaveBeenCalled();
+    await send(room, tab1, { type: "START_GAME", hostId: "host-uuid", playlistUrl: "hitster://cpop-test" });
+    await send(room, early, { type: "HOST_HELLO", hostId: "host-uuid" }); // already got it from START_GAME
+    expect(sentOfType(early, "DIAGNOSTIC")).toHaveLength(1);
+    const late = makeConn("late");
+    await send(room, late, { type: "HOST_HELLO", hostId: "host-uuid" });
+    await send(room, late, { type: "HOST_HELLO", hostId: "host-uuid" }); // a reconnect on the same socket
+    expect(sentOfType(late, "DIAGNOSTIC")).toHaveLength(1);
+    expect(sentOfType(late, "DIAGNOSTIC")[0]).toEqual(sentOfType(tab1, "DIAGNOSTIC")[0]);
+    await send(room, tv, { type: "HOST_HELLO", hostId: "host-uuid" }); // even a TV that knows the host id
+    expect(sentOfType(tv, "DIAGNOSTIC")).toEqual([]);
+    const stranger = makeConn("p");
+    await send(room, stranger, { type: "HOST_HELLO", hostId: "guessed" });
+    expect(sentOfType(stranger, "DIAGNOSTIC")).toEqual([]);
+  });
+
+  // Value: protects=a host tab opened after Play Again isn't handed the previous game's song list; fails_when=handleResetGame leaves lastDiagnostic set; why_new=lastDiagnostic is new; nothing tested clearing it; seam=none
+  it("Play Again drops the last game's song list before any new playlist loads", async () => {
+    const room = new HitsterRoom(makeRoom() as any);
+    const tab1 = makeConn("h1");
+    await send(room, tab1, { type: "START_GAME", hostId: "host-uuid", playlistUrl: "hitster://cpop-test" });
+    room.state.phase = "ended";
+    await send(room, tab1, { type: "RESET_GAME", hostId: "host-uuid" });
+    const late = makeConn("late");
+    await send(room, late, { type: "HOST_HELLO", hostId: "host-uuid" });
+    expect(sentOfType(late, "DIAGNOSTIC")).toEqual([]);
+  });
+
   // Value: protects=DIAGNOSTIC reaches every host tab but never the TV (it is privileged too, and on a shared screen); fails_when=sendToHost drops the screenConns check or only sends to the START_GAME sender; why_new=the other DIAGNOSTIC tests have no TV and one host tab; seam=none
   it("START_GAME sends DIAGNOSTIC to a second host tab too, never to the TV", async () => {
     const room = new HitsterRoom(makeRoom() as any);
@@ -2942,6 +2981,16 @@ describe("DIAGNOSTIC without the retired status field", () => {
     expect(sentOfType(tab1, "DIAGNOSTIC")).toHaveLength(1);
     expect(sentOfType(tab2, "DIAGNOSTIC")).toHaveLength(1);
     expect(sentOfType(tv, "DIAGNOSTIC")).toEqual([]);
+  });
+
+  // Value: protects=the host's song panel doesn't reveal the next song for the fixed-order cpop seed; fails_when=the seed's DIAGNOSTIC goes back to deal order; why_new=nothing checked the list order; seam=none
+  it("cpop-test seed's song list is in title order, not the order the songs are dealt", async () => {
+    const room = new HitsterRoom(makeRoom() as any);
+    const host = makeConn("h");
+    await send(room, host, { type: "START_GAME", hostId: "host-uuid", playlistUrl: "hitster://cpop-test" });
+    const titles = sentOfType(host, "DIAGNOSTIC")[0].songs.map((s: { title: string }) => s.title);
+    expect(titles).toEqual([...titles].sort((a: string, b: string) => a.localeCompare(b)));
+    expect(titles).not.toEqual(["那些年", "可惜沒如果", "小幸運", "告白氣球", "光年之外", "你，好不好？", "體面", "年少有為"]); // deal order
   });
 
   // Value: protects=the year guess (DIAGNOSTIC lists every song's title and year); fails_when=START_GAME broadcasts DIAGNOSTIC to the room instead of sending it to the host; why_new=the old test asserted the broadcast, so the leak was pinned as correct; seam=none
@@ -3126,10 +3175,11 @@ describe("AUDIO_FAILED in Timeline: deal the same player another song", () => {
     expect(allSentMessages(room).some((m) => m.type === "ROUND_SKIPPED" && m.mode === "timeline")).toBe(true);
   });
 
-  it("ends the game on card count when no song is left", async () => {
+  // Value: protects=a song that was never played isn't shown to everyone as the last card when the game ends; fails_when=skipTimelineSong keeps the unplayed currentSong when the deck runs out; why_new=the test only checked phase and winner; seam=none
+  it("ends the game on card count when no song is left, without revealing the unplayed song", async () => {
     const { room, tv } = await timelineTurn(0);
     await send(room, tv, { type: "AUDIO_FAILED", screenId: "tv-token", videoId: "badVideo001" });
-    expect(room.state).toMatchObject({ phase: "ended", winner: P1 });
+    expect(room.state).toMatchObject({ phase: "ended", winner: P1, currentSong: null });
   });
 
   it("ignores the reveal phase and a stale id", async () => {
