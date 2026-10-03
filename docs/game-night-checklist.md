@@ -2,11 +2,11 @@
 
 The checks only a real TV, real phones and real players can do. The automated suites (`npm test`, `npm run test:e2e`) cover the rest. Each check below closes or updates one item in [TODOS.md](../TODOS.md); write what you saw there.
 
-Needs: a TV with a browser (or a laptop on HDMI), 2+ phones with LINE installed, a Lyrics playlist, about 30 minutes before guests arrive.
+Needs: a TV with a browser (or a laptop on HDMI), 2+ phones, a Lyrics playlist, about 30 minutes before guests arrive.
 
 ## Before guests arrive (about 20 min)
 
-1. **LINE in-app browser (throwaway room).** Send yourself https://hitsteronline.vercel.app in LINE and open it *inside* LINE (not "open in Safari/Chrome"). Tap Create a Room, then "Manage as host", then the "📺 在電視掃描，或點此開啟大螢幕" card. Repeat in Instagram/Facebook if you have them.
+1. **Optional: LINE in-app browser (throwaway room).** Only matters if you'd host from a link tapped inside LINE; players joining from LINE aren't affected. Skip it otherwise. Send yourself https://hitsteronline.vercel.app in LINE and open it *inside* LINE (not "open in Safari/Chrome"). Tap Create a Room, then "Manage as host", then the "📺 在電視掃描，或點此開啟大螢幕" card. Repeat in Instagram/Facebook if you have them.
    Pass: a screen tab opens, and a second tap reuses it. Fail: the tap does nothing. Note the app and OS. → TODOS "Check the screen link inside LINE / Instagram / Facebook in-app browsers"
 2. **Real room on the TV.** On the TV's browser, open the site and tap Create a Room: that browser is now the room's TV. On your phone, type the room code on the home page and tap "或者：管理此房間 · Or: manage this room".
    Pass: the TV shows the QR code, and your phone shows the host setup.
