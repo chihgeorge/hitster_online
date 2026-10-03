@@ -10,8 +10,12 @@ import {
 } from "../lib/playlist-resolver";
 import { proposeEdits } from "../lib/ai-metadata";
 import { CORS_HEADERS, json, err } from "./http";
+import { spendPaidBudget, sharedAICache } from "./paid";
 
-const MAX_SONGS = 500;
+export const MAX_SONGS = 500;
+/** Longest AI-edit instruction accepted: one unit of the daily budget shouldn't buy an unbounded prompt. */
+export const MAX_INSTRUCTION = 1000;
+const DAILY_LIMIT = "今天的使用額度已用完，明天再試 · Today's limit is used up, try again tomorrow";
 const MAX_NAME_LEN = 80;
 
 function validateSongs(songs: unknown): songs is EditableSong[] {
@@ -118,9 +122,10 @@ export default class PlaylistParty implements Party.Server {
         if (typeof playlistUrl !== "string" || !playlistUrl.trim()) return err("playlistUrl required");
         const playlistId = extractPlaylistId(playlistUrl);
         if (!PLAYLIST_ID_PATTERN.test(playlistId)) return err("playlist_load_failed");
+        if (!(await spendPaidBudget(this.room))) return err(DAILY_LIMIT, 429);
         try {
           const keys = resolveEnv(this.room.env);
-          const resolved = await resolvePlaylistFromUrl(playlistId, keys, this.room.storage);
+          const resolved = await resolvePlaylistFromUrl(playlistId, keys, sharedAICache(this.room));
           if (resolved.allSongs.length < 2) return err("not_enough_songs");
           songs = resolved.allSongs;
         } catch (e) {
@@ -209,9 +214,10 @@ export default class PlaylistParty implements Party.Server {
       // as the room's own chat-to-diff editing.
       if (action === "PROPOSE_EDITS") {
         const { instruction } = body as { instruction?: unknown };
-        if (typeof instruction !== "string" || !instruction.trim()) return err("instruction required");
+        if (typeof instruction !== "string" || !instruction.trim() || instruction.length > MAX_INSTRUCTION) return err("instruction required");
         const { anthropicKey } = resolveEnv(this.room.env);
         if (!anthropicKey) return err("api_key_missing", 503);
+        if (!(await spendPaidBudget(this.room))) return err(DAILY_LIMIT, 429);
         try {
           const diff = await proposeEdits(instruction, stored.songs, anthropicKey);
           return json({ diff });

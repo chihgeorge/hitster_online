@@ -519,3 +519,36 @@ describe("HostPage: screen link edge clicks", () => {
     expect(tab.focus).toHaveBeenCalled();
   });
 });
+
+describe("HostPage: daily paid-API limit", () => {
+  // Value: protects=a host who hits the daily cap is told it's a daily limit and to come back tomorrow, not a generic load failure; fails_when=errorInfo loses or renames the daily_limit entry; why_new=new server error code, no UI test; seam=none
+  it("shows the daily-limit banner when a playlist load is refused", () => {
+    render(<HostPage />);
+    serverSends({ type: "STATE", state: lobbyStateEmpty });
+    fireEvent.change(screen.getByPlaceholderText(/youtube.com\/playlist/), { target: { value: "https://www.youtube.com/playlist?list=PLabcdefghijk" } });
+    fireEvent.click(screen.getByText("載入 Load"));
+    serverSends({ type: "PLAYLIST_LOAD_ERROR", error: "daily_limit" });
+    expect(screen.getByText(/Today's limit is used up/)).toBeTruthy();
+    expect(screen.getByText(/Try again tomorrow/)).toBeTruthy();
+  });
+
+  // Value: protects=a host whose AI edit is refused at the cap is told it's the daily limit, not to retry; fails_when=EDITS_PROPOSAL_FAILED ignores its error code again; why_new=the handler showed one generic line for every failure; seam=none
+  it("says the daily limit is used up when an AI edit is refused at the cap", () => {
+    render(<HostPage />);
+    serverSends({ type: "STATE", state: lobbyStateEmpty });
+    fireEvent.change(screen.getByPlaceholderText(/youtube.com\/playlist/), { target: { value: "hitster://test" } });
+    fireEvent.click(screen.getByText("載入 Load"));
+    serverSends({ type: "PLAYLIST_READY", songs: [{ videoId: "v1", title: "Song A", artist: "A", year: 2000 }, { videoId: "v2", title: "Song B", artist: "B", year: 2001 }] });
+    fireEvent.click(screen.getByTestId("edit-songs-toggle-btn"));
+    serverSends({ type: "EDITS_PROPOSAL_FAILED", error: "daily_limit" });
+    expect(screen.getByText(/Today's limit is used up, try again tomorrow/)).toBeTruthy();
+    serverSends({ type: "EDITS_PROPOSAL_FAILED", error: "propose_failed" });
+    expect(screen.getByText(/Couldn't process that, try again/)).toBeTruthy();
+  });
+  it("says the daily limit is used up when a lyric AI edit is refused at the cap", async () => {
+    loadLyricsPlaylistWithPlayer();
+    await waitFor(() => expect(screen.getByText(/^✨ Ask AI$/)).toBeTruthy());
+    serverSends({ type: "LYRIC_EDITS_PROPOSAL_FAILED", error: "daily_limit" });
+    expect(screen.getByText(/Today's limit is used up, try again tomorrow/)).toBeTruthy();
+  });
+});

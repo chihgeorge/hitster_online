@@ -105,18 +105,16 @@ export function buildCardsFromAI(
 }
 
 /** PartyKit storage get/put accept at most 128 keys per call. */
-const STORAGE_BATCH = 128;
+export const STORAGE_BATCH = 128;
 
 /** Batched storage.get — PartyKit's Storage.get caps out around 128 keys per call. Shared by
  * the AI-metadata cache below and by any lyrics-cache read a caller does on the side. */
 export async function storageBatchGet<T>(storage: PartyStorage, keys: string[]): Promise<Map<string, T>> {
-  const result = new Map<string, T>();
-  for (let i = 0; i < keys.length; i += STORAGE_BATCH) {
-    const chunk = keys.slice(i, i + STORAGE_BATCH);
-    const partial = (await storage.get<T>(chunk)) as Map<string, T>;
-    for (const [k, v] of partial) result.set(k, v);
-  }
-  return result;
+  const chunks: string[][] = [];
+  for (let i = 0; i < keys.length; i += STORAGE_BATCH) chunks.push(keys.slice(i, i + STORAGE_BATCH));
+  // In parallel: with the shared cache each chunk is a round trip to another Durable Object.
+  const parts = await Promise.all(chunks.map((chunk) => storage.get<T>(chunk) as Promise<Map<string, T>>));
+  return new Map(parts.flatMap((p) => [...p]));
 }
 
 /** Fire-and-forget put of `prefix + id → value`, STORAGE_BATCH keys per call. */
@@ -203,7 +201,7 @@ export async function fetchAndFilterTracks(
 
 /**
  * Fetches a YouTube playlist by id, filters out non-embeddable videos, resolves AI
- * metadata (cached per-DO via `storage`), and builds playable cards. The one pipeline
+ * metadata (cached in `storage`: callers pass sharedAICache, the cross-room cache), and builds playable cards. The one pipeline
  * every "load a playlist from a URL" entry point should call — see the file header.
  *
  * @param onFetched  Fired once, right after fetch+embeddability-filter+meta-parse, before

@@ -6,7 +6,7 @@ Live: [hitsteronline.vercel.app](https://hitsteronline.vercel.app)
 
 ## Features
 
-- **Host** loads a YouTube playlist; the app resolves song titles, artists, and release years via Claude Haiku (AI metadata) with a Durable Object cache — repeat loads are near-instant
+- **Host** loads a YouTube playlist; the app resolves song titles, artists, and release years via Claude Haiku (AI metadata) with a Durable Object cache shared by every room — repeat loads are near-instant, even of a playlist another room loaded first
 - **Players** join by room code and drag songs into a chronological timeline on their phones
 - **Chinese-first UI** — join form, error messages, and in-game prompts in Traditional Chinese (繁體中文) with English fallback
 - **Saved playlists** — hosts can save and reload playlists without re-fetching; inline song editor lets them correct titles, artists, and years
@@ -21,7 +21,7 @@ Live: [hitsteronline.vercel.app](https://hitsteronline.vercel.app)
 
 - Next.js 16 (App Router, TypeScript)
 - PartyKit (WebSocket game server)
-- Cloudflare Workers + Durable Objects (playlist cache, AI metadata cache)
+- Cloudflare Workers + Durable Objects (playlist cache, shared AI cache, daily paid-API budget)
 - Claude Haiku (year/title/artist resolution)
 - Playwright (e2e, Chromium + Mobile Safari)
 - Vitest (unit tests)
@@ -57,7 +57,9 @@ Checks that need a real TV and phones (in-app browsers, video sharpness, live ly
 
 ## Deployment
 
-Deployed to Vercel (Next.js) + PartyKit cloud. See `.partykit/` and `vercel.json` for config.
+Deployed to Vercel (Next.js) + PartyKit cloud. The PartyKit parties (`main` room server, `playlist`, `library`, `paid`) are registered in `partykit.json`.
+
+Paid YouTube and Anthropic work (loading a YouTube playlist, starting a Lyrics game, creating a saved playlist from a link, AI edits) shares one daily limit across every room, held by the `paid` party: 300 per UTC day by default. Change it with the `PAID_DAILY_CAP` PartyKit var, e.g. `npx partykit deploy --var PAID_DAILY_CAP=500`; `0` turns paid work off. Past the limit the host sees "今天的使用額度已用完 · Today's limit is used up".
 
 ---
 

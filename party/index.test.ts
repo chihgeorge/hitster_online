@@ -596,8 +596,10 @@ describe("START_GAME handler", () => {
       playlistUrl: "PLtest",
     });
 
+    // The shared AI cache (party/paid.ts) isn't reachable in this mock, so the fire-and-forget
+    // write falls back to the room's own storage: wait for it.
+    await vi.waitFor(() => expect((room.room.storage.put as ReturnType<typeof vi.fn>).mock.calls.length).toBeGreaterThan(0));
     const putCalls = (room.room.storage.put as ReturnType<typeof vi.fn>).mock.calls;
-    expect(putCalls.length).toBeGreaterThan(0);
     const stored = putCalls[0][0] as Record<string, unknown>;
     expect(stored["aiMeta:v1"]).toBeDefined();
     expect(stored["aiMeta:v2"]).toBeDefined();
@@ -1376,8 +1378,10 @@ describe("LOAD_PLAYLIST handler — AI metadata cache", () => {
     const conn = makeConn();
     await send(room, conn, { type: "LOAD_PLAYLIST", hostId: "host-uuid", playlistUrl: "PLtest" });
 
+    // The shared AI cache (party/paid.ts) isn't reachable in this mock, so the fire-and-forget
+    // write falls back to the room's own storage: wait for it.
+    await vi.waitFor(() => expect((room.room.storage.put as ReturnType<typeof vi.fn>).mock.calls.length).toBeGreaterThan(0));
     const putCalls = (room.room.storage.put as ReturnType<typeof vi.fn>).mock.calls;
-    expect(putCalls.length).toBeGreaterThan(0);
     const stored = putCalls[0][0] as Record<string, unknown>;
     expect(stored["aiMeta:v1"]).toBeDefined();
     expect(stored["aiMeta:v2"]).toBeDefined();
@@ -1799,10 +1803,11 @@ describe("Lyrics Mode: START_LYRICS_GAME", () => {
     const summariesArg = sonnetCall[4] as Map<string, string>;
     expect(summariesArg.get("vid1")).toBe("最有名的一句是...");
 
-    // Result gets cached under lyrics-popularity: for next time.
-    const putCalls = (mockRoom.storage.put as ReturnType<typeof vi.fn>).mock.calls;
-    const cachedPopularity = putCalls.find((c: any[]) => "lyrics-popularity:vid1" in (c[0] as object));
-    expect(cachedPopularity).toBeDefined();
+    // Result gets cached under lyrics-popularity: for next time (fire-and-forget, so it lands a tick later).
+    await vi.waitFor(() => {
+      const putCalls = (mockRoom.storage.put as ReturnType<typeof vi.fn>).mock.calls;
+      expect(putCalls.find((c: any[]) => "lyrics-popularity:vid1" in (c[0] as object))).toBeDefined();
+    });
 
   });
 
@@ -1851,9 +1856,11 @@ describe("Lyrics Mode: START_LYRICS_GAME", () => {
     expect(tracksArg.map((t) => t.videoId)).toEqual(["vid1"]);
     expect(room.lyricsState?.rounds.map((r) => r.blankSentence)).toEqual([CACHED_LYRICS.blankSentence]);
     // The regenerated round replaces the giveaway in the cache, so it isn't paid for again.
-    const putCalls = (mockRoom.storage.put as ReturnType<typeof vi.fn>).mock.calls;
-    expect(putCalls.some((c: any[]) =>
-      (c[0] as Record<string, { blankSentence?: string }>)["lyrics-sonnet:vid1"]?.blankSentence === CACHED_LYRICS.blankSentence)).toBe(true);
+    await vi.waitFor(() => {
+      const putCalls = (mockRoom.storage.put as ReturnType<typeof vi.fn>).mock.calls;
+      expect(putCalls.some((c: any[]) =>
+        (c[0] as Record<string, { blankSentence?: string }>)["lyrics-sonnet:vid1"]?.blankSentence === CACHED_LYRICS.blankSentence)).toBe(true);
+    });
   });
 
   it("errors with not_enough_songs when every cached round gives the title away", async () => {
@@ -1966,7 +1973,7 @@ describe("Lyrics Mode: START_LYRICS_GAME", () => {
 
       const first = await start();
       expect(resolveLyricsForTracks).toHaveBeenCalledTimes(1);
-      expect(typeof stored.get("noResult:lyrics-sonnet:v1:vid1")).toBe("number");
+      await vi.waitFor(() => expect(typeof stored.get("noResult:lyrics-sonnet:v1:vid1")).toBe("number"));
       expect(first.lyricsState?.rounds[0]?.blankSentence).toBe(CACHED_LYRICS.blankSentence); // fell back to the preview round
 
       vi.mocked(resolveLyricsForTracks).mockClear();
@@ -2501,6 +2508,12 @@ describe("Lyrics Mode: RESET_LYRICS_GAME wrong phase", () => {
 });
 
 describe("Lyrics Mode: generateLyricsPreview broadcasts LYRICS_PREVIEW", () => {
+  const previewSettled = (conn: ReturnType<typeof makeConn>) => vi.waitFor(() => {
+    const previews = (conn.send as ReturnType<typeof vi.fn>).mock.calls.map((c) => JSON.parse(c[0] as string))
+      .filter((m: { type: string }) => m.type === "LYRICS_PREVIEW");
+    expect(previews.at(-1)?.loading).toBe(false);
+  });
+
   beforeEach(() => {
     vi.clearAllMocks();
     vi.stubEnv("ANTHROPIC_API_KEY", "test-key");
@@ -2522,7 +2535,7 @@ describe("Lyrics Mode: generateLyricsPreview broadcasts LYRICS_PREVIEW", () => {
     const room = new HitsterRoom(mockRoom as any);
     const conn = makeConn();
     await send(room, conn, { type: "LOAD_PLAYLIST", hostId: "host-uuid", playlistUrl: "PLtest", gameMode: "lyrics" });
-    await new Promise<void>((resolve) => setTimeout(resolve, 0));
+    await previewSettled(conn); // generateLyricsPreview runs in the background (void); its last message is loading:false
     const previews = (conn.send as ReturnType<typeof vi.fn>).mock.calls.map((c) => JSON.parse(c[0] as string))
       .filter((m: { type: string }) => m.type === "LYRICS_PREVIEW");
     expect(previews.at(-1)?.rounds.map((r: { videoId: string }) => r.videoId)).toEqual(["v2"]);
@@ -2550,12 +2563,14 @@ describe("Lyrics Mode: generateLyricsPreview broadcasts LYRICS_PREVIEW", () => {
     const room = new HitsterRoom(mockRoom as any);
     const conn = makeConn();
     await send(room, conn, { type: "LOAD_PLAYLIST", hostId: "host-uuid", playlistUrl: "PLtest", gameMode: "lyrics" });
-    await new Promise<void>((resolve) => setTimeout(resolve, 0));
+    await previewSettled(conn); // generateLyricsPreview runs in the background (void); its last message is loading:false
     const [tracksArg] = vi.mocked(resolveLyricsForTracks).mock.calls.at(-1)!;
     expect(tracksArg.map((t) => t.videoId)).toEqual(["v1"]);
-    const putCalls = (mockRoom.storage.put as ReturnType<typeof vi.fn>).mock.calls;
-    expect(putCalls.some((c: any[]) =>
-      (c[0] as Record<string, { blankSentence?: string }>)["lyrics:v1"]?.blankSentence === "hello")).toBe(true);
+    await vi.waitFor(() => {
+      const putCalls = (mockRoom.storage.put as ReturnType<typeof vi.fn>).mock.calls;
+      expect(putCalls.some((c: any[]) =>
+        (c[0] as Record<string, { blankSentence?: string }>)["lyrics:v1"]?.blankSentence === "hello")).toBe(true);
+    });
     const previews = (conn.send as ReturnType<typeof vi.fn>).mock.calls.map((c) => JSON.parse(c[0] as string))
       .filter((m: { type: string }) => m.type === "LYRICS_PREVIEW");
     expect(previews.at(-1)?.rounds.map((r: { videoId: string }) => r.videoId).sort()).toEqual(["v1", "v2"]);
@@ -2589,8 +2604,7 @@ describe("Lyrics Mode: generateLyricsPreview broadcasts LYRICS_PREVIEW", () => {
     room.onConnect(player);
     await send(room, player, { type: "JOIN", playerId: P1, name: "Alice" });
     await send(room, conn, { type: "LOAD_PLAYLIST", hostId: "host-uuid", playlistUrl: "PLtest", gameMode: "lyrics" });
-    // Flush all pending microtasks so the void generateLyricsPreview() completes
-    await new Promise<void>((resolve) => setTimeout(resolve, 0));
+    await previewSettled(conn); // generateLyricsPreview runs in the background (void); its last message is loading:false
 
     // The preview carries every answer (blankSentence) — host/screen only, never a room broadcast
     // and never to a player's connection (/review 2026-09-24).
@@ -2680,7 +2694,9 @@ describe("Lyrics Mode: answer deadline boundary and reset side effects", () => {
     const room = new HitsterRoom(makeRoom() as any);
     const hostConn = makeConn("host-conn");
     await send(room, makeConn("p1"), { type: "JOIN", playerId: P1, name: "Alice" });
+    const fetchesBefore = vi.mocked(fetchPlaylistItems).mock.calls.length;
     const stale = send(room, hostConn, { type: "START_LYRICS_GAME", hostId: "host-uuid", playlistUrl: "PLtest", config: { timerSeconds: 60, totalRounds: 1, fuzzyEnabled: false } });
+    await vi.waitFor(() => expect(vi.mocked(fetchPlaylistItems).mock.calls.length).toBe(fetchesBefore + 1)); // past the budget check, mid-fetch
     expect(room.lyricsState?.phase).toBe("loading");
     await send(room, hostConn, { type: "RESET_LYRICS_GAME", hostId: "host-uuid" });
     expect(room.lyricsState).toBeNull();
@@ -3512,6 +3528,7 @@ describe("playlist bookkeeping (review re-verify 2026-09-24)", () => {
     const room = new HitsterRoom(makeRoom() as any);
     const hostConn = makeConn("host-conn");
     const stale = send(room, hostConn, { type: "LOAD_PLAYLIST", hostId: "host-uuid", playlistUrl: "PLtest" });
+    await vi.waitFor(() => expect(fetchPlaylistItems).toHaveBeenCalled()); // past the budget check, mid-fetch
     const saved = [
       { videoId: "sav00000001", title: "Saved A", artist: "X", year: 1985 },
       { videoId: "sav00000002", title: "Saved B", artist: "Y", year: 1990 },
@@ -3584,6 +3601,7 @@ describe("playlist bookkeeping: stale aborted load (/ship adversarial #2)", () =
     const room = new HitsterRoom(makeRoom() as any);
     const hostConn = makeConn("host-conn");
     const stale = send(room, hostConn, { type: "LOAD_PLAYLIST", hostId: "host-uuid", playlistUrl: "PLtest" });
+    await vi.waitFor(() => expect(fetchPlaylistItems).toHaveBeenCalled()); // past the budget check, mid-fetch
     await send(room, hostConn, { type: "ABORT_LOAD", hostId: "host-uuid" });
     await send(room, hostConn, { type: "LOAD_SAVED_PLAYLIST", hostId: "host-uuid", playlistId: "saved-1", songs: [
       { videoId: "sav00000001", title: "Saved A", artist: "X", year: 1985 }, { videoId: "sav00000002", title: "Saved B", artist: "Y", year: 1990 },
@@ -3593,5 +3611,237 @@ describe("playlist bookkeeping: stale aborted load (/ship adversarial #2)", () =
     const ready = (hostConn.send as ReturnType<typeof vi.fn>).mock.calls.map((c: unknown[]) => JSON.parse(c[0] as string)).filter((m) => m.type === "PLAYLIST_READY");
     expect(ready).toHaveLength(1);
     expect(ready[0].songs.map((x: { videoId: string }) => x.videoId)).toEqual(["sav00000001", "sav00000002"]);
+  });
+});
+
+// ─── Daily paid budget (party/paid.ts) at every WebSocket call site ──────────
+
+describe("daily paid budget: room call sites refuse once the cap is spent", () => {
+  /** A room whose shared paid party answers 429: today's budget is used up. */
+  function spentRoom() {
+    vi.stubEnv("ANTHROPIC_API_KEY", "test-key");
+    const mockRoom = makeRoom() as any;
+    mockRoom.context = { parties: { paid: { get: () => ({ fetch: vi.fn().mockResolvedValue(new Response(JSON.stringify({ ok: false }), { status: 429 })) }) } } };
+    return new HitsterRoom(mockRoom);
+  }
+
+  beforeEach(() => vi.clearAllMocks());
+  afterEach(() => vi.unstubAllEnvs());
+
+  // Value: protects=a host loading a fresh YouTube playlist past the cap gets the daily_limit banner, not a hung spinner; fails_when=LOAD_PLAYLIST still calls YouTube, sends another code, or leaves playlistLoading stuck; why_new=only playlist.ts's HTTP gate had a test; seam=none
+  it("LOAD_PLAYLIST: PLAYLIST_LOAD_ERROR daily_limit, no YouTube call, load not left in flight", async () => {
+    const room = spentRoom();
+    const conn = makeConn();
+    await send(room, conn, { type: "LOAD_PLAYLIST", hostId: "host-uuid", playlistUrl: "PLtest" });
+    expect(lastSentTo(conn)).toEqual({ type: "PLAYLIST_LOAD_ERROR", error: "daily_limit" });
+    expect(fetchPlaylistItems).not.toHaveBeenCalled();
+    expect((room as any).playlistLoading).toBe(false);
+  });
+
+  // Value: protects=Anthropic spend from a host looping AI edits over the room socket; fails_when=proposeDiff calls proposeEdits/proposeLyricEdits after the cap or replies other than *_PROPOSAL_FAILED daily_limit; why_new=new gate, untested; seam=none
+  it("PROPOSE_EDITS and PROPOSE_LYRIC_EDITS: fail with daily_limit without calling the AI", async () => {
+    const room = spentRoom();
+    const conn = makeConn();
+    // Test seeds don't spend budget, so this still claims the host.
+    await send(room, conn, { type: "LOAD_PLAYLIST", hostId: "host-uuid", playlistUrl: "hitster://test" });
+    await send(room, conn, { type: "PROPOSE_EDITS", hostId: "host-uuid", instruction: "fix it", songs: [{ videoId: "v1", title: "A", artist: "B", year: 1990 }] });
+    expect(lastSentTo(conn)).toEqual({ type: "EDITS_PROPOSAL_FAILED", error: "daily_limit" });
+    await send(room, conn, { type: "PROPOSE_LYRIC_EDITS", hostId: "host-uuid", instruction: "fix it", rounds: [{ videoId: "v1", title: "A", artist: "B", language: "en", lyricContext: "x ___", blankSentence: "y" }] });
+    expect(lastSentTo(conn)).toEqual({ type: "LYRIC_EDITS_PROPOSAL_FAILED", error: "daily_limit" });
+    expect(proposeEdits).not.toHaveBeenCalled();
+    expect(proposeLyricEdits).not.toHaveBeenCalled();
+  });
+
+  // Value: protects=START_GAME without a prior LOAD_PLAYLIST can't bypass the cap; fails_when=the fallback resolve still hits YouTube or the game starts after the cap; why_new=the fallback gate is a separate call site with no test; seam=none
+  it("START_GAME fallback resolve: ERROR daily_limit, game stays in the lobby", async () => {
+    const room = spentRoom();
+    const conn = makeConn();
+    await send(room, conn, { type: "JOIN", playerId: P1, name: "Alice" });
+    await send(room, conn, { type: "START_GAME", hostId: "host-uuid", playlistUrl: "https://www.youtube.com/playlist?list=PL123" });
+    expect(lastSentTo(conn)).toEqual({ type: "ERROR", error: "daily_limit" });
+    expect(fetchPlaylistItems).not.toHaveBeenCalled();
+    expect(room.state.phase).toBe("lobby");
+  });
+
+  // Value: protects=a Lyrics start on a fresh playlist past the cap clears the loading spinner; fails_when=the gate stops aborting (lyricsState left "loading", no LYRICS_ABORTED) or still fetches YouTube; why_new=new branch, untested; seam=none
+  it("START_LYRICS_GAME on a fresh playlist: ERROR daily_limit and LYRICS_ABORTED, nothing fetched", async () => {
+    const room = spentRoom();
+    const conn = makeConn();
+    await send(room, conn, { type: "JOIN", playerId: P1, name: "Alice" });
+    await send(room, conn, { type: "START_LYRICS_GAME", hostId: "host-uuid", playlistUrl: "PLfresh", config: { timerSeconds: 60, totalRounds: 1, fuzzyEnabled: false } });
+    expect(sentOfType(conn, "ERROR")).toContainEqual({ type: "ERROR", error: "daily_limit" });
+    expect(broadcastsOfType(room, "LYRICS_ABORTED")).toHaveLength(1);
+    expect(room.lyricsState).toBeNull();
+    expect(fetchPlaylistItems).not.toHaveBeenCalled();
+  });
+
+  // Value: protects=a refused Lyrics start that finishes late can't abort the newer game the host started after resetting; fails_when=the daily_limit branch drops its lyricsState !== game check; why_new=race found by the /ship coverage audit; seam=none
+  it("START_LYRICS_GAME refused late: a reset-and-restarted game is left alone", async () => {
+    vi.stubEnv("ANTHROPIC_API_KEY", "test-key");
+    const mockRoom = makeRoom() as any;
+    const pending: ((r: Response) => void)[] = [];
+    mockRoom.context = { parties: { paid: { get: () => ({ fetch: () => new Promise<Response>((r) => pending.push(r)) }) } } };
+    const room = new HitsterRoom(mockRoom);
+    const conn = makeConn();
+    await send(room, conn, { type: "JOIN", playerId: P1, name: "Alice" });
+    const config = { timerSeconds: 60, totalRounds: 1, fuzzyEnabled: false };
+    const first = send(room, conn, { type: "START_LYRICS_GAME", hostId: "host-uuid", playlistUrl: "PLfirst", config });
+    await vi.waitFor(() => expect(pending).toHaveLength(1));
+    await send(room, conn, { type: "RESET_LYRICS_GAME", hostId: "host-uuid" });
+    void send(room, conn, { type: "START_LYRICS_GAME", hostId: "host-uuid", playlistUrl: "PLsecond", config });
+    await vi.waitFor(() => expect(pending).toHaveLength(2));
+    const newer = room.lyricsState;
+    pending[0](new Response(JSON.stringify({ ok: false }), { status: 429 }));
+    await first;
+    expect(newer).not.toBeNull();
+    expect(room.lyricsState).toBe(newer);
+  });
+
+  // Value: protects=an empty Lyrics start can't burn the global budget for free (300 cheap messages would lock out every room); fails_when=the budget is spent before checking there are songs; why_new=outside-voice review of the /ship fix; seam=none
+  it("START_LYRICS_GAME with nothing loaded: not_enough_songs, no budget spent", async () => {
+    vi.stubEnv("ANTHROPIC_API_KEY", "test-key");
+    const mockRoom = makeRoom() as any;
+    const paidFetch = vi.fn();
+    mockRoom.context = { parties: { paid: { get: () => ({ fetch: paidFetch }) } } };
+    const room = new HitsterRoom(mockRoom);
+    const conn = makeConn();
+    await send(room, conn, { type: "JOIN", playerId: P1, name: "Alice" });
+    await send(room, conn, { type: "START_LYRICS_GAME", hostId: "host-uuid", playlistUrl: "hitster://test", config: { timerSeconds: 60, totalRounds: 1, fuzzyEnabled: false } });
+    expect(sentOfType(conn, "ERROR")).toContainEqual({ type: "ERROR", error: "not_enough_songs" });
+    expect(paidFetch).not.toHaveBeenCalled();
+  });
+
+  // Value: protects=a host who starts a second load while the first waits on the budget sees the newer load's result, not a stale daily_limit; fails_when=LOAD_PLAYLIST drops its loadSeq check after the budget await; why_new=pass-2 review; seam=none
+  it("LOAD_PLAYLIST refused late: a newer load's result isn't overwritten", async () => {
+    vi.stubEnv("ANTHROPIC_API_KEY", "test-key");
+    const mockRoom = makeRoom() as any;
+    const pending: ((r: Response) => void)[] = [];
+    mockRoom.context = { parties: { paid: { get: () => ({ fetch: () => new Promise<Response>((r) => pending.push(r)) }) } } };
+    const room = new HitsterRoom(mockRoom);
+    const conn = makeConn();
+    const first = send(room, conn, { type: "LOAD_PLAYLIST", hostId: "host-uuid", playlistUrl: "PLfirst" });
+    await vi.waitFor(() => expect(pending).toHaveLength(1));
+    await send(room, conn, { type: "LOAD_PLAYLIST", hostId: "host-uuid", playlistUrl: "hitster://test" });
+    pending[0](new Response(JSON.stringify({ ok: false }), { status: 429 }));
+    await first;
+    expect(sentOfType(conn, "PLAYLIST_LOAD_ERROR")).toEqual([]);
+    expect(lastSentTo(conn)).toMatchObject({ type: "PLAYLIST_READY" });
+  });
+
+  // Value: protects=one budget unit can't buy an unbounded AI-edit prompt; fails_when=proposeDiff accepts more than MAX_SONGS items or an instruction over MAX_INSTRUCTION; why_new=pass-2 security review; seam=none
+  it.each([
+    ["too many songs", "fix it", 501],
+    ["too long an instruction", "x".repeat(1001), 1],
+  ])("PROPOSE_EDITS with %s: invalid_request, no budget spent", async (_, instruction, count) => {
+    vi.stubEnv("ANTHROPIC_API_KEY", "test-key");
+    const mockRoom = makeRoom() as any;
+    const paidFetch = vi.fn();
+    mockRoom.context = { parties: { paid: { get: () => ({ fetch: paidFetch }) } } };
+    const room = new HitsterRoom(mockRoom);
+    const conn = makeConn();
+    await send(room, conn, { type: "LOAD_PLAYLIST", hostId: "host-uuid", playlistUrl: "hitster://test" });
+    const songs = Array.from({ length: count }, (_, i) => ({ videoId: `v${i}`, title: "A", artist: "B", year: 1990 }));
+    await send(room, conn, { type: "PROPOSE_EDITS", hostId: "host-uuid", instruction, songs });
+    expect(lastSentTo(conn)).toEqual({ type: "EDITS_PROPOSAL_FAILED", error: "invalid_request" });
+    expect(paidFetch).not.toHaveBeenCalled();
+  });
+
+  const savedSongs = [
+    { videoId: "vid00000001", title: "Saved A", artist: "A", year: 1990 },
+    { videoId: "vid00000002", title: "Saved B", artist: "B", year: 1991 },
+  ];
+
+  // Value: protects=Anthropic spend from a Lyrics start on a client-supplied saved playlist (the /ship QA reproducer: it ran the AI after the cap); fails_when=the pendingPlaylist branch of START_LYRICS_GAME skips spendPaidBudget again; why_new=the bypass QA reproduced in captures 003/004; seam=none
+  it("START_LYRICS_GAME on a saved playlist: ERROR daily_limit, no AI", async () => {
+    const room = spentRoom();
+    const conn = makeConn();
+    await send(room, conn, { type: "LOAD_SAVED_PLAYLIST", hostId: "host-uuid", playlistId: "saved-1", songs: savedSongs });
+    await send(room, conn, { type: "JOIN", playerId: P1, name: "Alice" });
+    await send(room, conn, { type: "START_LYRICS_GAME", hostId: "host-uuid", playlistUrl: "saved-1", config: { timerSeconds: 60, totalRounds: 1, fuzzyEnabled: false } });
+    expect(sentOfType(conn, "ERROR")).toContainEqual({ type: "ERROR", error: "daily_limit" });
+    expect(room.lyricsState).toBeNull();
+    expect(resolveTracksWithAI).not.toHaveBeenCalled();
+    expect(resolveLyricsForTracks).not.toHaveBeenCalled();
+  });
+
+  // Value: protects=the AI bill per saved playlist stays bounded by the same 500-song cap saved playlists have; fails_when=LOAD_SAVED_PLAYLIST keeps every client-sent song; why_new=no length cap existed on this socket path; seam=none
+  it("LOAD_SAVED_PLAYLIST keeps at most MAX_SONGS songs", async () => {
+    const room = spentRoom();
+    const conn = makeConn();
+    const many = Array.from({ length: 600 }, (_, i) => ({ videoId: `v${String(i).padStart(10, "0")}`, title: `S${i}`, artist: "A", year: 2000 }));
+    await send(room, conn, { type: "LOAD_SAVED_PLAYLIST", hostId: "host-uuid", playlistId: "saved-big", songs: many });
+    expect((lastSentTo(conn) as { songs: unknown[] }).songs).toHaveLength(500);
+  });
+
+  // Value: protects=a server with no Anthropic key doesn't burn the day's budget on AI edits that can't run; fails_when=proposeDiff spends before checking the key again; why_new=order differed from playlist.ts; seam=none
+  it("PROPOSE_EDITS without an Anthropic key: api_key_missing, no budget spent", async () => {
+    vi.stubEnv("ANTHROPIC_API_KEY", "");
+    const mockRoom = makeRoom() as any;
+    const paidFetch = vi.fn();
+    mockRoom.context = { parties: { paid: { get: () => ({ fetch: paidFetch }) } } };
+    mockRoom.env = { YOUTUBE_API_KEY: "yt" };
+    const room = new HitsterRoom(mockRoom);
+    const conn = makeConn();
+    await send(room, conn, { type: "LOAD_PLAYLIST", hostId: "host-uuid", playlistUrl: "hitster://test" });
+    await send(room, conn, { type: "PROPOSE_EDITS", hostId: "host-uuid", instruction: "fix it", songs: [{ videoId: "v1", title: "A", artist: "B", year: 1990 }] });
+    expect(lastSentTo(conn)).toEqual({ type: "EDITS_PROPOSAL_FAILED", error: "api_key_missing" });
+    expect(paidFetch).not.toHaveBeenCalled();
+  });
+});
+
+describe("shared AI cache: only for YouTube-sourced titles", () => {
+  /** A room whose paid party allows the budget and records which cache endpoints were called. */
+  function recordingRoom() {
+    vi.stubEnv("ANTHROPIC_API_KEY", "test-key");
+    const mockRoom = makeRoom() as any;
+    const paths: string[] = [];
+    mockRoom.context = { parties: { paid: { get: () => ({ fetch: vi.fn((path: string) => {
+      paths.push(path);
+      return Promise.resolve(new Response(JSON.stringify(path === "/cache/get" ? { entries: [] } : { ok: true }), { status: 200 }));
+    }) }) } } };
+    return { room: new HitsterRoom(mockRoom), paths };
+  }
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(resolveLyricsForTracks).mockResolvedValue(new Map([["vid00000001", CACHED_LYRICS], ["vid1", CACHED_LYRICS]]));
+  });
+  afterEach(() => vi.unstubAllEnvs());
+
+  // Value: protects=made-up titles in a saved playlist can't put wrong AI answers under a real videoId for every room, and the host's own titles aren't replaced by shared ones; fails_when=a Lyrics start on client-supplied songs uses the shared paid cache; why_new=shared-cache poisoning found by the /ship security review; seam=none
+  it("a Lyrics start on a saved playlist keeps to the room's own cache", async () => {
+    const { room, paths } = recordingRoom();
+    const conn = makeConn();
+    await send(room, conn, { type: "LOAD_SAVED_PLAYLIST", hostId: "host-uuid", playlistId: "saved-1", songs: [
+      { videoId: "vid00000001", title: "Saved A", artist: "A", year: 1990 },
+      { videoId: "vid00000002", title: "Saved B", artist: "B", year: 1991 },
+    ] });
+    await send(room, conn, { type: "JOIN", playerId: P1, name: "Alice" });
+    await send(room, conn, { type: "START_LYRICS_GAME", hostId: "host-uuid", playlistUrl: "saved-1", config: { timerSeconds: 60, totalRounds: 1, fuzzyEnabled: false } });
+    await new Promise((r) => setTimeout(r, 0));
+    expect(paths).toEqual(["/budget"]);
+  });
+
+  // Value: protects=the common flow (load a YouTube playlist, then start Lyrics) reuses the shared cache; fails_when=a pendingPlaylist write drops fromYouTube and Lyrics starts fall back to per-room caching; why_new=pass-2 testing review; seam=none
+  it("a Lyrics start on a loaded YouTube playlist uses the shared cache", async () => {
+    const { room, paths } = recordingRoom();
+    vi.mocked(fetchPlaylistItems).mockResolvedValue([fakeLyricsTrack()]);
+    vi.mocked(fetchEmbeddableVideoIds).mockResolvedValue(new Set(["vid1"]));
+    const conn = makeConn();
+    await send(room, conn, { type: "LOAD_PLAYLIST", hostId: "host-uuid", playlistUrl: "PLtest" });
+    await send(room, conn, { type: "JOIN", playerId: P1, name: "Alice" });
+    paths.length = 0;
+    await send(room, conn, { type: "START_LYRICS_GAME", hostId: "host-uuid", playlistUrl: "PLtest", config: { timerSeconds: 60, totalRounds: 1, fuzzyEnabled: false } });
+    expect(paths).toContain("/cache/get");
+  });
+
+  it("a Lyrics start on a fresh YouTube playlist writes the shared cache", async () => {
+    const { room, paths } = recordingRoom();
+    vi.mocked(fetchPlaylistItems).mockResolvedValue([fakeLyricsTrack()]);
+    vi.mocked(fetchEmbeddableVideoIds).mockResolvedValue(new Set(["vid1"]));
+    const conn = makeConn();
+    await send(room, conn, { type: "JOIN", playerId: P1, name: "Alice" });
+    await send(room, conn, { type: "START_LYRICS_GAME", hostId: "host-uuid", playlistUrl: "PLtest", config: { timerSeconds: 60, totalRounds: 1, fuzzyEnabled: false } });
+    await vi.waitFor(() => expect(paths).toContain("/cache/put"));
   });
 });

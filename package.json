@@ -1,6 +1,6 @@
 {
   "name": "hitster-online",
-  "version": "0.14.19",
+  "version": "0.14.20",
   "private": true,
   "scripts": {
     "dev": "concurrently \"next dev\" \"partykit dev\"",
