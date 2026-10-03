@@ -162,6 +162,10 @@ export default class HitsterRoom implements Party.Server {
   // ones that get the full preview-phase deck (see broadcastLyricsState and onConnect).
   // Cleaned up on disconnect (see onClose).
   private privilegedConns = new Set<Party.Connection>();
+  // The subset that proved itself the room's TV (see authorizeScreen). Only these get Timeline's
+  // playing song mid-guess: the host page never shows it. (A host who also plays still loaded the
+  // playlist, years and all, during setup: this keeps the answer off the wire mid-round, not secret.)
+  private screenConns = new Set<Party.Connection>();
   // playerId → the conn.id currently allowed to act as that player (set on JOIN/REJOIN).
   // Fixes TODOS.md P2 "bind Lyrics answers to the sending connection" — without this, any
   // connection could submit SUBMIT_LYRICS_ANSWER as any playerId (ids are visible in broadcast
@@ -204,7 +208,7 @@ export default class HitsterRoom implements Party.Server {
     this.room.broadcast(JSON.stringify(msg));
   }
 
-  private sanitizedState(forPrivileged = false): GameState {
+  private sanitizedState(forScreen = false): GameState {
     const { hostId: _h, ...rest } = this.state;
     return {
       ...rest,
@@ -214,38 +218,41 @@ export default class HitsterRoom implements Party.Server {
       // app/room/[code]/screen/page.tsx). this.state.hostId (not the stripped copy) is the
       // real source of truth here.
       hostClaimed: this.state.hostId !== "",
-      // Strip year AND video id from the whole remaining deck — a player reading `songs[]`
-      // straight off the WebSocket (no rendering needed) could otherwise look up every future
-      // round's real video id in advance, not just the current one. Same mechanism as
-      // currentSong below; caught by adversarial review while fixing that one.
-      songs: rest.songs.map((s) => ({ ...s, year: 0, videoId: forPrivileged ? s.videoId : "" })),
+      // The remaining deck is the answer key for every future round (titles, and a real card's id
+      // IS its video id) and no page reads it, so it never goes on the wire. The host gets its song
+      // list from DIAGNOSTIC/PLAYLIST_READY instead. Same for the playlist id: its YouTube page (or
+      // a saved playlist's own URL, years and all) lists the deck, and no page reads it.
+      songs: [],
+      playlistId: "",
       currentSong: rest.currentSong
         ? {
             ...rest.currentSong,
             // Strip year from currentSong during guessing — answer not yet revealed
             year: rest.phase === "guessing" ? 0 : rest.currentSong.year,
-            // Players must not get the video id: opening the real YouTube link reveals the true
-            // title/upload date, defeating the year guess (same bug class as the Lyrics Mode leak
-            // fixed in v0.5.0.0/v0.5.1.0 — see sanitizedLyricsState). Only the host and the big
-            // screen (which actually plays it) get the real id.
-            videoId: forPrivileged ? rest.currentSong.videoId : "",
+            // Only the big screen (which actually plays it) gets the real video id: opening the
+            // YouTube link reveals the true title/upload date, defeating the year guess (same bug
+            // class as the Lyrics Mode leak fixed in v0.5.0.0/v0.5.1.0 — see sanitizedLyricsState).
+            videoId: forScreen ? rest.currentSong.videoId : "",
+            // Same for title/artist (a search away from the year) and a real card's id, which IS
+            // its video id. Phones and the host only show them at the reveal.
+            ...(rest.phase === "guessing" && !forScreen && { id: "", title: "", artist: "" }),
           }
         : null,
     };
   }
 
   private broadcastState() {
-    // Everyone gets the redacted STATE via the normal room broadcast, except privileged
-    // connections (host, screen) — they're excluded here and sent the real video id directly
-    // below instead. Keeps the common case a single room.broadcast, same as before this fix.
-    const privileged = [...this.privilegedConns];
+    // Everyone (host included) gets the redacted STATE via the normal room broadcast, except the
+    // TV — excluded here and sent the playing song directly below instead. Keeps the common case
+    // a single room.broadcast.
+    const screens = [...this.screenConns];
     this.room.broadcast(
       JSON.stringify({ type: "STATE", state: this.sanitizedState(false) }),
-      privileged.map((c) => c.id)
+      screens.map((c) => c.id)
     );
-    if (privileged.length > 0) {
+    if (screens.length > 0) {
       const full = { type: "STATE" as const, state: this.sanitizedState(true) };
-      for (const conn of privileged) this.sendTo(conn, full);
+      for (const conn of screens) this.sendTo(conn, full);
     }
   }
 
@@ -258,6 +265,11 @@ export default class HitsterRoom implements Party.Server {
   private sendPrivileged(msg: ServerMessage) {
     if (msg.type === "LYRICS_PREVIEW") this.lastLyricsPreview = msg;
     for (const conn of this.privilegedConns) this.sendTo(conn, msg);
+  }
+
+  /** Every host tab, never the TV or a player: DIAGNOSTIC lists every song's year, and only the host page reads it. */
+  private sendToHost(msg: ServerMessage) {
+    for (const conn of this.privilegedConns) if (!this.screenConns.has(conn)) this.sendTo(conn, msg);
   }
 
   private sendTo(conn: Party.Connection, msg: ServerMessage) {
@@ -396,6 +408,7 @@ export default class HitsterRoom implements Party.Server {
   onClose(conn: Party.Connection) {
     // No connection→playerId map in v1; players reconnect via REJOIN with their stored playerId.
     this.privilegedConns.delete(conn);
+    this.screenConns.delete(conn);
     this.allConns.delete(conn);
   }
 
@@ -873,7 +886,7 @@ export default class HitsterRoom implements Party.Server {
       this.state.targetCardCount = 3;
       const cpopSongs: Card[] = CPOP_SEED.map((c, i) => ({ id: `cpop-${i}`, ...c }));
       this.state.songs = cpopSongs;
-      this.broadcast({ type: "DIAGNOSTIC", songs: cpopSongs.map((s) => ({ title: s.title, artist: s.artist, year: s.year, yearSource: "manual" as const })) });
+      this.sendToHost({ type: "DIAGNOSTIC", songs: cpopSongs.map((s) => ({ title: s.title, artist: s.artist, year: s.year, yearSource: "manual" as const })) });
       this.dealStartingCardsAndStart();
       return;
     }
@@ -910,7 +923,7 @@ export default class HitsterRoom implements Party.Server {
         return;
       }
       this.state.songs = shuffle(resolvedCards);
-      this.broadcast({ type: "DIAGNOSTIC", songs: pending.diagnostics });
+      this.sendToHost({ type: "DIAGNOSTIC", songs: pending.diagnostics });
       this.pendingPlaylist = null;
       this.dealStartingCardsAndStart();
       return;
@@ -1322,7 +1335,7 @@ export default class HitsterRoom implements Party.Server {
   // next broadcastState instead of waiting for a Lyrics-only GET_LYRICS_AUDIO that may never come.
   private handleJoinScreen(conn: Party.Connection, screenId: string, hostId?: string) {
     if (!this.authorizeScreen(conn, screenId, hostId)) return;
-    // onConnect already sent this connection a redacted STATE (it wasn't privileged yet at that
+    // onConnect already sent this connection a redacted STATE (it wasn't a screen conn yet at that
     // point) — resend the real one now instead of leaving /screen stuck without video until the
     // next unrelated state change.
     this.sendTo(conn, { type: "STATE", state: this.sanitizedState(true) });
@@ -1330,7 +1343,10 @@ export default class HitsterRoom implements Party.Server {
 
   /** Shared by JOIN_SCREEN and GET_LYRICS_AUDIO — see claimOrValidateScreen. */
   private authorizeScreen(conn: Party.Connection, screenId: string, hostId?: string): boolean {
-    if (this.claimOrValidateScreen(conn, screenId, hostId)) return true;
+    if (this.claimOrValidateScreen(conn, screenId, hostId)) {
+      this.screenConns.add(conn);
+      return true;
+    }
     this.sendTo(conn, { type: "ERROR", error: "unauthorized" });
     return false;
   }

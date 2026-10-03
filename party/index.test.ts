@@ -96,6 +96,15 @@ function lastSentTo(conn: ReturnType<typeof makeConn>) {
   return last ? JSON.parse(last) : null;
 }
 
+/** Every message of `type` sent straight to `conn` (room.broadcast is a mock and never reaches it). */
+function sentOfType(conn: ReturnType<typeof makeConn>, type: string) {
+  return (conn.send as ReturnType<typeof vi.fn>).mock.calls.map((c: unknown[]) => JSON.parse(c[0] as string)).filter((m: { type: string }) => m.type === type);
+}
+
+function broadcastsOfType(room: HitsterRoom, type: string) {
+  return (room.room.broadcast as ReturnType<typeof vi.fn>).mock.calls.map((c: unknown[]) => JSON.parse(c[0] as string)).filter((m: { type: string }) => m.type === type);
+}
+
 // Preview-phase LYRICS_STATE (the deck with answers revealed) goes only to privileged
 // connections via conn.send, not room.broadcast — merge both sources in call order to see the
 // full phase sequence a host actually observed.
@@ -973,18 +982,6 @@ describe("START_GAME targetCardCount clamping", () => {
 // ─── sanitizedState — year stripping ─────────────────────────────────────────
 
 describe("sanitizedState — year stripping", () => {
-  it("strips year from deck songs in STATE broadcast", async () => {
-    const room = new HitsterRoom(makeRoom() as any);
-    room.state.songs = [
-      { id: "s1", videoId: "s1", title: "Song A", artist: "Artist", year: 1985 },
-      { id: "s2", videoId: "s2", title: "Song B", artist: "Artist", year: 1990 },
-    ];
-    const conn = makeConn();
-    room.onConnect(conn);
-    const msg = lastSentTo(conn);
-    expect(msg?.state.songs.every((s: { year: number }) => s.year === 0)).toBe(true);
-  });
-
   it("strips year from currentSong during guessing phase", async () => {
     const room = new HitsterRoom(makeRoom() as any);
     room.state.phase = "guessing";
@@ -1016,31 +1013,54 @@ describe("sanitizedState — year stripping", () => {
 });
 
 // Regression for TODOS.md P2 "Timeline mode exposes the real video id to all players at all
-// times" — same bug class as the Lyrics Mode leak fixed in v0.5.0.0/v0.5.1.0, fixed here by
-// routing currentSong.videoId through the same privilegedConns model.
-describe("Timeline mode: currentSong.videoId is screen/host-only", () => {
+// times" — same bug class as the Lyrics Mode leak fixed in v0.5.0.0/v0.5.1.0. Only the proven TV
+// (screenConns) gets the playing song mid-guess; the host gets the redacted room broadcast.
+describe("Timeline mode: the playing song is TV-only mid-guess", () => {
   // Adversarial-review finding: songs[] (the full remaining deck) carried real videoIds to every
   // client too — nothing renders it today, but a player reading raw WS traffic could look up
   // every future round's video id in advance, not just the current one.
-  it("a player's STATE broadcast has every deck song's videoId stripped, not just currentSong", async () => {
+  // Later found: the titles (and a real card's id, which IS its video id) leaked the same way,
+  // so players now get no deck at all.
+  it("a player's STATE broadcast carries no deck at all, nor the playlist id that lists it", async () => {
     const room = new HitsterRoom(makeRoom() as any);
+    room.state.playlistId = "PLsecretDeck";
     room.state.songs = [
-      { id: "s2", videoId: "FUTURE_ID_1", title: "Song B", artist: "Artist", year: 1990 },
-      { id: "s3", videoId: "FUTURE_ID_2", title: "Song C", artist: "Artist", year: 1995 },
+      { id: "FUTURE_ID_1", videoId: "FUTURE_ID_1", title: "Song B", artist: "Artist", year: 1990 },
+      { id: "FUTURE_ID_2", videoId: "FUTURE_ID_2", title: "Song C", artist: "Artist", year: 1995 },
     ];
     const player = makeConn("player-1");
     room.onConnect(player);
     await send(room, player, { type: "JOIN", playerId: "00000000-0000-0000-0000-000000000004", name: "Dana" });
     const msg = lastSentTo(player);
-    expect(msg?.state.songs.every((s: { videoId: string }) => s.videoId === "")).toBe(true);
+    expect(msg?.state.songs).toEqual([]);
+    expect(msg?.state.playlistId).toBe("");
   });
 
-  it("a JOIN_SCREEN'd connection still gets the real deck videoIds", async () => {
+  // Value: protects=the Timeline year guess (a phone that gets the title/artist, or a real card's id which IS its video id, can look the year up); fails_when=sanitizedState sends currentSong id/title/artist to any conn but the TV (screenConns) during guessing, or hides them at the reveal or from the screen; why_new=only videoId and year were pinned, the id/title path leaked unnoticed since v0.6.1.0; seam=none
+  it("a player gets no current-song id, title or artist while guessing, all of them at the reveal; the screen always does", async () => {
+    const room = new HitsterRoom(makeRoom() as any);
+    room.state.phase = "guessing";
+    room.state.currentSong = { id: "REAL_ID", videoId: "REAL_ID", title: "Song A", artist: "Artist", year: 1985 };
+    const screen = makeConn("screen-3"); // before any player: a later unclaimed screen needs the host's id
+    await send(room, screen, { type: "JOIN_SCREEN", screenId: "screen-token" });
+    const player = makeConn("player-1");
+    room.onConnect(player);
+    await send(room, player, { type: "JOIN", playerId: "00000000-0000-0000-0000-000000000005", name: "Eve" });
+    expect(lastSentTo(player)?.state.currentSong).toMatchObject({ id: "", videoId: "", title: "", artist: "", year: 0 });
+    expect(lastSentTo(screen)?.state.currentSong).toMatchObject({ id: "REAL_ID", title: "Song A", artist: "Artist" });
+
+    room.state.phase = "reveal";
+    room.onConnect(player);
+    expect(lastSentTo(player)?.state.currentSong).toMatchObject({ id: "REAL_ID", title: "Song A", artist: "Artist", year: 1985 });
+  });
+
+  // Value: protects=the remaining deck stays off the wire even for the TV tab (it embeds YouTube) and the host; fails_when=sanitizedState sends songs[] to any conn, the TV included; why_new=the player test only covers non-privileged conns; seam=none
+  it("a JOIN_SCREEN'd connection gets no deck either: no page reads it", async () => {
     const room = new HitsterRoom(makeRoom() as any);
     room.state.songs = [{ id: "s2", videoId: "FUTURE_ID_1", title: "Song B", artist: "Artist", year: 1990 }];
     const screen = makeConn("screen-2");
     await send(room, screen, { type: "JOIN_SCREEN", screenId: "screen-token" });
-    expect(lastSentTo(screen)?.state.songs[0].videoId).toBe("FUTURE_ID_1");
+    expect(lastSentTo(screen)?.state.songs).toEqual([]);
   });
 
   it("a player's STATE broadcast has currentSong.videoId stripped", async () => {
@@ -1066,16 +1086,6 @@ describe("Timeline mode: currentSong.videoId is screen/host-only", () => {
     (screen.send as ReturnType<typeof vi.fn>).mockClear();
     await send(room, screen, { type: "JOIN", playerId: "00000000-0000-0000-0000-000000000003", name: "Carol" });
     expect(lastSentTo(screen)?.state.currentSong?.videoId).toBe("REAL_ID");
-  });
-
-  it("a host connection also gets the real videoId via broadcastState", async () => {
-    const room = new HitsterRoom(makeRoom() as any);
-    room.state.phase = "guessing";
-    room.state.hostId = "h1"; // already claimed, as in other host-gated tests in this file
-    room.state.currentSong = { id: "s1", videoId: "REAL_ID", title: "Song A", artist: "Artist", year: 1985 };
-    const host = makeConn("host-1");
-    await send(room, host, { type: "REVEAL", hostId: "h1" }); // authorizeHost marks this conn privileged
-    expect(lastSentTo(host)?.state.currentSong?.videoId).toBe("REAL_ID");
   });
 
   // Coverage gap found by /ship's coverage audit: JOIN_SCREEN shares claimOrValidateScreen with
@@ -1104,30 +1114,58 @@ describe("Timeline mode: currentSong.videoId is screen/host-only", () => {
     const impostor = makeConn("impostor-1");
     await send(room, impostor, { type: "JOIN_SCREEN", screenId: "guessed-token" });
     expect(lastSentTo(impostor)?.type).toBe("ERROR");
+
+    // ...and stays off the TV list: the next mid-guess broadcast reaches it redacted.
+    room.state.phase = "guessing";
+    room.state.currentSong = { id: "REAL_ID", videoId: "REAL_ID", title: "Song A", artist: "Artist", year: 1985 };
+    const player = makeConn("player-1");
+    room.onConnect(player);
+    await send(room, player, { type: "JOIN", playerId: "00000000-0000-0000-0000-00000000000a", name: "Ivy" });
+    const [, without] = (room.room.broadcast as ReturnType<typeof vi.fn>).mock.calls.at(-1)!;
+    expect(without).toEqual(["screen-1"]);
+    expect(sentOfType(impostor, "STATE").some((m) => m.state?.currentSong?.videoId)).toBe(false);
   });
 
-  // Coverage gap: broadcastState's privileged-exclusion array was only ever exercised with one
-  // privileged connection at a time. Host AND screen privileged simultaneously covers the
-  // `privileged.length > 1` branch of both the room.broadcast(..., without) exclusion and the
-  // per-connection sendTo loop.
-  it("broadcastState sends the real videoId to both a privileged host and a privileged screen at once", async () => {
+  // Value: protects=only the TV holds the playing song mid-guess (a host often plays from a second tab on the same phone); fails_when=broadcastState sends the full currentSong to the host again, or stops sending it to the TV; why_new=the old tests pinned the host getting the real id; seam=none
+  it("mid-guess only the TV gets the playing song: the host gets what players get", async () => {
     const room = new HitsterRoom(makeRoom() as any);
     room.state.phase = "guessing";
     room.state.hostId = "h1";
-    room.state.currentSong = { id: "s1", videoId: "REAL_ID", title: "Song A", artist: "Artist", year: 1985 };
+    room.state.currentSong = { id: "REAL_ID", videoId: "REAL_ID", title: "Song A", artist: "Artist", year: 1985 };
     const host = makeConn("host-1");
     const screen = makeConn("screen-1");
-    await send(room, host, { type: "REVEAL", hostId: "h1" }); // claims host privilege
-    await send(room, screen, { type: "JOIN_SCREEN", screenId: "screen-token" }); // claims screen privilege
+    await send(room, host, { type: "REVEAL", hostId: "h1" }); // claims host privilege (and reveals)
+    await send(room, screen, { type: "JOIN_SCREEN", screenId: "screen-token" }); // claims the TV
+    room.state.phase = "guessing"; // next round's guessing, same song for the assertion
     const player = makeConn("player-1");
     room.onConnect(player);
 
-    // A broadcastState-triggering event every connection observes:
+    // A broadcastState-triggering event every connection observes (two exclusions' worth of sendTo):
     await send(room, player, { type: "JOIN", playerId: "00000000-0000-0000-0000-000000000005", name: "Eve" });
 
-    expect(lastSentTo(host)?.state.currentSong?.videoId).toBe("REAL_ID");
-    expect(lastSentTo(screen)?.state.currentSong?.videoId).toBe("REAL_ID");
-    expect(lastSentTo(player)?.state.currentSong?.videoId).toBe("");
+    // The room broadcast (what the host and players get) is redacted and skips only the TV...
+    const [payload, without] = (room.room.broadcast as ReturnType<typeof vi.fn>).mock.calls.at(-1)!;
+    expect(without).toEqual(["screen-1"]);
+    expect(JSON.parse(payload as string).state.currentSong).toMatchObject({ id: "", videoId: "", title: "", artist: "", year: 0 });
+    // ...and only the TV is sent the playing song directly.
+    expect(lastSentTo(screen)?.state.currentSong).toMatchObject({ id: "REAL_ID", videoId: "REAL_ID", title: "Song A", artist: "Artist", year: 0 });
+    // Direct sends only (the broadcast payload is checked above): the host is never sent the TV's STATE.
+    expect(sentOfType(host, "STATE").some((m) => m.state?.currentSong?.videoId)).toBe(false);
+  });
+
+  // Value: protects=a closed TV leaves the TV list, so state stops being routed around and sent to a dead socket; fails_when=onClose stops deleting the conn from screenConns; why_new=no test closed a TV conn; seam=none
+  it("a closed TV drops off the TV list: the next broadcast neither skips it nor sends to it", async () => {
+    const room = new HitsterRoom(makeRoom() as any);
+    const screen = makeConn("screen-1");
+    await send(room, screen, { type: "JOIN_SCREEN", screenId: "screen-token" });
+    room.onClose(screen);
+    (screen.send as ReturnType<typeof vi.fn>).mockClear();
+    const player = makeConn("player-1");
+    room.onConnect(player);
+    await send(room, player, { type: "JOIN", playerId: "00000000-0000-0000-0000-00000000000b", name: "Jo" });
+    const [, without] = (room.room.broadcast as ReturnType<typeof vi.fn>).mock.calls.at(-1)!;
+    expect(without).toEqual([]);
+    expect(screen.send).not.toHaveBeenCalled();
   });
 });
 
@@ -2875,17 +2913,58 @@ describe("Lyrics Mode: GET_LYRICS_AUDIO across rounds", () => {
 // ─── Dead-code cleanup: DIAGNOSTIC shape and error mapping ───────────────────
 
 describe("DIAGNOSTIC without the retired status field", () => {
-  it("cpop-test seed broadcasts DIAGNOSTIC with manual year source and no status", async () => {
+  // Value: protects=DIAGNOSTIC reaches every host tab but never the TV (it is privileged too, and on a shared screen); fails_when=sendToHost drops the screenConns check or only sends to the START_GAME sender; why_new=the other DIAGNOSTIC tests have no TV and one host tab; seam=none
+  it("START_GAME sends DIAGNOSTIC to a second host tab too, never to the TV", async () => {
     const room = new HitsterRoom(makeRoom() as any);
+    const tv = makeConn("tv");
+    await send(room, tv, { type: "JOIN_SCREEN", screenId: "screen-token" });
+    room.state.hostId = "host-uuid";
+    const tab2 = makeConn("h2");
+    await send(room, tab2, { type: "REVEAL", hostId: "host-uuid" }); // any host action marks the tab privileged
+    const tab1 = makeConn("h1");
+    await send(room, tab1, { type: "START_GAME", hostId: "host-uuid", playlistUrl: "hitster://cpop-test" });
+    expect(sentOfType(tab1, "DIAGNOSTIC")).toHaveLength(1);
+    expect(sentOfType(tab2, "DIAGNOSTIC")).toHaveLength(1);
+    expect(sentOfType(tv, "DIAGNOSTIC")).toEqual([]);
+  });
+
+  // Value: protects=the year guess (DIAGNOSTIC lists every song's title and year); fails_when=START_GAME broadcasts DIAGNOSTIC to the room instead of sending it to the host; why_new=the old test asserted the broadcast, so the leak was pinned as correct; seam=none
+  it("cpop-test seed sends DIAGNOSTIC (manual year source, no status) to the host only, never to a player", async () => {
+    const room = new HitsterRoom(makeRoom() as any);
+    const player = makeConn("p");
+    room.onConnect(player);
+    await send(room, player, { type: "JOIN", playerId: "00000000-0000-0000-0000-000000000007", name: "Gus" });
     const host = makeConn("h");
     await send(room, host, { type: "START_GAME", hostId: "host-uuid", playlistUrl: "hitster://cpop-test" });
-    const diag = (room.room.broadcast as ReturnType<typeof vi.fn>).mock.calls
-      .map((c: unknown[]) => JSON.parse(c[0] as string))
-      .find((m: { type: string }) => m.type === "DIAGNOSTIC");
+    expect(sentOfType(player, "DIAGNOSTIC")).toEqual([]);
+    expect(broadcastsOfType(room, "DIAGNOSTIC")).toEqual([]);
+    const diag = sentOfType(host, "DIAGNOSTIC")[0];
     expect(diag).toBeDefined();
     expect(diag).not.toHaveProperty("status");
     expect(diag.songs.length).toBeGreaterThan(0);
     expect(diag.songs.every((s: { yearSource: string }) => s.yearSource === "manual")).toBe(true);
+  });
+
+  // Value: protects=the year guess on a real playlist game (DIAGNOSTIC lists every song's title and year); fails_when=the cached LOAD_PLAYLIST->START_GAME path broadcasts DIAGNOSTIC again; why_new=the test above only drives the cpop seed branch; seam=none
+  it("real playlist START_GAME (after LOAD_PLAYLIST) sends DIAGNOSTIC to the host only, never to a player", async () => {
+    vi.mocked(fetchPlaylistItems).mockResolvedValue([fakeTrack("v1", 1985), fakeTrack("v2", 1990), fakeTrack("v3", 1995)]);
+    vi.mocked(fetchEmbeddableVideoIds).mockResolvedValue(new Set(["v1", "v2", "v3"]));
+    vi.mocked(resolveTracksWithAI).mockResolvedValue(new Map());
+    const room = new HitsterRoom(makeRoom() as any);
+    const player = makeConn("p");
+    room.onConnect(player);
+    await send(room, player, { type: "JOIN", playerId: "00000000-0000-0000-0000-000000000009", name: "Hal" });
+    const host = makeConn("h");
+    await send(room, host, { type: "LOAD_PLAYLIST", hostId: "host-uuid", playlistUrl: "PLtest" });
+    const hostDiagsBefore = sentOfType(host, "DIAGNOSTIC").length;
+    (room.room.broadcast as ReturnType<typeof vi.fn>).mockClear();
+    await send(room, host, { type: "START_GAME", hostId: "host-uuid", playlistUrl: "PLtest" });
+    expect(room.state.phase).toBe("guessing"); // took the cached path, not an error
+    expect(sentOfType(player, "DIAGNOSTIC")).toEqual([]);
+    expect(broadcastsOfType(room, "DIAGNOSTIC")).toEqual([]);
+    const hostDiags = sentOfType(host, "DIAGNOSTIC");
+    expect(hostDiags.length).toBe(hostDiagsBefore + 1);
+    expect(hostDiags.at(-1).songs.map((s: { year: number }) => s.year).sort()).toEqual([1985, 1990, 1995]);
   });
 
   it("initial DIAGNOSTIC sent while loading a playlist carries no status", async () => {

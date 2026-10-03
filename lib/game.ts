@@ -120,7 +120,7 @@ export interface GameState {
   targetCardCount: number; // first to reach this wins (default 10)
   currentRound: number;
   playlistId: string;
-  songs: Card[];
+  songs: Card[]; // server-side deck: always [] in STATE (sanitizedState), no page reads it
   currentSong: Card | null;
   // playerId → 0-based insertion position on that player's own timeline.
   // 0 = before first card, 1 = between card[0] and card[1], etc.
