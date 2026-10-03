@@ -23,6 +23,8 @@ import {
 } from "../lib/game";
 import { isValidYear, isValidVideoId, sanitizeText, decodeEntities, shuffle } from "../lib/utils";
 import { proposeEdits, proposeLyricEdits, type AITrackMeta } from "../lib/ai-metadata";
+import { spendPaidBudget, sharedAICache } from "./paid";
+import { MAX_SONGS, MAX_INSTRUCTION } from "./playlist";
 import { resolveLyricsForTracks, givesAwayTitle, detectLanguageHint, MODEL_GAME, type LyricsResult } from "../lib/lyrics-resolver";
 import { fetchPopularitySummaries } from "../lib/lyrics-popularity";
 import * as timedRound from "./timed-round";
@@ -83,6 +85,8 @@ type PendingPlaylist = {
   songs: Card[];
   allSongs: EditableSong[];
   diagnostics: SongDiagnostic[];
+  /** Titles came from YouTube (LOAD_PLAYLIST), not a client: AI answers about them may go in the shared cache. */
+  fromYouTube?: boolean;
 };
 
 /**
@@ -642,18 +646,24 @@ export default class HitsterRoom implements Party.Server {
       this.sendTo(conn, { type: "PLAYLIST_LOAD_ERROR", error: "playlist_load_failed" });
       return;
     }
-
     const mySeq = this.startPlaylistLoad(); // also resets abortLoad
     this.pendingPlaylist = null;
     this.playlistLoading = true;
 
     try {
+      // Inside the try, after the load is marked in flight, so nothing slips in during the await.
+      const allowed = await spendPaidBudget(this.room);
+      if (mySeq !== this.loadSeq) return; // superseded while we waited: the newer load reports
+      if (!allowed) {
+        this.sendTo(conn, { type: "PLAYLIST_LOAD_ERROR", error: "daily_limit" });
+        return;
+      }
       const { youtubeKey, anthropicKey } = resolveEnv(this.room.env);
 
       const result = await resolvePlaylistFromUrl(
         playlistId,
         { youtubeKey, anthropicKey },
-        this.room.storage,
+        sharedAICache(this.room),
         // Send initial DIAGNOSTIC immediately so the host sees the song list, before AI runs.
         (tracks, metas, skippedCount) => {
           this.sendTo(conn, {
@@ -666,7 +676,7 @@ export default class HitsterRoom implements Party.Server {
         (accumulated, tracks, metas) => {
           if (this.abortLoad || mySeq !== this.loadSeq) return;
           const { songs: partialSongs, allSongs: partialAll, diagnostics: diagSongs } = buildCardsFromAI(tracks, metas, accumulated);
-          this.pendingPlaylist = { playlistId, songs: partialSongs, allSongs: partialAll, diagnostics: diagSongs };
+          this.pendingPlaylist = { playlistId, songs: partialSongs, allSongs: partialAll, diagnostics: diagSongs, fromYouTube: true };
           this.sendTo(conn, { type: "DIAGNOSTIC", songs: diagSongs });
         }
       );
@@ -675,7 +685,7 @@ export default class HitsterRoom implements Party.Server {
       if (this.abortLoad || mySeq !== this.loadSeq) {
         if (this.abortLoad && mySeq === this.loadSeq) {
           // "Use what's loaded": the deck must be exactly what the host was just shown.
-          this.pendingPlaylist = { playlistId, songs: result.songs, allSongs: result.allSongs, diagnostics: result.diagnostics };
+          this.pendingPlaylist = { playlistId, songs: result.songs, allSongs: result.allSongs, diagnostics: result.diagnostics, fromYouTube: true };
           this.sendTo(conn, result.allSongs.length >= 2
             ? { type: "PLAYLIST_READY", songs: result.allSongs }
             : { type: "PLAYLIST_LOAD_ERROR", error: "not_enough_songs" });
@@ -684,7 +694,7 @@ export default class HitsterRoom implements Party.Server {
       }
 
       const { songs, allSongs, diagnostics, aiResults } = result;
-      this.pendingPlaylist = { playlistId, songs, allSongs, diagnostics };
+      this.pendingPlaylist = { playlistId, songs, allSongs, diagnostics, fromYouTube: true };
 
       if (allSongs.length < 2) {
         this.sendTo(conn, { type: "PLAYLIST_LOAD_ERROR", error: "not_enough_songs" });
@@ -743,12 +753,13 @@ export default class HitsterRoom implements Party.Server {
       };
     });
 
-    // Check DO lyrics cache first.
-    const lyricsCacheRaw = await storageBatchGet<LyricsResult>(this.room.storage,
+    // Check the lyrics cache first.
+    const cache = sharedAICache(this.room); // only called from handleLoadPlaylist: YouTube titles, never a client's
+    const lyricsCacheRaw = await storageBatchGet<LyricsResult>(cache,
       enrichedTracks.map((t) => `lyrics:${t.videoId}`)
     );
     const cachedLyrics = fairRounds(lyricsCacheRaw, "lyrics:");
-    const noRound = await getNoResult(this.room.storage, NO_RESULT.lyrics,
+    const noRound = await getNoResult(cache, NO_RESULT.lyrics,
       enrichedTracks.filter((t) => !cachedLyrics.has(t.videoId)).map((t) => t.videoId));
     const uncachedTracks = enrichedTracks.filter((t) => !cachedLyrics.has(t.videoId) && !noRound.has(t.videoId));
 
@@ -767,11 +778,11 @@ export default class HitsterRoom implements Party.Server {
         const progressRounds = this.buildPreviewRounds(enrichedTracks, accumulated);
         this.sendPrivileged({ type: "LYRICS_PREVIEW", rounds: progressRounds, loading: true });
       }, undefined, undefined, unusable);
-      if (unusable.size > 0) putNoResult(this.room.storage, NO_RESULT.lyrics, unusable);
+      if (unusable.size > 0) putNoResult(cache, NO_RESULT.lyrics, unusable);
 
       // Cache only the newly generated entries.
       const freshEntries = [...accumulated].filter(([id]) => !cachedLyrics.has(id));
-      storageBatchPut(this.room.storage, "lyrics:", freshEntries);
+      storageBatchPut(cache, "lyrics:", freshEntries);
 
       this.lyricsPreviewMap = accumulated;
       this.sendPrivileged({ type: "LYRICS_PREVIEW", rounds: this.buildPreviewRounds(enrichedTracks, accumulated), loading: false });
@@ -802,6 +813,7 @@ export default class HitsterRoom implements Party.Server {
     }
 
     const allSongs: EditableSong[] = songs
+      .slice(0, MAX_SONGS) // a real saved playlist is capped at this; the rest only feeds the AI bill
       .filter((s) => isValidVideoId(s.videoId) && typeof s.title === "string" && s.title.trim().length > 0) // a malformed id must never reach the player
       .map((s) => ({
         videoId: s.videoId,
@@ -844,12 +856,14 @@ export default class HitsterRoom implements Party.Server {
     fail: (error: string) => ServerMessage
   ) {
     if (!this.authorizeHost(conn, hostId)) return this.sendTo(conn, fail("unauthorized"));
-    if (!Array.isArray(items) || items.length === 0 || typeof instruction !== "string" || !instruction.trim()) {
+    if (!Array.isArray(items) || items.length === 0 || items.length > MAX_SONGS
+      || typeof instruction !== "string" || !instruction.trim() || instruction.length > MAX_INSTRUCTION) {
       return this.sendTo(conn, fail("invalid_request"));
     }
+    const { anthropicKey } = resolveEnv(this.room.env);
+    if (!anthropicKey) return this.sendTo(conn, fail("api_key_missing"));
+    if (!(await spendPaidBudget(this.room))) return this.sendTo(conn, fail("daily_limit"));
     try {
-      const { anthropicKey } = resolveEnv(this.room.env);
-      if (!anthropicKey) return this.sendTo(conn, fail("api_key_missing"));
       this.sendTo(conn, ok(await propose(instruction, items, anthropicKey)));
     } catch (err) {
       console.error(`[proposeDiff] ${err instanceof Error ? err.message : "unknown_error"}`);
@@ -934,12 +948,16 @@ export default class HitsterRoom implements Party.Server {
       this.sendTo(conn, { type: "ERROR", error: "playlist_load_failed" });
       return;
     }
+    if (!(await spendPaidBudget(this.room))) {
+      this.sendTo(conn, { type: "ERROR", error: "daily_limit" });
+      return;
+    }
     try {
       const { youtubeKey, anthropicKey } = resolveEnv(this.room.env);
       // D3 (docs/designs/decouple-quiz-bank.md): this fallback used to skip the
       // embeddability filter handleLoadPlaylist applies — an inconsistency, not a
       // deliberate difference. resolvePlaylistFromUrl always filters now, for every caller.
-      const { songs } = await resolvePlaylistFromUrl(playlistId, { youtubeKey, anthropicKey }, this.room.storage);
+      const { songs } = await resolvePlaylistFromUrl(playlistId, { youtubeKey, anthropicKey }, sharedAICache(this.room));
       if (songs.length < 2) { this.sendTo(conn, { type: "ERROR", error: "not_enough_songs" }); return; }
       this.state.songs = shuffle(songs);
       this.dealStartingCardsAndStart();
@@ -1176,22 +1194,38 @@ export default class HitsterRoom implements Party.Server {
     try {
       const { anthropicKey, youtubeKey } = resolveEnv(this.room.env);
 
-      // Resolve playlist songs (reuse cached AI metadata)
-      let tracks: TrackItem[] = [];
-      if (playlistUrl === "hitster://test" || playlistUrl === "hitster://cpop-test") {
-        const pending = this.pendingPlaylist;
-        tracks = (pending?.allSongs ?? []).map((s) => ({ videoId: s.videoId, title: s.title, description: "", channelTitle: s.artist }));
-      } else if (this.pendingPlaylist?.playlistId === playlistId) {
-        tracks = this.pendingPlaylist.allSongs.map((s) => ({ videoId: s.videoId, title: s.title, description: "", channelTitle: s.artist }));
-      } else if (PLAYLIST_ID_PATTERN.test(playlistId)) {
-        // D3 (docs/designs/decouple-quiz-bank.md): this branch used to skip the
-        // embeddability filter — inconsistent with handleLoadPlaylist. Now shared.
-        tracks = (await fetchAndFilterTracks(playlistId, youtubeKey)).tracks;
-      } else {
+      // Resolve playlist songs (reuse cached AI metadata). Snapshot pendingPlaylist: a load can
+      // replace it while we await the budget below.
+      const isSeed = playlistUrl === "hitster://test" || playlistUrl === "hitster://cpop-test";
+      const pending = this.pendingPlaylist;
+      const fromPending = isSeed || pending?.playlistId === playlistId;
+      if (!fromPending && !PLAYLIST_ID_PATTERN.test(playlistId)) {
         this.sendTo(conn, { type: "ERROR", error: "playlist_load_failed" });
         this.abortLyricsStart();
         return;
       }
+      if (fromPending && !pending?.allSongs.length) { // nothing to pay for: don't spend the budget
+        this.sendTo(conn, { type: "ERROR", error: "not_enough_songs" });
+        this.abortLyricsStart();
+        return;
+      }
+      // Every Lyrics start is a paid pipeline (AI metadata, popularity, Sonnet rounds), whatever
+      // its song source: a saved playlist's songs come from the client, so skipping the budget
+      // there would leave the AI uncapped.
+      const allowed = await spendPaidBudget(this.room);
+      if (this.lyricsState !== game) return;
+      if (!allowed) {
+        this.sendTo(conn, { type: "ERROR", error: "daily_limit" });
+        this.abortLyricsStart();
+        return;
+      }
+      const tracks: TrackItem[] = fromPending
+        ? (pending?.allSongs ?? []).map((s) => ({ videoId: s.videoId, title: s.title, description: "", channelTitle: s.artist }))
+        // D3 (docs/designs/decouple-quiz-bank.md): this branch used to skip the
+        // embeddability filter — inconsistent with handleLoadPlaylist. Now shared.
+        : (await fetchAndFilterTracks(playlistId, youtubeKey)).tracks;
+      // AI answers about client-supplied titles (a saved playlist, a test seed) stay in this room.
+      const cache = !fromPending || pending?.fromYouTube ? sharedAICache(this.room) : this.room.storage;
 
       if (this.lyricsState !== game) return;
       if (tracks.length === 0) {
@@ -1201,7 +1235,7 @@ export default class HitsterRoom implements Party.Server {
       }
 
       // Resolve AI metadata for title/artist cleanup (needed for lyrics prompt quality)
-      const aiMeta = await resolveAIWithCache(this.room.storage, tracks, anthropicKey);
+      const aiMeta = await resolveAIWithCache(cache, tracks, anthropicKey);
       const enrichedTracks = tracks.map((t) => {
         const meta = aiMeta.get(t.videoId);
         return {
@@ -1213,8 +1247,8 @@ export default class HitsterRoom implements Party.Server {
       });
 
       if (this.lyricsState !== game) return;
-      // Check DO lyrics cache
-      const lyricsCacheRaw = await storageBatchGet<LyricsResult>(this.room.storage,
+      // Check the lyrics cache
+      const lyricsCacheRaw = await storageBatchGet<LyricsResult>(cache,
         enrichedTracks.map((t) => `lyrics:${t.videoId}`)
       );
       const cachedLyrics = fairRounds(lyricsCacheRaw, "lyrics:");
@@ -1232,12 +1266,12 @@ export default class HitsterRoom implements Party.Server {
         .slice(0, this.lyricsConfig.totalRounds * 3); // oversample to handle Sonnet skips
 
       // Re-resolve deck candidates with Sonnet for accuracy. Cache keyed with model suffix.
-      const sonnetCacheRaw = await storageBatchGet<LyricsResult>(this.room.storage,
+      const sonnetCacheRaw = await storageBatchGet<LyricsResult>(cache,
         deckCandidates.map((t) => `lyrics-sonnet:${t.videoId}`)
       );
       const sonnetCached = fairRounds(sonnetCacheRaw, "lyrics-sonnet:");
       // Songs Sonnet already answered without a usable round fall back to the Haiku preview below.
-      const sonnetNoRound = await getNoResult(this.room.storage, NO_RESULT.lyricsSonnet,
+      const sonnetNoRound = await getNoResult(cache, NO_RESULT.lyricsSonnet,
         deckCandidates.filter((t) => !sonnetCached.has(t.videoId)).map((t) => t.videoId));
       const sonnetUncached = deckCandidates.filter((t) => !sonnetCached.has(t.videoId) && !sonnetNoRound.has(t.videoId));
 
@@ -1249,7 +1283,7 @@ export default class HitsterRoom implements Party.Server {
       if (this.lyricsState !== game) return;
       let popularitySummaries = new Map<string, string>();
       if (anthropicKey && sonnetUncached.length > 0) {
-        const popularityCacheRaw = await storageBatchGet<string>(this.room.storage,
+        const popularityCacheRaw = await storageBatchGet<string>(cache,
           sonnetUncached.map((t) => `lyrics-popularity:${t.videoId}`)
         );
         popularitySummaries = new Map([...popularityCacheRaw].map(([k, v]) => [k.slice(18), v]));
@@ -1257,7 +1291,7 @@ export default class HitsterRoom implements Party.Server {
         if (popularityUncached.length > 0) {
           const fresh = await fetchPopularitySummaries(popularityUncached, anthropicKey);
           if (fresh.size > 0) {
-            storageBatchPut(this.room.storage, "lyrics-popularity:", fresh);
+            storageBatchPut(cache, "lyrics-popularity:", fresh);
             for (const [id, s] of fresh) popularitySummaries.set(id, s);
           }
         }
@@ -1268,9 +1302,9 @@ export default class HitsterRoom implements Party.Server {
       const sonnetFresh = anthropicKey && sonnetUncached.length > 0
         ? await resolveLyricsForTracks(sonnetUncached, anthropicKey, undefined, MODEL_GAME, popularitySummaries, sonnetUnusable)
         : new Map<string, LyricsResult>();
-      if (sonnetUnusable.size > 0) putNoResult(this.room.storage, NO_RESULT.lyricsSonnet, sonnetUnusable);
+      if (sonnetUnusable.size > 0) putNoResult(cache, NO_RESULT.lyricsSonnet, sonnetUnusable);
 
-      storageBatchPut(this.room.storage, "lyrics-sonnet:", sonnetFresh);
+      storageBatchPut(cache, "lyrics-sonnet:", sonnetFresh);
 
       // For the deck: prefer Sonnet result, fall back to Haiku preview, then raw cache.
       const sonnetAll = new Map([...sonnetCached, ...sonnetFresh]);

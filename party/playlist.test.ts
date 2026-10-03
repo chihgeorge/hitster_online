@@ -495,6 +495,18 @@ describe("PlaylistParty: PUT PROPOSE_EDITS — AI chat-to-diff editing", () => {
     expect(proposeEdits).not.toHaveBeenCalled();
   });
 
+  it("rejects an instruction over MAX_INSTRUCTION before spending anything", async () => {
+    const room = makeRoom();
+    room.env = { ANTHROPIC_API_KEY: "test-key" };
+    const party = new PlaylistParty(room);
+    await createPlaylist(party, [song("vid00000001")]);
+
+    const req = makeRequest("PUT", { ownerHostId: "host-1", action: "PROPOSE_EDITS", instruction: "x".repeat(1001) });
+    const { status } = await parseResponse(await party.onRequest(req));
+    expect(status).toBe(400);
+    expect(proposeEdits).not.toHaveBeenCalled();
+  });
+
   it("returns 503 when no Anthropic key is configured", async () => {
     const room = makeRoom(); // env: {} — no key
     vi.stubEnv("ANTHROPIC_API_KEY", ""); // resolveEnv falls back to process.env; a key exported in the shell must not leak in
@@ -516,6 +528,37 @@ describe("PlaylistParty: PUT PROPOSE_EDITS — AI chat-to-diff editing", () => {
     const req = makeRequest("PUT", { ownerHostId: "wrong-host", action: "PROPOSE_EDITS", instruction: "fix it" });
     const { status } = await parseResponse(await party.onRequest(req));
     expect(status).toBe(403);
+    expect(proposeEdits).not.toHaveBeenCalled();
+  });
+});
+
+describe("daily paid budget", () => {
+  // Value: protects=the server's YouTube quota and Anthropic spend from a scripted caller that loops saved-playlist resolves or AI edits; fails_when=either paid action runs after the shared daily cap is spent; why_new=the playlist party had no limit; seam=paid party fetch stub (429)
+  function spentRoom() {
+    const room = makeRoom();
+    room.env = { ANTHROPIC_API_KEY: "test-key" };
+    const paidFetch = vi.fn().mockResolvedValue(new Response(JSON.stringify({ ok: false }), { status: 429 }));
+    (room.context.parties as Record<string, unknown>).paid = { get: () => ({ fetch: paidFetch }) };
+    return room;
+  }
+
+  beforeEach(() => vi.clearAllMocks());
+
+  it("refuses RESOLVE_FROM_URL with 429 once the day's budget is spent", async () => {
+    const party = new PlaylistParty(spentRoom());
+    const req = makeRequest("POST", { ownerHostId: "host-1", name: "Mix", action: "RESOLVE_FROM_URL", playlistUrl: "https://www.youtube.com/playlist?list=PLabcdefghijklmnop" });
+    const { status, body } = await parseResponse(await party.onRequest(req));
+    expect(status).toBe(429);
+    expect(body.error).toMatch(/Today's limit/);
+    expect(resolvePlaylistFromUrl).not.toHaveBeenCalled();
+  });
+
+  it("refuses PROPOSE_EDITS with 429 once the day's budget is spent", async () => {
+    const party = new PlaylistParty(spentRoom());
+    await createPlaylist(party, [song("vid00000001")]);
+    const req = makeRequest("PUT", { ownerHostId: "host-1", action: "PROPOSE_EDITS", instruction: "fix it" });
+    const { status } = await parseResponse(await party.onRequest(req));
+    expect(status).toBe(429);
     expect(proposeEdits).not.toHaveBeenCalled();
   });
 });
