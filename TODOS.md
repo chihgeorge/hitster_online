@@ -65,16 +65,16 @@ _Deferred from /qa on feat/lyrics-api 2026-09-17_
 **Priority:** P3
 **Depends on:** None
 
-### Answer-key follow-ups from the v0.14.18.0 leak fix
+### Translate the host song panel's year-source values
 
-**What:** Five small leftovers from /ship's reviews of the Timeline answer-key fix.
+**What:** Show the "年份來源 · Year source" values (YouTube, title, AI, manual, not found) with Chinese first, like the column headers.
 
-**Why:** None reopens the leak to phones, but two are small regressions or overclaims and the rest are cleanups.
+**Why:** DESIGN.md puts Chinese first in every UI string, and "title" (year parsed from the video title) can be misread next to the 歌名 · Title column.
 
-**Context:** (1) A second host tab that hasn't sent a host command since it opened gets no `DIAGNOSTIC` at game start, so its in-game song panel stays empty (before v0.14.18.0 the room broadcast reached it): resend the last `DIAGNOSTIC` from `markPrivileged`, the way `lastLyricsPreview` is resent. (2) `/screen`'s re-claim on `hostClaimed` retries even when the TV browser has no host id, so it can't succeed and the "not this room's TV" banner blinks once: only retry when `hitster_host_id` is set. (3) `hitster://cpop-test` deals in seed order, so the host's song panel order shows what plays next: shuffle it (check `e2e/cpop-multiplayer.spec.ts`, which may rely on the order). (4) When `AUDIO_FAILED` skips the last song, the game ends with that unplayed song as `currentSong`, unredacted. (5) Cosmetic: comment `GameState.playlistId` as always "" on the wire like `songs`; move the `DIAGNOSTIC` routing tests out of the "retired status field" describe; `DiagnosticTable`'s `hideYears`/`compact` props are now always on/off and can go. _From /ship on test/screen-e2e, 2026-10-03._
+**Context:** `DiagnosticTable` in `app/room/[code]/host/page.tsx`, in-game panel only. Suggested labels: 影片說明 · YouTube, 標題 · title, AI, 手動 · manual, 找不到 · not found. _From /ship design review on fix/answer-key-followups, 2026-10-03; user chose to ship and do it later._
 
 **Effort:** S
-**Priority:** P3
+**Priority:** P4
 **Depends on:** None
 
 ### The screen and host credentials trust whoever asks first, not that they're actually the TV/host
@@ -162,6 +162,20 @@ _Deferred from plan: foamy-crafting-bonbon.md_
 **Depends on:** None
 
 ## Completed
+
+### Answer-key follow-ups from the v0.14.18.0 leak fix
+
+**What:** Five small leftovers from /ship's reviews of the Timeline answer-key fix.
+
+**Why:** None reopens the leak to phones, but two are small regressions or overclaims and the rest are cleanups.
+
+**Context:** (1) A second host tab that hasn't sent a host command since it opened gets no `DIAGNOSTIC` at game start, so its in-game song panel stays empty (before v0.14.18.0 the room broadcast reached it): resend the last `DIAGNOSTIC` from `markPrivileged`, the way `lastLyricsPreview` is resent. (2) `/screen`'s re-claim on `hostClaimed` retries even when the TV browser has no host id, so it can't succeed and the "not this room's TV" banner blinks once: only retry when `hitster_host_id` is set. (3) `hitster://cpop-test` deals in seed order, so the host's song panel order shows what plays next: shuffle it (check `e2e/cpop-multiplayer.spec.ts`, which may rely on the order). (4) When `AUDIO_FAILED` skips the last song, the game ends with that unplayed song as `currentSong`, unredacted. (5) Cosmetic: comment `GameState.playlistId` as always "" on the wire like `songs`; move the `DIAGNOSTIC` routing tests out of the "retired status field" describe; `DiagnosticTable`'s `hideYears`/`compact` props are now always on/off and can go. _From /ship on test/screen-e2e, 2026-10-03._
+
+**Effort:** S
+**Priority:** P3
+**Depends on:** None
+
+**Completed:** v0.14.19.0 (2026-10-03) — (1) the host page sends `HOST_HELLO` on every (re)connect; `authorizeHost` replays the last song list (`lastDiagnostic`) to a newly privileged host tab, never the TV, and `RESET_GAME` clears it. (2) `/screen` re-claims only when `hitster_host_id` is in this browser. (3) the cpop seed's song list is sorted by title. (4) skipping the last Timeline song ends with `currentSong: null`. (5) `GameState.playlistId` comment, the `DIAGNOSTIC` routing tests' describe renamed, `DiagnosticTable` lost its dead props and the duplicate count line.
 
 ### e2e coverage for the host/screen split (3-role flows)
 
