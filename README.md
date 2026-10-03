@@ -49,9 +49,11 @@ npm run dev:party
 # Unit + component tests (Vitest: lib/, party/, app/**/*.test.tsx, and components/**/*.test.tsx)
 npm test
 
-# e2e tests (Playwright — auto-starts dev server if not already running)
+# e2e tests (Playwright — auto-starts the Next.js server on :3456, but not PartyKit: run `npm run dev:party` first)
 npm run test:e2e
 ```
+
+Checks that need a real TV and phones (in-app browsers, video sharpness, live lyrics) are in [docs/game-night-checklist.md](docs/game-night-checklist.md).
 
 ## Deployment
 
