@@ -65,13 +65,25 @@ _Deferred from /qa on feat/lyrics-api 2026-09-17_
 **Priority:** P3
 **Depends on:** None
 
+### Answer-key follow-ups from the v0.14.18.0 leak fix
+
+**What:** Five small leftovers from /ship's reviews of the Timeline answer-key fix.
+
+**Why:** None reopens the leak to phones, but two are small regressions or overclaims and the rest are cleanups.
+
+**Context:** (1) A second host tab that hasn't sent a host command since it opened gets no `DIAGNOSTIC` at game start, so its in-game song panel stays empty (before v0.14.18.0 the room broadcast reached it): resend the last `DIAGNOSTIC` from `markPrivileged`, the way `lastLyricsPreview` is resent. (2) `/screen`'s re-claim on `hostClaimed` retries even when the TV browser has no host id, so it can't succeed and the "not this room's TV" banner blinks once: only retry when `hitster_host_id` is set. (3) `hitster://cpop-test` deals in seed order, so the host's song panel order shows what plays next: shuffle it (check `e2e/cpop-multiplayer.spec.ts`, which may rely on the order). (4) When `AUDIO_FAILED` skips the last song, the game ends with that unplayed song as `currentSong`, unredacted. (5) Cosmetic: comment `GameState.playlistId` as always "" on the wire like `songs`; move the `DIAGNOSTIC` routing tests out of the "retired status field" describe; `DiagnosticTable`'s `hideYears`/`compact` props are now always on/off and can go. _From /ship on test/screen-e2e, 2026-10-03._
+
+**Effort:** S
+**Priority:** P3
+**Depends on:** None
+
 ### The screen and host credentials trust whoever asks first, not that they're actually the TV/host
 
 **What:** The screen and host credentials trust whoever asks first, not that they're actually the TV/host.
 
 **Why:** Anyone who asks first can squat the host or TV slot.
 
-**Context:** `claimOrValidateFirstClaim` (party/index.ts, shared by `claimOrValidateHost` and `claimOrValidateScreen`) accepts any non-empty client-supplied string and grants it on first use — there's nothing that distinguishes the real `/screen` tab (or the real host) from a player's own game tab. A player would have to deliberately reach `/host` and take a host action to squat the slot; this is a house game for friends, not an adversarial environment, so the realistic risk is low — but it's a real gap, not a hardened one. Once claimed there's also no re-claim path, so a deliberate (or accidental duplicate) claim locks the real screen/host out for the rest of the game. Host's exposure grew slightly on 2026-09-22 (cross-device handoff): `/host` is now reachable from the homepage's join form on any device that knows the room code (not just the creator's own browser), gated by a `confirm()` guard rather than being unreachable outside devtools. The room code itself was already public (shown on `/screen`, in the join QR), so this doesn't leak a new secret — it makes an already-possible path (typing the code into the URL by hand) discoverable. Real fix, if ever needed: a host-minted token for both. Originally found by `/ship`'s adversarial review on 2026-09-22 (screenId only); broadened to hostId by `/plan-eng-review` on 2026-09-22 when the connection-order host gate was removed; discoverability extended by `/plan-eng-review` again the same day for cross-device handoff, with outside voice adding the confirm guard specifically to keep the accidental-claim risk at its prior low-probability level. User reviewed and chose to ship as-is each time.
+**Context:** `claimOrValidateFirstClaim` (party/index.ts, shared by `claimOrValidateHost` and `claimOrValidateScreen`) accepts any non-empty client-supplied string and grants it on first use — there's nothing that distinguishes the real `/screen` tab (or the real host) from a player's own game tab. A player would have to deliberately reach `/host` and take a host action to squat the slot; this is a house game for friends, not an adversarial environment, so the realistic risk is low — but it's a real gap, not a hardened one. Once claimed there's also no re-claim path, so a deliberate (or accidental duplicate) claim locks the real screen/host out for the rest of the game. Host's exposure grew slightly on 2026-09-22 (cross-device handoff): `/host` is now reachable from the homepage's join form on any device that knows the room code (not just the creator's own browser), gated by a `confirm()` guard rather than being unreachable outside devtools. The room code itself was already public (shown on `/screen`, in the join QR), so this doesn't leak a new secret — it makes an already-possible path (typing the code into the URL by hand) discoverable. Real fix, if ever needed: a host-minted token for both. Originally found by `/ship`'s adversarial review on 2026-09-22 (screenId only); broadened to hostId by `/plan-eng-review` on 2026-09-22 when the connection-order host gate was removed; discoverability extended by `/plan-eng-review` again the same day for cross-device handoff, with outside voice adding the confirm guard specifically to keep the accidental-claim risk at its prior low-probability level. User reviewed and chose to ship as-is each time. Since v0.14.18.0 the TV slot is the only connection that receives the playing song mid-guess, so squatting it (one claim message before the first player joins) is now the only way a player can see the answers live; the claim is also persisted, locking the real TV out. Requiring the host id once the host has claimed would close it but breaks "host on a phone, TV on another device" (/ship adversarial review, 2026-10-03).
 
 **Effort:** L
 **Priority:** P3
@@ -121,18 +133,6 @@ _Surfaced by /cso on 2026-09-16_
 
 ## Testing
 
-### e2e coverage for the host/screen split (3-role flows)
-
-**What:** e2e coverage for the host/screen split (3-role flows).
-
-**Why:** Nothing automated exercises /screen-specific behavior beyond Guess mode.
-
-**Context:** The existing e2e suite still passes (the Timeline-mode host contract — reveal-btn/next-round-btn — was kept intact) but nothing automated exercises `/screen` itself: video-only-on-screen, the preview-leak fix, screen reconnect. Manually verified in a real browser by `/qa` on 2026-09-22 instead. Found by `/plan-eng-review` on 2026-09-21 (T8), still open.
-
-**Effort:** M
-**Priority:** P3
-**Depends on:** None
-
 ## Design & Docs
 
 ### Update DESIGN.md to reflect v0.3.0.0 architecture
@@ -162,6 +162,20 @@ _Deferred from plan: foamy-crafting-bonbon.md_
 **Depends on:** None
 
 ## Completed
+
+### e2e coverage for the host/screen split (3-role flows)
+
+**What:** e2e coverage for the host/screen split (3-role flows).
+
+**Why:** Nothing automated exercises /screen-specific behavior beyond Guess mode.
+
+**Context:** The existing e2e suite still passes (the Timeline-mode host contract — reveal-btn/next-round-btn — was kept intact) but nothing automated exercises `/screen` itself: video-only-on-screen, the preview-leak fix, screen reconnect. Manually verified in a real browser by `/qa` on 2026-09-22 instead. Found by `/plan-eng-review` on 2026-09-21 (T8).
+
+**Effort:** M
+**Priority:** P3
+**Depends on:** None
+
+**Completed:** v0.14.18.0 (2026-10-03) — `e2e/screen.spec.ts` drives host, two phones and the TV through two Timeline deals and a reveal: only the TV loads YouTube, no phone's socket ever gets any of the answer key (checked on the parsed frames; it fails if `sanitizedState` stops redacting), a TV tab reopened mid-game gets the video back, and a TV tab on a player's phone shows `not-the-tv` and gets no id. Writing it found that phones still got the answer key in Timeline mode: the whole deck's titles, the playing song's title/artist mid-guess, a real card's `id` (which is its video id, so the v0.6.1.0 video-id fix was bypassable), and at game start a `DIAGNOSTIC` broadcast with every song's title and year. `STATE` now carries no deck and no playlist id for anyone (no page read them; the id's YouTube or saved-playlist URL lists the deck), only the TV gets the playing song mid-guess (the host page never shows it, and a host may play from a second tab), `DIAGNOSTIC` goes only to host tabs that have sent a host command (never the TV or a phone), and the host's in-game song panel hides the years. A TV opened in the host's browser and refused because players joined before the host claimed the room now re-claims when the claim lands, instead of staying silent until reloaded (a TV on another device has no host id to retry with) (unit-tested in `app/__tests__/screen-page.test.tsx`; the e2e loads the playlist first, so it doesn't exercise this). The spec runs the `hitster://cpop-test` seed so the `DIAGNOSTIC` check is live. Guess mode's TV was already covered by `e2e/guess-mode.spec.ts`. Lyrics mode's TV still has no e2e: it needs live lrclib + Claude (see `docs/game-night-checklist.md`).
 
 ### Fix keyboard focus indicators on all text inputs
 

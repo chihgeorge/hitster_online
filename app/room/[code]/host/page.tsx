@@ -1037,7 +1037,8 @@ export default function HostPage() {
           </button>
           {showDiagnostic && (
             <div style={{ padding: "0 20px 20px" }}>
-              <DiagnosticTable songs={diagnostic} />
+              {/* No years mid-game: a host who also plays shouldn't see the answer on a glance at this panel. */}
+              <DiagnosticTable songs={diagnostic} hideYears />
             </div>
           )}
         </div>

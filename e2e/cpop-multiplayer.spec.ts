@@ -96,13 +96,12 @@ test.describe("C-pop multiplayer with metadata verification", () => {
         await expect(hostPage.getByText(/8\/8 年份已解析/)).toBeVisible();
         await expect(hostPage.getByText("manual").first()).toBeVisible(); // seed songs report source "manual"
 
-        // Spot-check specific songs in the table (use .first() — titles appear in both the p card and td cell)
+        // Spot-check specific songs in the table (use .first() — titles appear in both the p card and td cell).
+        // No years mid-game: a host who also plays would see every answer.
         await expect(hostPage.getByText("那些年").first()).toBeVisible();
-        await expect(hostPage.getByText("2012").first()).toBeVisible();
         await expect(hostPage.getByText("體面").first()).toBeVisible();
-        await expect(hostPage.getByText("2017").first()).toBeVisible();
         await expect(hostPage.getByText("年少有為").first()).toBeVisible();
-        await expect(hostPage.getByText("2018").first()).toBeVisible();
+        for (const year of ["2012", "2017", "2018"]) await expect(hostPage.getByText(year)).toHaveCount(0);
 
         // ── 5. Round 1: Alice's turn ─────────────────────────────────────────
         await appendCard(p1Page);

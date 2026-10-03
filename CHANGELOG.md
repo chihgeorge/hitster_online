@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.14.18.0] — 2026-10-03
+
+### Fixed
+- **Players can no longer read the answers off the network in Timeline mode:** while a song is being guessed, phones (and the host page) used to receive its title, artist and a card id that was the YouTube video id, plus the whole remaining deck, the playlist id, and at game start every song's year. None of it was shown on screen, but anyone looking at their browser's network traffic could look up the year. Now only the TV gets the playing song, the deck and playlist id are never sent, and the song list with years goes only to the host. The title, artist and year still appear for everyone at the reveal
+- **A TV opened late recovers on its own:** if the TV tab was opened in the host's browser after players joined but before a playlist was loaded, it was refused as "not this room's TV" until someone reloaded it. It now tries again once the host loads a playlist
+
+### Changed
+- **The host's in-game song list hides the years**, so a host who also plays doesn't see the answer when checking the list
+
+### Added
+- **Automated check of the TV, host and phones together:** a browser test plays Timeline rounds with a TV, a host and two phones, and fails if any phone receives answer data, if anything but the TV loads YouTube, if a reopened TV tab loses its video, or if a phone can take over the TV
+- **Game-night checklist** (`docs/game-night-checklist.md`): the checks that need a real TV and phones (LINE in-app browser, video sharpness on a TV, lyrics with a real player, grading notes) in the order to run them before guests arrive
+
 ## [0.14.17.0] — 2026-10-01
 
 ### Changed
