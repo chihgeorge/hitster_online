@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.14.20.0] — 2026-10-03
+
+### Fixed
+- **Nobody can run up the server's YouTube and AI bill anymore:** loading a YouTube playlist, starting a Lyrics game, creating a saved playlist from a link and asking the AI to edit songs or lyrics each count against one daily limit shared by every room (300 a day by default, reset at midnight UTC, set with `PAID_DAILY_CAP`). Before, anyone could repeat these as often as they liked, including a Lyrics start on a saved playlist that skipped every check. Once the limit is used up the host sees "今天的使用額度已用完 · Today's limit is used up", and saved playlists still work in Timeline and Guess mode
+- **A Lyrics start that finished late can't cancel a newer game:** if the host reset and restarted while the first start was still waiting, the old start could abort the new game. It now leaves the new game alone. A playlist load that was replaced by a newer one also stays quiet instead of showing an error over the newer result
+- **The AI-edit error says what happened:** when the daily limit refuses an AI edit, the host is told the limit is used up instead of "Couldn't process that, try again"
+
+### Changed
+- **Songs are only asked about once, across every room:** the AI's title, artist and year answers, lyric questions and song-popularity notes for a YouTube video are now kept in one shared store, so a playlist another room already loaded comes back faster and without new AI calls. Songs from a saved playlist (whose titles the host may have edited) still use the room's own store, so made-up titles can't change answers for anyone else
+- **Saved playlists sent to a room are capped at 500 songs, and AI-edit requests at 500 songs and a 1,000-character instruction**, the same sizes the app itself ever sends
+
 ## [0.14.18.1] — 2026-10-03
 
 ### Changed

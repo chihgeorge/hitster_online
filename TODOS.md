@@ -83,7 +83,7 @@ _Deferred from /qa on feat/lyrics-api 2026-09-17_
 
 **Why:** Anyone who asks first can squat the host or TV slot.
 
-**Context:** `claimOrValidateFirstClaim` (party/index.ts, shared by `claimOrValidateHost` and `claimOrValidateScreen`) accepts any non-empty client-supplied string and grants it on first use — there's nothing that distinguishes the real `/screen` tab (or the real host) from a player's own game tab. A player would have to deliberately reach `/host` and take a host action to squat the slot; this is a house game for friends, not an adversarial environment, so the realistic risk is low — but it's a real gap, not a hardened one. Once claimed there's also no re-claim path, so a deliberate (or accidental duplicate) claim locks the real screen/host out for the rest of the game. Host's exposure grew slightly on 2026-09-22 (cross-device handoff): `/host` is now reachable from the homepage's join form on any device that knows the room code (not just the creator's own browser), gated by a `confirm()` guard rather than being unreachable outside devtools. The room code itself was already public (shown on `/screen`, in the join QR), so this doesn't leak a new secret — it makes an already-possible path (typing the code into the URL by hand) discoverable. Real fix, if ever needed: a host-minted token for both. Originally found by `/ship`'s adversarial review on 2026-09-22 (screenId only); broadened to hostId by `/plan-eng-review` on 2026-09-22 when the connection-order host gate was removed; discoverability extended by `/plan-eng-review` again the same day for cross-device handoff, with outside voice adding the confirm guard specifically to keep the accidental-claim risk at its prior low-probability level. User reviewed and chose to ship as-is each time. Since v0.14.18.0 the TV slot is the only connection that receives the playing song mid-guess, so squatting it (one claim message before the first player joins) is now the only way a player can see the answers live; the claim is also persisted, locking the real TV out. Requiring the host id once the host has claimed would close it but breaks "host on a phone, TV on another device" (/ship adversarial review, 2026-10-03).
+**Context:** `claimOrValidateFirstClaim` (party/index.ts, shared by `claimOrValidateHost` and `claimOrValidateScreen`) accepts any non-empty client-supplied string and grants it on first use — there's nothing that distinguishes the real `/screen` tab (or the real host) from a player's own game tab. A player would have to deliberately reach `/host` and take a host action to squat the slot; this is a house game for friends, not an adversarial environment, so the realistic risk is low — but it's a real gap, not a hardened one. Once claimed there's also no re-claim path, so a deliberate (or accidental duplicate) claim locks the real screen/host out for the rest of the game. Host's exposure grew slightly on 2026-09-22 (cross-device handoff): `/host` is now reachable from the homepage's join form on any device that knows the room code (not just the creator's own browser), gated by a `confirm()` guard rather than being unreachable outside devtools. The room code itself was already public (shown on `/screen`, in the join QR), so this doesn't leak a new secret — it makes an already-possible path (typing the code into the URL by hand) discoverable. Real fix, if ever needed: a host-minted token for both. Originally found by `/ship`'s adversarial review on 2026-09-22 (screenId only); broadened to hostId by `/plan-eng-review` on 2026-09-22 when the connection-order host gate was removed; discoverability extended by `/plan-eng-review` again the same day for cross-device handoff, with outside voice adding the confirm guard specifically to keep the accidental-claim risk at its prior low-probability level. User reviewed and chose to ship as-is each time. Since v0.14.18.0 the TV slot is the only connection that receives the playing song mid-guess, so squatting it (one claim message before the first player joins) is now the only way a player can see the answers live; the claim is also persisted, locking the real TV out. Requiring the host id once the host has claimed would close it but breaks "host on a phone, TV on another device" (/ship adversarial review, 2026-10-03). `/cso` (2026-10-03) re-examined the TV slot; user chose to keep first-claim as is for a house game.
 
 **Effort:** L
 **Priority:** P3
@@ -118,16 +118,35 @@ _Surfaced by ad-hoc audit, 2026-09-23; narrowed 2026-09-29_
 **Priority:** P3
 **Depends on:** A partykit release
 
-### Install `gstack-cso` for formal security audit
+### Paid-API budget follow-ups (deferred from the v0.14.20.0 /ship)
 
-**What:** Install `gstack-cso` for formal security audit.
+**What:** Eight small follow-ups to the daily paid-API budget in `party/paid.ts`, found in the last review passes and deferred so the fix could ship:
+1. Cap each song's strings (title, artist, lyric fields) in PROPOSE_EDITS / PROPOSE_LYRIC_EDITS (e.g. `sanitizeText(…, 200)`), so one budget unit can't carry a huge prompt.
+2. `maxLength={1000}` on the AI-instruction inputs in `components/PlaylistEditor.tsx` and `components/SongItemEditor.tsx`, matching `MAX_INSTRUCTION`.
+3. A too-long instruction gets "instruction required" (playlist party) or the generic retry line (room): give it its own message.
+4. Accept a numeric `PAID_DAILY_CAP` (from `partykit.json` vars), not only a string.
+5. A superseded LOAD_PLAYLIST, or a Lyrics start reset during the budget call, still spends a unit: check before spending where possible.
+6. After the shared cache was briefly down, answers written to the room's own storage are never read again: on a shared miss, also check room storage.
+7. Move `MAX_SONGS` / `MAX_INSTRUCTION` from `party/playlist.ts` to `lib/` so the room party doesn't import the playlist party.
+8. `party/paid.test.ts`: the prefix-allowlist test's value comment still says "aiMeta only"; also assert a non-cache key comes back empty from a get.
 
-**Why:** The formal /cso security audit was blocked.
+**Why:** Each is low risk on its own (the daily cap bounds the cost), but together they make the limit count real spend more closely and fix two confusing messages.
 
-**Context:** `gstack-cso` launcher not found — formal CSO audit was blocked. Run `cd ~/.claude/skills/gstack && ./setup` to install, then re-run `/cso` for an evidence-backed security report.
-_Surfaced by /cso on 2026-09-16_
+**Context:** Found by /ship review pass 3 and the adversarial pass on 2026-10-03; user chose to defer (D5, D6) rather than run a third fix cycle.
 
 **Effort:** S
+**Priority:** P2
+**Depends on:** None
+
+### One shared daily limit means one abuser can use up everyone's day
+
+**What:** The paid-API budget is a single global counter. Anyone can spend it (about 300 cheap LOAD_PLAYLIST messages or playlist-party RESOLVE_FROM_URL calls), after which no room can load a new YouTube playlist or start Lyrics until midnight UTC.
+
+**Why:** Accepted trade-off of a global cap: a per-room cap doesn't help because rooms are free to create. The `paid_budget_exhausted` warning in the PartyKit logs shows when it happens.
+
+**Context:** /ship security review 2026-10-03 (D3). Real fixes need an identity to rate-limit on (sign-in, a per-IP limit at the edge, or a host token). If it happens, raise `PAID_DAILY_CAP` for the day with `npx partykit deploy --var PAID_DAILY_CAP=…`.
+
+**Effort:** M
 **Priority:** P3
 **Depends on:** None
 
@@ -162,6 +181,15 @@ _Deferred from plan: foamy-crafting-bonbon.md_
 **Depends on:** None
 
 ## Completed
+
+### Install `gstack-cso` for formal security audit
+
+**Completed 2026-10-03:** the launcher is installed and `/cso` ran a full static audit. It found one supported MEDIUM finding: anyone could make the server spend YouTube quota and Anthropic credit without limit (load a fresh playlist id, start a lyrics game, or ask for AI edits, over and over), and the AI-metadata cache was per room and per playlist, so a fresh id always meant fresh paid calls.
+_Surfaced by /cso on 2026-09-16_
+
+### Cap the server's paid API spend per day
+
+**Completed:** v0.14.20.0 (2026-10-03). A new global `paid` party (`party/paid.ts`) counts paid pipelines per UTC day (default 300, `PAID_DAILY_CAP` to change) and refuses past the cap with a bilingual "today's limit is used up" message. Every paid path counts: YouTube loads, Lyrics starts (including from saved playlists), saved-playlist creation from a link, and AI edits. It also holds one versioned cache of AI answers (title/artist/year, lyric rounds, popularity notes) shared by every room, used only for songs whose titles came from YouTube. Only the server can call it, and public traffic is refused at the edge; if it can't be reached, paid work goes ahead and the cache falls back to the room's own storage. Fixes the 2026-10-03 `/cso` finding.
 
 ### e2e coverage for the host/screen split (3-role flows)
 
