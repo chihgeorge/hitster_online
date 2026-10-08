@@ -98,6 +98,11 @@ describe("Timeline: CTA bar feedback", () => {
     expect(screen.queryByText("已放置 ✓ 等待主持人揭曉")).toBeNull();
   });
 
+  it("shows no too-late bar to a player whose turn it isn't", () => {
+    render(<Timeline {...props} phase="reveal" isMyTurn={false} hasPlaced={false} tooLate />);
+    expect(screen.queryByText("太晚了！")).toBeNull();
+  });
+
   // Value: protects=no second placement once placed or too late; fails_when=the CTA ternary is reordered;
   // why_new=the bar now stays up after placing, so only the ternary hides place-btn; seam=none
   it("hides the place button once placed or too late, and placed wins when both are set", () => {
