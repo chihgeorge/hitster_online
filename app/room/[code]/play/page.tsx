@@ -59,7 +59,8 @@ export default function PlayPage() {
       setTooLate(false);
       setSelectedPosition(null);
     }
-  }, [state?.phase]);
+    // currentRound too: a phone that slept through the reveal reconnects guessing → guessing.
+  }, [state?.phase, state?.currentRound]);
 
   // Reset lyrics answer state on each new round
   useEffect(() => {
@@ -82,6 +83,9 @@ export default function PlayPage() {
     host: process.env.NEXT_PUBLIC_PARTYKIT_HOST ?? "localhost:1999",
     room: params.code,
     onOpen() {
+      // A PLACE lost with the old socket never gets an answer. partysocket flushes queued sends
+      // before onopen, so anything still in flight has gone out; the next STATE/ack says the truth.
+      setPendingPlace(false);
       const stored = localStorage.getItem("hitster_player_id");
       if (stored) {
         send({ type: "REJOIN", playerId: stored, name: playerName });

@@ -205,6 +205,29 @@ describe("PlayPage: timeline placement double-submit guard", () => {
     expect(screen.queryAllByText("+")).toHaveLength(0);
   });
 
+  it("a phone that slept through the reveal wakes into its next turn with the picker open", () => {
+    render(<PlayPage />);
+    serverSends({ type: "STATE", state: { ...guessingState, currentRound: 1 } });
+    selectFirstDropZone();
+    act(() => { screen.getByTestId("place-btn").click(); });
+    serverSends({ type: "PLACEMENT_ACK", playerId: PLAYER });
+    // Reveal and next deal missed while asleep: guessing → guessing, but a new round.
+    serverSends({ type: "STATE", state: { ...guessingState, currentRound: 2, placements: {} } });
+    expect(screen.queryByText("已放置 ✓ 等待主持人揭曉")).toBeNull();
+    expect(screen.getAllByText("+").length).toBeGreaterThan(0);
+  });
+
+  it("a PLACE lost with the socket doesn't strand 送出中… after reconnecting", () => {
+    render(<PlayPage />);
+    serverSends({ type: "STATE", state: guessingState });
+    selectFirstDropZone();
+    act(() => { screen.getByTestId("place-btn").click(); });
+    act(() => { socketOpts.onOpen?.(); }); // reconnect: the server never saw the PLACE
+    serverSends({ type: "STATE", state: guessingState });
+    expect(screen.queryByText("送出中…")).toBeNull();
+    expect(screen.getByTestId("place-btn")).toBeTruthy();
+  });
+
   it("an ERROR after the tap drops 送出中… and lets the player place again", () => {
     render(<PlayPage />);
     serverSends({ type: "STATE", state: guessingState });
