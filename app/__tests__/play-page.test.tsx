@@ -217,15 +217,31 @@ describe("PlayPage: timeline placement double-submit guard", () => {
     expect(screen.getAllByText("+").length).toBeGreaterThan(0);
   });
 
-  it("a PLACE lost with the socket doesn't strand 送出中… after reconnecting", () => {
+  it("re-sends a pending PLACE right after REJOIN on reconnect, so the tap still counts", () => {
     render(<PlayPage />);
     serverSends({ type: "STATE", state: guessingState });
     selectFirstDropZone();
     act(() => { screen.getByTestId("place-btn").click(); });
-    act(() => { socketOpts.onOpen?.(); }); // reconnect: the server never saw the PLACE
+    sendSpy.mockClear();
+    act(() => { socketOpts.onOpen?.(); });
+    const types = sendSpy.mock.calls.map(([m]) => JSON.parse(m as string).type);
+    // partysocket flushed the queued PLACE before onopen, ahead of REJOIN; the server refuses that
+    // one (not yet bound), so the PLACE must follow the REJOIN.
+    expect(types).toEqual(["REJOIN", "PLACE"]);
+    expect(screen.getByText("送出中…")).toBeTruthy();
+  });
+
+  it("a PLACE that beat its REJOIN is refused, then the re-sent one lands", () => {
+    render(<PlayPage />);
     serverSends({ type: "STATE", state: guessingState });
+    selectFirstDropZone();
+    act(() => { screen.getByTestId("place-btn").click(); });
+    act(() => { socketOpts.onOpen?.(); }); // reconnect: the queued PLACE beat the REJOIN
+    serverSends({ type: "ERROR", error: "not_bound" }); // ...so the server refused it
+    serverSends({ type: "STATE", state: guessingState });
+    serverSends({ type: "PLACEMENT_ACK", playerId: PLAYER }); // the re-sent PLACE lands
     expect(screen.queryByText("送出中…")).toBeNull();
-    expect(screen.getByTestId("place-btn")).toBeTruthy();
+    expect(screen.getByText("已放置 ✓ 等待主持人揭曉")).toBeTruthy();
   });
 
   it("an ERROR after the tap drops 送出中… and lets the player place again", () => {

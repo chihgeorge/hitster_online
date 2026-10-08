@@ -361,6 +361,8 @@ describe("PLACE handler", () => {
     await send(r, bob, { type: "PLACE", playerId: P1, position: 0 });
     // A forged placement would lock the real player's picker (the phone trusts STATE.placements).
     expect(r.state.placements[P1]).toBeUndefined();
+    // An ERROR, not silence: a phone whose PLACE beat its REJOIN (or a second tab) unlocks its picker.
+    expect(lastSentTo(bob)?.error).toBe("not_bound");
   });
 
   it("rejects PLACE from a non-active player (spectator)", async () => {

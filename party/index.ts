@@ -484,7 +484,13 @@ export default class HitsterRoom implements Party.Server {
     }
     if (playerId !== this.state.activePlayerId) return;
     if (!this.state.players[playerId]) return;
-    if (this.playerConnId[playerId] !== conn.id) return; // see handleSubmitLyricsAnswer: no placing for someone else
+    // No placing for someone else (as in handleSubmitLyricsAnswer). Say so rather than ignore it: a
+    // phone's queued PLACE can arrive before its REJOIN, and a second tab loses the binding; the
+    // ERROR unlocks that phone's picker.
+    if (this.playerConnId[playerId] !== conn.id) {
+      this.sendTo(conn, { type: "ERROR", error: "not_bound" });
+      return;
+    }
 
     // Validate position is a non-negative integer within range of the player's timeline
     const player = this.state.players[playerId];

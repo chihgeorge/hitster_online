@@ -83,15 +83,18 @@ export default function PlayPage() {
     host: process.env.NEXT_PUBLIC_PARTYKIT_HOST ?? "localhost:1999",
     room: params.code,
     onOpen() {
-      // A PLACE lost with the old socket never gets an answer. partysocket flushes queued sends
-      // before onopen, so anything still in flight has gone out; the next STATE/ack says the truth.
-      setPendingPlace(false);
       const stored = localStorage.getItem("hitster_player_id");
       if (stored) {
         send({ type: "REJOIN", playerId: stored, name: playerName });
       } else {
         playerIdRef.current = getOrCreatePersistedId("hitster_player_id");
         send({ type: "JOIN", playerId: playerIdRef.current, name: playerName });
+      }
+      // partysocket flushes queued sends before onopen, so a PLACE tapped while offline reached the
+      // server ahead of the REJOIN and was refused (not_bound). Send it again now that we're bound;
+      // PLACE overwrites, so a repeat is harmless.
+      if (pendingPlace && selectedPosition !== null) {
+        send({ type: "PLACE", playerId: playerIdRef.current, position: selectedPosition });
       }
     },
     onMessage(event: MessageEvent) {
