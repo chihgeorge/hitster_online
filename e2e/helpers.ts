@@ -1,4 +1,4 @@
-import type { Page } from "@playwright/test";
+import type { BrowserContext, Page } from "@playwright/test";
 
 /**
  * Creates a room via the homepage's explicit "Create a Room" button (a deliberate click, not a
@@ -16,4 +16,19 @@ export async function createRoomAsHost(page: Page): Promise<string> {
   await page.getByTestId("manage-as-host-link").click();
   await page.waitForURL(/\/room\/[A-Z]{4}\/host$/);
   return match[1];
+}
+
+/**
+ * Closes the browser contexts a multi-device test opened, waiting at most 10s. Under parallel
+ * load WebKit sometimes never answers a context close, which hung the test until its timeout even
+ * though every assertion had passed. A stuck context is dropped with its worker's browser.
+ */
+export async function closeContexts(contexts: BrowserContext[]) {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const closed = await Promise.race([
+    Promise.all(contexts.map((c) => c.close())).then(() => true),
+    new Promise<false>((resolve) => { timer = setTimeout(() => resolve(false), 10_000); }),
+  ]);
+  clearTimeout(timer);
+  if (!closed) console.warn(`closeContexts: ${contexts.length} context(s) did not close within 10s`);
 }

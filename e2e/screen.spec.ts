@@ -9,7 +9,7 @@
  */
 
 import { test, expect, type Page } from "@playwright/test";
-import { createRoomAsHost } from "./helpers";
+import { closeContexts, createRoomAsHost } from "./helpers";
 
 type Song = { id: string; videoId: string; title: string; artist: string; year: number };
 
@@ -117,7 +117,7 @@ test.describe("TV screen in Timeline mode", () => {
       expect(seen.host.video).toBe(false); // the host page never plays it, so only the TV holds it
       expect(seen.host.youtube || seen.alice.youtube || seen.bob.youtube).toBe(false);
     } finally {
-      await Promise.all([hostCtx, aliceCtx, bobCtx].map((c) => c.close()));
+      await closeContexts([hostCtx, aliceCtx, bobCtx]);
     }
   });
 });

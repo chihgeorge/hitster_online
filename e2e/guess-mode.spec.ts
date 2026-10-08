@@ -9,7 +9,7 @@
  */
 
 import { test, expect, type Page } from "@playwright/test";
-import { createRoomAsHost } from "./helpers";
+import { closeContexts, createRoomAsHost } from "./helpers";
 
 const CPOP_TITLES = ["那些年", "可惜沒如果", "小幸運", "告白氣球", "光年之外", "你，好不好？", "體面", "年少有為"];
 
@@ -119,7 +119,7 @@ test.describe("Guess Mode", () => {
       await expect(alice.getByText("等待主持人開始遊戲…")).toBeVisible({ timeout: 10_000 });
       await expect(screen.getByText("掃描加入 · Scan to join")).toBeVisible({ timeout: 10_000 });
     } finally {
-      await Promise.all(ctx.map((c) => c.close()));
+      await closeContexts(ctx);
     }
   });
 });
