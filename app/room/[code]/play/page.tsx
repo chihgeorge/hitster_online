@@ -164,6 +164,9 @@ export default function PlayPage() {
   const phase = state?.phase ?? "lobby";
   const myPlayer: Player | null = state?.players[playerIdRef.current] ?? null;
   const isMyTurn = state?.activePlayerId === playerIdRef.current;
+  // Server truth backs up PLACEMENT_ACK: a lost ack (socket blip) or a mid-turn reload still shows
+  // the placement once the next STATE lists it.
+  const placedOnServer = phase === "guessing" && state?.placements[playerIdRef.current] !== undefined;
   const activePlayer = state?.activePlayerId ? state.players[state.activePlayerId] : null;
 
   const myLyricsPlayer = lyricsState?.players[playerIdRef.current] ?? null;
@@ -525,7 +528,7 @@ export default function PlayPage() {
         selectedPosition={selectedPosition}
         onSelectPosition={setSelectedPosition}
         onPlace={handlePlace}
-        hasPlaced={hasPlaced}
+        hasPlaced={hasPlaced || placedOnServer}
         pending={pendingPlace}
         tooLate={tooLate}
       />

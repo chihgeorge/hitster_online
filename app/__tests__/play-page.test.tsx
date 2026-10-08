@@ -187,6 +187,24 @@ describe("PlayPage: timeline placement double-submit guard", () => {
     act(() => { screen.getAllByText("+")[0].click(); });
   }
 
+  it("a lost PLACEMENT_ACK self-heals from the next STATE's placements", () => {
+    render(<PlayPage />);
+    serverSends({ type: "STATE", state: guessingState });
+    selectFirstDropZone();
+    act(() => { screen.getByTestId("place-btn").click(); });
+    // The ack never arrives (socket blip); the reconnect STATE already records the placement.
+    serverSends({ type: "STATE", state: { ...guessingState, placements: { [PLAYER]: 0 } } });
+    expect(screen.getByText("已放置 ✓ 等待主持人揭曉")).toBeTruthy();
+    expect(screen.queryByText("送出中…")).toBeNull();
+  });
+
+  it("after a mid-turn reload, a placement the server holds keeps the picker closed", () => {
+    render(<PlayPage />);
+    serverSends({ type: "STATE", state: { ...guessingState, placements: { [PLAYER]: 0 } } });
+    expect(screen.getByText("已放置 ✓ 等待主持人揭曉")).toBeTruthy();
+    expect(screen.queryAllByText("+")).toHaveLength(0);
+  });
+
   it("an ERROR after the tap drops 送出中… and lets the player place again", () => {
     render(<PlayPage />);
     serverSends({ type: "STATE", state: guessingState });
