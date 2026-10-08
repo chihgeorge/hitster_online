@@ -51,7 +51,7 @@ export default function PlayPage() {
   }, []);
 
   // Layout effect: last turn's placed / too-late flags clear before the new turn's first paint, so
-  // the CTA bar (which now stays up after placing) never flashes a stale message.
+  // the CTA bar (it stays up after placing, see Timeline.tsx) never flashes a stale message.
   useLayoutEffect(() => {
     if (state?.phase === "guessing") {
       setHasPlaced(false);

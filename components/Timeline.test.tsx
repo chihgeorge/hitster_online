@@ -115,7 +115,8 @@ describe("Timeline: CTA bar feedback", () => {
     const { rerender } = render(<Timeline {...props} hasPlaced />);
     expect(screen.getByText("已放置 ✓ 等待主持人揭曉")).toBeTruthy();
     expect(screen.queryByTestId("place-btn")).toBeNull();
-    rerender(<Timeline {...props} hasPlaced={false} tooLate />);
+    rerender(<Timeline {...props} phase="reveal" hasPlaced={false} tooLate />);
+    expect(screen.getByText("太晚了！")).toBeTruthy();
     expect(screen.queryByTestId("place-btn")).toBeNull();
     rerender(<Timeline {...props} phase="reveal" hasPlaced tooLate />);
     expect(screen.getByText("已放置 ✓ 等待主持人揭曉")).toBeTruthy();
@@ -124,11 +125,15 @@ describe("Timeline: CTA bar feedback", () => {
 
   // Value: protects=the ✓ only claims a placement the server acked; fails_when=pending renders the placed text;
   // why_new=the bar now stays up after the tap, before PLACEMENT_ACK; seam=none
+  // Value (extension): protects=the picker is locked while a placement is in flight; fails_when=canPlace drops
+  // its !pending check, so drop zones reappear and the player can move the guess mid-send;
+  // why_new=no test asserted drop zones are gone while pending; seam=none
   it("shows a neutral sending state until the server acks, never the placed ✓", () => {
     render(<Timeline {...props} hasPlaced={false} pending />);
     expect(screen.getByText("送出中…")).toBeTruthy();
     expect(screen.queryByText("已放置 ✓ 等待主持人揭曉")).toBeNull();
     expect(screen.queryByTestId("place-btn")).toBeNull();
+    expect(screen.queryAllByRole("button")).toHaveLength(0); // no drop zones: the picker is locked
   });
 
   // Value: protects=no red flash from last turn's TOO_LATE; fails_when=tooLate shows during guessing;

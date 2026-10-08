@@ -165,11 +165,11 @@ export default function Timeline({
               <p style={{ color: "var(--ink)", fontWeight: 900, fontSize: 16 }}>已放置 ✓ 等待主持人揭曉</p>
             </div>
           ) : pending ? (
-            <div style={{
+            <div role="status" style={{
               background: "white", borderRadius: 16, padding: "15px", textAlign: "center",
               border: "2px solid rgba(255,107,53,.2)",
             }}>
-              <p style={{ color: "var(--text3)", fontSize: 14 }}>送出中…</p>
+              <p style={{ color: "var(--ink)", fontWeight: 700, fontSize: 16 }}>送出中…</p>
             </div>
           ) : tooLate ? (
             <div role="status" style={{
