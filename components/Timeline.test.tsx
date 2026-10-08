@@ -16,6 +16,11 @@ const baseProps = {
 };
 
 describe("Timeline: guess marker", () => {
+  it("shows the '?' marker while the placement is pending, before the ack", () => {
+    render(<Timeline {...baseProps} timeline={[card("a", 1990)]} phase="guessing" selectedPosition={1} hasPlaced={false} pending />);
+    expect(screen.getByTestId("guess-marker")).toBeTruthy();
+  });
+
   it("shows a '?' at the placed position once the player has placed, instead of the picker", () => {
     render(
       <Timeline
@@ -127,7 +132,7 @@ describe("Timeline: CTA bar feedback", () => {
   });
 
   // Value: protects=no red flash from last turn's TOO_LATE; fails_when=tooLate shows during guessing;
-  // why_new=the phase-reset effect runs after paint; seam=none
+  // why_new=Timeline is pure and can render once with last turn's flag before the play page clears it; seam=none
   it("ignores a stale tooLate during guessing (the server never sends TOO_LATE then)", () => {
     render(<Timeline {...props} hasPlaced={false} tooLate />);
     expect(screen.queryByText("太晚了！")).toBeNull();

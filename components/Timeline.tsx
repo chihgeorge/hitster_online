@@ -32,7 +32,7 @@ export default function Timeline({
   tooLate,
 }: Props) {
   const canPlace = phase === "guessing" && isMyTurn && !hasPlaced && !pending && !tooLate;
-  // Once placed, show a static "?" where the guess landed instead of the interactive picker —
+  // Once placed (or sent and waiting for the server ack), show a static "?" where the guess landed instead of the interactive picker —
   // lets the player (and anyone else looking at this timeline) see where the card went before
   // the reveal confirms whether it was right. Cleared automatically once reveal/next round starts,
   // since selectedPosition resets to null then (see app/room/[code]/play/page.tsx).
@@ -151,7 +151,8 @@ export default function Timeline({
 
       {/* CTA bar — stays up after placing so the placed state shows. The server sends TOO_LATE only once
           phase has left guessing (after the reveal STATE), so tooLate keeps the bar up there; during
-          guessing a set tooLate is last turn's, not yet cleared by the play page's effect. */}
+          guessing a set tooLate is last turn's (the play page clears it in a layout effect; this covers the
+          render before that commit). */}
       {isMyTurn && (phase === "guessing" ? !tooLate : tooLate) && (
         <div style={{
           position: "fixed", bottom: 0, left: 0, right: 0, padding: "16px 16px 24px",

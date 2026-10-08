@@ -187,6 +187,18 @@ describe("PlayPage: timeline placement double-submit guard", () => {
     act(() => { screen.getAllByText("+")[0].click(); });
   }
 
+  it("an ERROR after the tap drops 送出中… and lets the player place again", () => {
+    render(<PlayPage />);
+    serverSends({ type: "STATE", state: guessingState });
+    selectFirstDropZone();
+    act(() => { screen.getByTestId("place-btn").click(); });
+    expect(screen.getByText("送出中…")).toBeTruthy();
+    serverSends({ type: "ERROR", error: "invalid_position" });
+    expect(screen.queryByText("送出中…")).toBeNull();
+    act(() => { screen.getByTestId("place-btn").click(); });
+    expect(sendSpy.mock.calls.filter((c) => String(c[0]).includes('"type":"PLACE"'))).toHaveLength(2);
+  });
+
   it("sends only one PLACE on a rapid double-click, before the server acks", () => {
     render(<PlayPage />);
     serverSends({ type: "STATE", state: guessingState });
