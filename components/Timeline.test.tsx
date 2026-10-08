@@ -12,6 +12,7 @@ const baseProps = {
   onSelectPosition: () => {},
   onPlace: () => {},
   tooLate: false,
+  pending: false,
 };
 
 describe("Timeline: guess marker", () => {
@@ -111,8 +112,24 @@ describe("Timeline: CTA bar feedback", () => {
     expect(screen.queryByTestId("place-btn")).toBeNull();
     rerender(<Timeline {...props} hasPlaced={false} tooLate />);
     expect(screen.queryByTestId("place-btn")).toBeNull();
-    rerender(<Timeline {...props} hasPlaced tooLate />);
+    rerender(<Timeline {...props} phase="reveal" hasPlaced tooLate />);
     expect(screen.getByText("已放置 ✓ 等待主持人揭曉")).toBeTruthy();
+    expect(screen.queryByText("太晚了！")).toBeNull();
+  });
+
+  // Value: protects=the ✓ only claims a placement the server acked; fails_when=pending renders the placed text;
+  // why_new=the bar now stays up after the tap, before PLACEMENT_ACK; seam=none
+  it("shows a neutral sending state until the server acks, never the placed ✓", () => {
+    render(<Timeline {...props} hasPlaced={false} pending />);
+    expect(screen.getByText("送出中…")).toBeTruthy();
+    expect(screen.queryByText("已放置 ✓ 等待主持人揭曉")).toBeNull();
+    expect(screen.queryByTestId("place-btn")).toBeNull();
+  });
+
+  // Value: protects=no red flash from last turn's TOO_LATE; fails_when=tooLate shows during guessing;
+  // why_new=the phase-reset effect runs after paint; seam=none
+  it("ignores a stale tooLate during guessing (the server never sends TOO_LATE then)", () => {
+    render(<Timeline {...props} hasPlaced={false} tooLate />);
     expect(screen.queryByText("太晚了！")).toBeNull();
   });
 

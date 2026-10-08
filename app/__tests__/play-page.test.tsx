@@ -211,6 +211,17 @@ describe("PlayPage: timeline placement double-submit guard", () => {
     expect(sendSpy.mock.calls.filter((c) => String(c[0]).includes('"type":"PLACE"'))).toHaveLength(2);
   });
 
+  it("says 送出中… after the tap and 已放置 ✓ only once the server acks", () => {
+    render(<PlayPage />);
+    serverSends({ type: "STATE", state: guessingState });
+    selectFirstDropZone();
+    act(() => { screen.getByTestId("place-btn").click(); });
+    expect(screen.getByText("送出中…")).toBeTruthy();
+    expect(screen.queryByText("已放置 ✓ 等待主持人揭曉")).toBeNull();
+    serverSends({ type: "PLACEMENT_ACK", playerId: PLAYER });
+    expect(screen.getByText("已放置 ✓ 等待主持人揭曉")).toBeTruthy();
+  });
+
   // Real server order: the host reveals (STATE reveal is broadcast), then the late PLACE gets TOO_LATE.
   it("shows 太晚了！ when TOO_LATE arrives after the reveal STATE, and clears it next round", () => {
     render(<PlayPage />);

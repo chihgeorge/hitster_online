@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useParams, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import usePartySocket from "partysocket/react";
@@ -50,7 +50,9 @@ export default function PlayPage() {
     playerIdRef.current = getOrCreatePersistedId("hitster_player_id");
   }, []);
 
-  useEffect(() => {
+  // Layout effect: last turn's placed / too-late flags clear before the new turn's first paint, so
+  // the CTA bar (which now stays up after placing) never flashes a stale message.
+  useLayoutEffect(() => {
     if (state?.phase === "guessing") {
       setHasPlaced(false);
       setPendingPlace(false);
@@ -523,7 +525,8 @@ export default function PlayPage() {
         selectedPosition={selectedPosition}
         onSelectPosition={setSelectedPosition}
         onPlace={handlePlace}
-        hasPlaced={hasPlaced || pendingPlace}
+        hasPlaced={hasPlaced}
+        pending={pendingPlace}
         tooLate={tooLate}
       />
     </main>
