@@ -152,16 +152,16 @@ export default function Timeline({
           background: "linear-gradient(to top, var(--bg) 70%, transparent)",
         }}>
           {hasPlaced ? (
-            <div style={{
+            <div role="status" style={{
               background: "var(--mint)", borderRadius: 16, padding: "15px", textAlign: "center",
             }}>
-              <p style={{ color: "white", fontWeight: 900, fontSize: 16 }}>已放置 ✓ 等待主持人揭曉</p>
+              <p style={{ color: "var(--ink)", fontWeight: 900, fontSize: 16 }}>已放置 ✓ 等待主持人揭曉</p>
             </div>
           ) : tooLate ? (
-            <div style={{
+            <div role="status" style={{
               background: "var(--red)", borderRadius: 16, padding: "15px", textAlign: "center",
             }}>
-              <p style={{ color: "white", fontWeight: 900, fontSize: 16 }}>太晚了！</p>
+              <p style={{ color: "var(--ink)", fontWeight: 900, fontSize: 16 }}>太晚了！</p>
             </div>
           ) : selectedPosition !== null ? (
             <button data-testid="place-btn" onClick={onPlace} style={{

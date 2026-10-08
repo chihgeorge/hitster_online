@@ -100,4 +100,25 @@ describe("Timeline: CTA bar feedback", () => {
     render(<Timeline {...props} isMyTurn={false} hasPlaced />);
     expect(screen.queryByText("已放置 ✓ 等待主持人揭曉")).toBeNull();
   });
+
+  // Value: protects=no second placement once placed or too late; fails_when=the CTA ternary is reordered;
+  // why_new=the bar now stays up after placing, so only the ternary hides place-btn; seam=none
+  it("hides the place button once placed or too late, and placed wins when both are set", () => {
+    const { rerender } = render(<Timeline {...props} hasPlaced />);
+    expect(screen.queryByTestId("place-btn")).toBeNull();
+    rerender(<Timeline {...props} hasPlaced={false} tooLate />);
+    expect(screen.queryByTestId("place-btn")).toBeNull();
+    rerender(<Timeline {...props} hasPlaced tooLate />);
+    expect(screen.getByText("已放置 ✓ 等待主持人揭曉")).toBeTruthy();
+    expect(screen.queryByText("太晚了！")).toBeNull();
+  });
+
+  // Value: protects=CTA bar (placed/too-late/place button) hides once phase leaves guessing;
+  // fails_when=the bar gate drops its phase === "guessing" check; why_new=other CTA cases are all in guessing; seam=none
+  it("drops the bar once reveal starts, even if hasPlaced / tooLate are still set", () => {
+    render(<Timeline {...props} phase="reveal" hasPlaced tooLate />);
+    expect(screen.queryByText("已放置 ✓ 等待主持人揭曉")).toBeNull();
+    expect(screen.queryByText("太晚了！")).toBeNull();
+    expect(screen.queryByTestId("place-btn")).toBeNull();
+  });
 });
