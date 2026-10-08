@@ -25,10 +25,14 @@ export async function createRoomAsHost(page: Page): Promise<string> {
  */
 export async function closeContexts(contexts: BrowserContext[]) {
   let timer: ReturnType<typeof setTimeout> | undefined;
-  const closed = await Promise.race([
-    Promise.all(contexts.map((c) => c.close())).then(() => true),
-    new Promise<false>((resolve) => { timer = setTimeout(() => resolve(false), 10_000); }),
-  ]);
-  clearTimeout(timer);
-  if (!closed) console.warn(`closeContexts: ${contexts.length} context(s) did not close within 10s`);
+  try {
+    // allSettled: a close that rejects (fast, or after the timer won) must not fail a test whose assertions passed.
+    const closed = await Promise.race([
+      Promise.allSettled(contexts.map((c) => c.close())).then(() => true),
+      new Promise<false>((resolve) => { timer = setTimeout(() => resolve(false), 10_000); }),
+    ]);
+    if (!closed) console.warn(`closeContexts: ${contexts.length} context(s) did not close within 10s`);
+  } finally {
+    clearTimeout(timer);
+  }
 }

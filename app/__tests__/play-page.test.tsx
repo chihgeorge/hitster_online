@@ -211,6 +211,17 @@ describe("PlayPage: timeline placement double-submit guard", () => {
     expect(sendSpy.mock.calls.filter((c) => String(c[0]).includes('"type":"PLACE"'))).toHaveLength(2);
   });
 
+  // Real server order: the host reveals (STATE reveal is broadcast), then the late PLACE gets TOO_LATE.
+  it("shows 太晚了！ when TOO_LATE arrives after the reveal STATE", () => {
+    render(<PlayPage />);
+    serverSends({ type: "STATE", state: guessingState });
+    selectFirstDropZone();
+    act(() => { screen.getByTestId("place-btn").click(); });
+    serverSends({ type: "STATE", state: { ...guessingState, phase: "reveal" } });
+    serverSends({ type: "TOO_LATE" });
+    expect(screen.getByText("太晚了！")).toBeTruthy();
+  });
+
   it("re-enables placement once the server ack arrives, and can place again next round", () => {
     render(<PlayPage />);
     serverSends({ type: "STATE", state: guessingState });

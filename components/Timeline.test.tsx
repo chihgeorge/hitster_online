@@ -91,9 +91,11 @@ describe("Timeline: CTA bar feedback", () => {
     expect(screen.getByText("已放置 ✓ 等待主持人揭曉")).toBeTruthy();
   });
 
-  it("tells the player they were too late", () => {
-    render(<Timeline {...props} hasPlaced={false} tooLate />);
+  // The server only sends TOO_LATE after the phase has left guessing, and the reveal STATE arrives first.
+  it("tells the player they were too late, in the reveal state the server actually produces", () => {
+    render(<Timeline {...props} phase="reveal" hasPlaced={false} tooLate />);
     expect(screen.getByText("太晚了！")).toBeTruthy();
+    expect(screen.queryByTestId("place-btn")).toBeNull();
   });
 
   it("shows no bar when it is not the player's turn", () => {
@@ -115,10 +117,9 @@ describe("Timeline: CTA bar feedback", () => {
 
   // Value: protects=CTA bar (placed/too-late/place button) hides once phase leaves guessing;
   // fails_when=the bar gate drops its phase === "guessing" check; why_new=other CTA cases are all in guessing; seam=none
-  it("drops the bar once reveal starts, even if hasPlaced / tooLate are still set", () => {
-    render(<Timeline {...props} phase="reveal" hasPlaced tooLate />);
+  it("drops the placed bar once reveal starts", () => {
+    render(<Timeline {...props} phase="reveal" hasPlaced tooLate={false} />);
     expect(screen.queryByText("已放置 ✓ 等待主持人揭曉")).toBeNull();
-    expect(screen.queryByText("太晚了！")).toBeNull();
     expect(screen.queryByTestId("place-btn")).toBeNull();
   });
 });

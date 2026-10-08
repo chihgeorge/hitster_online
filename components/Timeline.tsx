@@ -145,8 +145,9 @@ export default function Timeline({
         </div>
       </div>
 
-      {/* CTA bar — stays up after placing so the placed / too-late states below can show */}
-      {phase === "guessing" && isMyTurn && (
+      {/* CTA bar — stays up after placing so the placed state shows. TOO_LATE only arrives after the
+          reveal STATE (the server sends it once phase has left guessing), so tooLate keeps it up too. */}
+      {isMyTurn && (phase === "guessing" || tooLate) && (
         <div style={{
           position: "fixed", bottom: 0, left: 0, right: 0, padding: "16px 16px 24px",
           background: "linear-gradient(to top, var(--bg) 70%, transparent)",
