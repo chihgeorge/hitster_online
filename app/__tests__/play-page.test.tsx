@@ -212,7 +212,7 @@ describe("PlayPage: timeline placement double-submit guard", () => {
   });
 
   // Real server order: the host reveals (STATE reveal is broadcast), then the late PLACE gets TOO_LATE.
-  it("shows 太晚了！ when TOO_LATE arrives after the reveal STATE", () => {
+  it("shows 太晚了！ when TOO_LATE arrives after the reveal STATE, and clears it next round", () => {
     render(<PlayPage />);
     serverSends({ type: "STATE", state: guessingState });
     selectFirstDropZone();
@@ -220,6 +220,11 @@ describe("PlayPage: timeline placement double-submit guard", () => {
     serverSends({ type: "STATE", state: { ...guessingState, phase: "reveal" } });
     serverSends({ type: "TOO_LATE" });
     expect(screen.getByText("太晚了！")).toBeTruthy();
+    // The next round clears it, and the player can place again.
+    serverSends({ type: "STATE", state: { ...guessingState, placements: {} } });
+    expect(screen.queryByText("太晚了！")).toBeNull();
+    selectFirstDropZone();
+    expect(screen.getByTestId("place-btn")).toBeTruthy();
   });
 
   it("re-enables placement once the server ack arrives, and can place again next round", () => {

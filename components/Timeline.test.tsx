@@ -86,11 +86,6 @@ describe("Timeline: guess marker", () => {
 describe("Timeline: CTA bar feedback", () => {
   const props = { ...baseProps, timeline: [card("a", 1990)], phase: "guessing" as const, selectedPosition: 1 };
 
-  it("tells the player the card is placed", () => {
-    render(<Timeline {...props} hasPlaced />);
-    expect(screen.getByText("已放置 ✓ 等待主持人揭曉")).toBeTruthy();
-  });
-
   // The server only sends TOO_LATE after the phase has left guessing, and the reveal STATE arrives first.
   it("tells the player they were too late, in the reveal state the server actually produces", () => {
     render(<Timeline {...props} phase="reveal" hasPlaced={false} tooLate />);
@@ -107,6 +102,7 @@ describe("Timeline: CTA bar feedback", () => {
   // why_new=the bar now stays up after placing, so only the ternary hides place-btn; seam=none
   it("hides the place button once placed or too late, and placed wins when both are set", () => {
     const { rerender } = render(<Timeline {...props} hasPlaced />);
+    expect(screen.getByText("已放置 ✓ 等待主持人揭曉")).toBeTruthy();
     expect(screen.queryByTestId("place-btn")).toBeNull();
     rerender(<Timeline {...props} hasPlaced={false} tooLate />);
     expect(screen.queryByTestId("place-btn")).toBeNull();
