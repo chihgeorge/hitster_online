@@ -145,8 +145,8 @@ export default function Timeline({
         </div>
       </div>
 
-      {/* CTA bar */}
-      {canPlace && (
+      {/* CTA bar — stays up after placing so the placed / too-late states below can show */}
+      {phase === "guessing" && isMyTurn && (
         <div style={{
           position: "fixed", bottom: 0, left: 0, right: 0, padding: "16px 16px 24px",
           background: "linear-gradient(to top, var(--bg) 70%, transparent)",

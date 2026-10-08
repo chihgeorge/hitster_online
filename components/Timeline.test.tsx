@@ -82,3 +82,22 @@ describe("Timeline: guess marker", () => {
     expect(screen.getByTestId("guess-marker")).toBeTruthy();
   });
 });
+
+describe("Timeline: CTA bar feedback", () => {
+  const props = { ...baseProps, timeline: [card("a", 1990)], phase: "guessing" as const, selectedPosition: 1 };
+
+  it("tells the player the card is placed", () => {
+    render(<Timeline {...props} hasPlaced />);
+    expect(screen.getByText("已放置 ✓ 等待主持人揭曉")).toBeTruthy();
+  });
+
+  it("tells the player they were too late", () => {
+    render(<Timeline {...props} hasPlaced={false} tooLate />);
+    expect(screen.getByText("太晚了！")).toBeTruthy();
+  });
+
+  it("shows no bar when it is not the player's turn", () => {
+    render(<Timeline {...props} isMyTurn={false} hasPlaced />);
+    expect(screen.queryByText("已放置 ✓ 等待主持人揭曉")).toBeNull();
+  });
+});
