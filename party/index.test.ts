@@ -265,6 +265,7 @@ describe("PLACE handler", () => {
     r.state.players[P1] = { name: "Alice", timeline: [], connected: true };
     r.state.phase = "guessing";
     r.state.activePlayerId = P1;
+    ((r as any).playerConnId)[P1] = "conn-1"; // as a JOIN on conn-1 would
     r.state.currentSong = {
       id: "v1", videoId: "v1", title: "Song", artist: "Artist", year: 1985,
     };
@@ -298,6 +299,7 @@ describe("PLACE handler", () => {
     r.state.players[P1] = { name: "Alice", timeline: [], connected: true };
     r.state.phase = "guessing";
     r.state.activePlayerId = P1;
+    ((r as any).playerConnId)[P1] = "conn-1"; // as a JOIN on conn-1 would
     r.state.currentSong = {
       id: "v1", videoId: "v1", title: "Song", artist: "Artist", year: 1985,
     };
@@ -326,6 +328,7 @@ describe("PLACE handler", () => {
     r.state.players[P1] = { name: "Alice", timeline: [{ id: "c1", videoId: "c1", title: "Old", artist: "A", year: 1990 }], connected: true };
     r.state.phase = "guessing";
     r.state.activePlayerId = P1;
+    ((r as any).playerConnId)[P1] = "conn-1"; // as a JOIN on conn-1 would
     r.state.currentSong = { id: "v1", videoId: "v1", title: "Song", artist: "Artist", year: 1985 };
 
     const conn = makeConn("conn-1");
@@ -347,6 +350,17 @@ describe("PLACE handler", () => {
     );
     const acks = sentMessages.filter((m: { type: string }) => m.type === "PLACEMENT_ACK");
     expect(acks).toHaveLength(2);
+  });
+
+  it("ignores a PLACE for the active player sent from another player's connection", async () => {
+    const r = roomInGuessing();
+    r.state.players[P2] = { name: "Bob", timeline: [], connected: true };
+    await send(r, makeConn("conn-1"), { type: "JOIN", playerId: P1, name: "Alice" });
+    const bob = makeConn("conn-2");
+    await send(r, bob, { type: "JOIN", playerId: P2, name: "Bob" });
+    await send(r, bob, { type: "PLACE", playerId: P1, position: 0 });
+    // A forged placement would lock the real player's picker (the phone trusts STATE.placements).
+    expect(r.state.placements[P1]).toBeUndefined();
   });
 
   it("rejects PLACE from a non-active player (spectator)", async () => {
@@ -864,6 +878,7 @@ describe("PLACE edge cases", () => {
     r.state.players[P2] = { name: "Bob", timeline: [], connected: true };
     r.state.phase = "guessing";
     r.state.activePlayerId = P1;
+    ((r as any).playerConnId)[P1] = "conn-1"; // as a JOIN on conn-1 would
     r.state.currentSong = {
       id: "v1", videoId: "v1", title: "Song", artist: "Artist", year: 1985,
     };

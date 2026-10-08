@@ -484,6 +484,7 @@ export default class HitsterRoom implements Party.Server {
     }
     if (playerId !== this.state.activePlayerId) return;
     if (!this.state.players[playerId]) return;
+    if (this.playerConnId[playerId] !== conn.id) return; // see handleSubmitLyricsAnswer: no placing for someone else
 
     // Validate position is a non-negative integer within range of the player's timeline
     const player = this.state.players[playerId];
