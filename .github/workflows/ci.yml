@@ -1,0 +1,31 @@
+name: CI
+
+# No API keys needed: unit tests mock YouTube/Anthropic and the build falls back to localhost PartyKit.
+# E2E (npm run test:e2e) is not run here; it needs the PartyKit dev server.
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  check:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npx tsc --noEmit
+      - run: npx eslint
+      - run: npm test
+      - run: npm run build
