@@ -35,7 +35,7 @@
     "concurrently": "^9.2.1",
     "eslint": "^9",
     "eslint-config-next": "^16.4.3",
-    "happy-dom": "^20.9.0",
+    "happy-dom": "^21.0.4",
     "tailwindcss": "^4",
     "typescript": "^5",
     "vitest": "^4.1.11"
