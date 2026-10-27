@@ -9,9 +9,9 @@ updates:
       minor-and-patch:
         update-types: ["minor", "patch"]
     ignore:
-      # Staying off TypeScript 7.
+      # typescript-eslint (via eslint-config-next) supports typescript <6.1.0; widen once it does.
       - dependency-name: "typescript"
-        versions: [">=7"]
+        versions: [">=6.1"]
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
