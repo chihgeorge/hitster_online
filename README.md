@@ -59,7 +59,7 @@ Checks that need a real TV and phones (in-app browsers, video sharpness, live ly
 
 Deployed to Vercel (Next.js) + a Cloudflare Worker (`npx wrangler deploy`). The hosted PartyKit platform shut down on 2026-10-23, so `party/server.ts` runs the parties (`main` room server, `playlist`, `library`, `paid`) as PartyServer Durable Objects, declared in `wrangler.jsonc`. Set the server keys with `npx wrangler secret put YOUTUBE_API_KEY` and `npx wrangler secret put ANTHROPIC_API_KEY`, then point Vercel's `NEXT_PUBLIC_PARTYKIT_HOST` at the worker's host and redeploy.
 
-Paid YouTube and Anthropic work (loading a YouTube playlist, starting a Lyrics game, creating a saved playlist from a link, AI edits) shares one daily limit across every room, held by the `paid` party: 300 per UTC day by default. Change it with the `PAID_DAILY_CAP` var, e.g. `npx wrangler deploy --var PAID_DAILY_CAP:500`; `0` turns paid work off. Past the limit the host sees "今天的使用額度已用完 · Today's limit is used up".
+Paid YouTube and Anthropic work (loading a YouTube playlist, starting a Lyrics game, creating a saved playlist from a link, AI edits) shares one daily limit across every room, held by the `paid` party: 300 per UTC day by default. Change it with `npx wrangler secret put PAID_DAILY_CAP` (a secret, not `deploy --var`, so the next deploy doesn't reset it); `0` turns paid work off. Past the limit the host sees "今天的使用額度已用完 · Today's limit is used up".
 
 ---
 

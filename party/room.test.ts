@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
-import { makeRoom, PARTY_BINDINGS } from "./room";
+import { makeRoom, paidGate, PARTY_BINDINGS } from "./room";
 
 function setup() {
   const stubFetch = vi.fn((_req: Request) => Promise.resolve(new Response("ok")));
@@ -41,5 +41,16 @@ describe("makeRoom (PartyServer → party Room)", () => {
     expect(room.storage).toBe(storage);
     room.broadcast("hi", ["c1"]);
     expect(server.broadcast).toHaveBeenCalledWith("hi", ["c1"]);
+  });
+});
+
+describe("paidGate (worker onBeforeRequest/onBeforeConnect)", () => {
+  // Value: protects=nobody outside the server can spend the daily budget or write the AI cache; fails_when=the gate stops matching the Paid binding or starts blocking another party; why_new=the edge gate moved from PartyKit's static hooks to the worker, and an e2e HTTP 404 can't tell it from PaidParty's own token check; seam=none; no_claim=routePartykitRequest calling the hook (e2e/paid-gate.spec.ts WebSocket half)
+  it("404s the paid party and lets every other party through", () => {
+    const req = new Request("https://x/parties/paid/global/budget", { method: "POST" });
+    expect((paidGate(req, { className: PARTY_BINDINGS.paid }) as Response).status).toBe(404);
+    for (const className of [PARTY_BINDINGS.main, PARTY_BINDINGS.playlist, PARTY_BINDINGS.library]) {
+      expect(paidGate(req, { className })).toBeUndefined();
+    }
   });
 });

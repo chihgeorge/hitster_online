@@ -1153,7 +1153,7 @@ function errorInfo(code: string): { message: string; detail?: string; hint?: str
   if (code === "api_key_missing") return {
     message: "API key not configured",
     detail: "The server is missing YOUTUBE_API_KEY.",
-    hint: "Check that the environment variables are set in the PartyKit deployment.",
+    hint: "Check that YOUTUBE_API_KEY is set on the game server (npx wrangler secret put).",
   };
   if (code === "playlist_forbidden") return {
     message: "Playlist access denied (403)",

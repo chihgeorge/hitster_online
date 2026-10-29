@@ -1,8 +1,13 @@
+import { err } from "./http";
 import type { Room, Storage } from "./types";
 
 // Durable Object bindings the parties call each other through, keyed by URL party name.
 // Kept free of `cloudflare:workers` imports so vitest can test it.
 export const PARTY_BINDINGS = { main: "Main", playlist: "Playlist", library: "Library", paid: "Paid" } as const;
+
+/** The worker's onBefore hook: paid is only for the server's own calls (below), so public traffic gets a 404. */
+export const paidGate = (_req: Request, lobby: { className: string }) =>
+  lobby.className === PARTY_BINDINGS.paid ? err("Not found", 404) : undefined;
 
 interface Namespace {
   getByName(name: string): { fetch(req: Request): Promise<Response> };

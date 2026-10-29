@@ -251,12 +251,7 @@ describe("parseTrackMetas / storageBatchGet", () => {
 });
 
 describe("resolveEnv", () => {
-  it("prefers the pkvar- prefixed var over a plain one", () => {
-    const keys = resolveEnv({ "pkvar-YOUTUBE_API_KEY": "pk-key", YOUTUBE_API_KEY: "plain-key" });
-    expect(keys.youtubeKey).toBe("pk-key");
-  });
-
-  it("falls back to the plain env var when no pkvar- variant is set", () => {
+  it("reads the key from the Worker's env", () => {
     const keys = resolveEnv({ ANTHROPIC_API_KEY: "plain-anthropic" });
     expect(keys.anthropicKey).toBe("plain-anthropic");
   });

@@ -143,7 +143,7 @@ _Deferred from /qa on feat/lyrics-api 2026-09-17_
 
 **Why:** Accepted trade-off of a global cap: a per-room cap doesn't help because rooms are free to create. The `paid_budget_exhausted` warning in the worker logs (`npx wrangler tail`) shows when it happens.
 
-**Context:** /ship security review 2026-10-03 (D3). Real fixes need an identity to rate-limit on (sign-in, a per-IP limit at the edge, or a host token). If it happens, raise `PAID_DAILY_CAP` for the day with `npx partykit deploy --var PAID_DAILY_CAP=…`.
+**Context:** /ship security review 2026-10-03 (D3). Real fixes need an identity to rate-limit on (sign-in, a per-IP limit at the edge, or a host token). If it happens, raise `PAID_DAILY_CAP` for the day with `npx wrangler secret put PAID_DAILY_CAP` (and `npx wrangler secret delete PAID_DAILY_CAP` to go back to 300).
 
 **Effort:** M
 **Priority:** P3

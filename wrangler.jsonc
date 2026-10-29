@@ -1,7 +1,7 @@
 // Game server: party/server.ts runs each party in a Durable Object (PartyServer).
 // Local: `npm run dev:party` (wrangler dev on :1999). Deploy: `npx wrangler deploy`.
 // Secrets (never in this file): `npx wrangler secret put YOUTUBE_API_KEY` / `ANTHROPIC_API_KEY`;
-// locally they come from a gitignored .dev.vars. Optional var: PAID_DAILY_CAP (see party/paid.ts).
+// locally they come from a gitignored .dev.vars. Optional: PAID_DAILY_CAP, also as a secret so a deploy keeps it (party/paid.ts).
 {
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "hitster-online",

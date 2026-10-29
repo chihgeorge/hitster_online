@@ -18,4 +18,4 @@ Needs: a TV with a browser (or a laptop on HDMI), 2+ phones, a Lyrics playlist, 
 ## During the game
 
 5. **Note every Guess answer that felt wrongly graded.** Write the answer typed, the real title or artist, and whether it was marked right or wrong. Two or three examples are enough. → TODOS "Guess grading tuning after playtest"
-6. **If the game freezes or everyone drops,** reload the host page first. If the room is gone, that's the known in-memory room-state limit. Note the time so it can be matched against PartyKit logs. → TODOS "Room state is in memory only"
+6. **If the game freezes or everyone drops,** reload the host page first. If the room is gone, that's the known in-memory room-state limit. Note the time so it can be matched against the worker logs (`npx wrangler tail`). → TODOS "Room state is in memory only"
