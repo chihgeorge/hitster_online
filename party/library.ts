@@ -11,8 +11,6 @@
 // Written to by party/playlist.ts's own POST/DELETE handlers via room.context.parties
 // (decision D2a) — never by the client directly calling UPSERT/REMOVE, so a playlist and
 // its library entry can't drift out of sync from a client that only calls one of the two.
-// The one exception is IMPORT, used once by the client-side migration (decision D2b) to
-// backfill entries for playlists that predate this DO and only ever lived in localStorage.
 
 import type * as Party from "./types";
 import { sanitizeText } from "../lib/utils";
@@ -65,7 +63,7 @@ export default class LibraryParty {
       return err("Invalid JSON");
     }
 
-    // PUT /parties/library/:hostId — UPSERT one entry, REMOVE one, or IMPORT many
+    // PUT /parties/library/:hostId — UPSERT one entry or REMOVE one
     if (method === "PUT") {
       const action = body.action;
       const entries = (await this.room.storage.get<Record<string, LibraryEntry>>("entries")) ?? {};
@@ -92,24 +90,6 @@ export default class LibraryParty {
         delete entries[id];
         await this.room.storage.put("entries", entries);
         return json({ ok: true });
-      }
-
-      // IMPORT: one-time client-side migration (D2b) — idempotent bulk upsert, skips
-      // anything already present so re-running it (e.g. two tabs) is harmless.
-      if (action === "IMPORT") {
-        const { entries: imported } = body as { entries?: unknown };
-        if (!Array.isArray(imported)) return err("entries must be an array");
-        let added = 0;
-        for (const raw of imported) {
-          if (!validEntry(raw)) continue;
-          const e = raw as LibraryEntry;
-          if (entries[e.id]) continue; // already present — never overwrite a live entry
-          if (Object.keys(entries).length >= MAX_ENTRIES) break;
-          entries[e.id] = { id: e.id, name: sanitizeText(e.name, MAX_NAME_LEN), songCount: e.songCount };
-          added++;
-        }
-        await this.room.storage.put("entries", entries);
-        return json({ ok: true, added });
       }
 
       return err(`Unknown action ${String(action)}`);

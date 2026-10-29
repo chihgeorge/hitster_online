@@ -93,13 +93,9 @@ _Deferred from /qa on feat/lyrics-api 2026-09-17_
 
 ### Saved playlists lost in the PartyKit shutdown come back as rows that can't be opened or deleted
 
-**What:** Hosts who saved playlists before 2026-10-23 still have their ids in browser localStorage (`hitster_playlists`). `importLocalPlaylistsToLibrary` re-adds them to the new, empty library on every page load. Opening one shows `saved_playlist_not_found`; deleting it gets a 403, because `party/playlist.ts`'s DELETE compares the caller with a stored owner that no longer exists.
+**What:** Hosts who saved playlists before 2026-10-23 still had their ids in browser localStorage (`hitster_playlists`), and the v0.12.1.0 import re-added them to the new, empty library on every page load. Opening one showed `saved_playlist_not_found`; deleting it got a 403, because `party/playlist.ts`'s DELETE compares the caller with a stored owner that no longer exists.
 
-**Why:** The hosted PartyKit platform deleted all room data when it shut down, so these rows can never load. Returning hosts see a list of dead playlists and think the new server is broken.
-
-**Context:** Start in `lib/playlist-library-migration.ts` (the import) and `party/playlist.ts` DELETE. Likely fix: when GET on a library row returns 404, drop it from the library and from localStorage. Found by /plan-eng-review of the PartyServer migration, 2026-10-28 (D4).
-
-**Effort:** S
+**Completed:** v0.15.0.0 (2026-10-28). The import (`lib/playlist-library-migration.ts`) and the library's `IMPORT` action are gone, so the new library starts empty and only lists playlists that exist. Found by the Codex adversarial pass during /ship.
 **Priority:** P2
 **Depends on:** None
 

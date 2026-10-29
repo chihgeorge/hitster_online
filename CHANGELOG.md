@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.15.0.0] — 2026-10-28
+
+### Changed
+- **The game server runs on our own Cloudflare account:** the hosted PartyKit service shut down on 2026-10-23 and deleted every project, so rooms, saved playlists and YouTube playlist loading stopped working. The same server now runs as a Cloudflare Worker (PartyServer), with the same `/party/<room>` and `/parties/<name>/<id>` addresses, and the YouTube and AI keys are Cloudflare secrets. Playlists saved before the shutdown are gone with the old service and have to be saved again
+- **Local development uses `npm run dev:party` (wrangler dev) instead of the PartyKit CLI**, with keys in the gitignored `.dev.vars`. `PAID_DAILY_CAP` is now set with `npx wrangler secret put`
+
+### Fixed
+- **A phone that reconnects keeps getting game updates:** after a Wi-Fi drop or screen lock, the old connection closing late could cut the reconnected phone off from every room update, so it froze on an old screen. It now stays in the room
+- **Old saved playlists no longer come back as rows you can't open or delete:** the library used to re-add playlists from the browser's own list on every visit. Those playlists were deleted with the old service, so the import is gone and the library only shows playlists that exist
+- **A server error on a playlist or library request returns a plain error** instead of a stack trace, and an unknown address returns a clean 404
+
 ## [0.14.20.0] — 2026-10-03
 
 ### Fixed
