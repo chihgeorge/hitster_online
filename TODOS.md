@@ -89,6 +89,32 @@ _Deferred from /qa on feat/lyrics-api 2026-09-17_
 **Priority:** P3
 **Depends on:** None
 
+## Timeline Mode
+
+### A REJOIN can take over another player's seat
+
+**What:** Require a per-player secret on REJOIN, handed out on JOIN.
+
+**Why:** Player ids are the keys of `state.players` in every STATE, so any connection can send `REJOIN {playerId: someone else}`, take that player's binding (`playerConnId`) and then place on their turn. v0.14.21.0 stopped a connection placing for a player it isn't bound to, but not this rebinding.
+
+**Context:** `handleRejoin` in `party/index.ts` rebinds without proof. Issue a random secret on JOIN, keep it with the persisted player id on the phone, and refuse a REJOIN without it. Lyrics and Guess answers rely on the same binding. _From /ship adversarial review on fix/timeline-cta-feedback, 2026-10-28; existed before that branch._
+
+**Priority:** P2
+
+**Depends on:** None
+
+### Screen readers may not announce the Timeline bar's 送出中… / ✓ / 太晚了！
+
+**What:** Keep one `role="status"` node mounted in the Timeline CTA bar and change only its text.
+
+**Why:** Each state mounts a new `role="status"` element with its text already inside, and screen readers often don't announce a live region that appears together with its content.
+
+**Context:** `components/Timeline.tsx` CTA bar (the three status boxes). Mount the wrapper while `isMyTurn`, then swap the contents. _From /ship review on fix/timeline-cta-feedback, 2026-10-28._
+
+**Priority:** P3
+
+**Depends on:** None
+
 ## Playlists & Library
 
 ## Infrastructure

@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.14.21.0] — 2026-10-28
+
+### Fixed
+- **The player whose turn it is can see whether their card went in:** after tapping 確認放置 the Timeline bar says 送出中… until the server confirms, then 已放置 ✓ 等待主持人揭曉. A tap that arrives after the host reveals shows 太晚了！ instead of quietly doing nothing. The ✓ only appears once the server has the placement, and a lost confirmation or a reload mid-turn still shows it, so the bar can't get stuck on 送出中…
+- **A phone that drops its connection mid-tap keeps its turn:** a tap sent while offline is sent again after the phone reconnects, and it still counts. If the TV skipped the song in the meantime, that old tap is refused instead of becoming the guess for a song the player never heard, and the picker opens again for the new song
+- **Opening the game in a second tab doesn't lock you out:** placing from the tab you're using now works even if an older tab of the same player reconnected later
+- **Only your own phone can place your card:** another player's connection can no longer place on your turn
+- **No false 太晚了！:** a tap that counted no longer shows "too late" when its confirmation was lost and the phone reconnected after the reveal
+- **Starting the game the moment a playlist finishes loading uses that playlist**, not the one loaded before it
+
 ## [0.14.20.0] — 2026-10-03
 
 ### Fixed
