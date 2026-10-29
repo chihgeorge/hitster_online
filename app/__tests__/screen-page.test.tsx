@@ -54,7 +54,7 @@ const P2 = "22222222-2222-4222-8222-222222222222";
 
 const lobbyState: GameState = {
   phase: "lobby", players: {}, targetCardCount: 10, currentRound: 0, playlistId: "", songs: [],
-  currentSong: null, placements: {}, activePlayerId: null, hostId: "", hostClaimed: false, winner: null,
+  currentSong: null, dealSeq: 0, placements: {}, activePlayerId: null, hostId: "", hostClaimed: false, winner: null,
 };
 
 const guessingState: GameState = {

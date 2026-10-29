@@ -203,6 +203,7 @@ export default class HitsterRoom implements Party.Server {
       playlistId: "",
       songs: [],
       currentSong: null,
+      dealSeq: 0,
       placements: {},
       activePlayerId: null,
       hostId: "",
@@ -326,7 +327,7 @@ export default class HitsterRoom implements Party.Server {
         this.handleRejoin(sender, msg.playerId, msg.name);
         break;
       case "PLACE":
-        this.handlePlace(sender, msg.playerId, msg.position);
+        this.handlePlace(sender, msg.playerId, msg.position, msg.dealSeq);
         break;
       case "LOAD_PLAYLIST":
         await this.handleLoadPlaylist(sender, msg.hostId, msg.playlistUrl, msg.gameMode);
@@ -476,7 +477,7 @@ export default class HitsterRoom implements Party.Server {
     this.syncTimedRoundPlayer(playerId);
   }
 
-  private handlePlace(conn: Party.Connection, playerId: string, position: number) {
+  private handlePlace(conn: Party.Connection, playerId: string, position: number, dealSeq?: number) {
     if (!isValidPlayerId(playerId)) return;
     if (this.state.phase !== "guessing") {
       this.sendTo(conn, { type: "TOO_LATE" });
@@ -489,6 +490,12 @@ export default class HitsterRoom implements Party.Server {
     // ERROR unlocks that phone's picker.
     if (this.playerConnId[playerId] !== conn.id) {
       this.sendTo(conn, { type: "ERROR", error: "not_bound" });
+      return;
+    }
+    // A skip deals a new song without a new round: a PLACE tapped for the skipped one (re-sent on
+    // reconnect, or crossing the skip) must not become this song's guess.
+    if (dealSeq !== undefined && dealSeq !== this.state.dealSeq) {
+      this.sendTo(conn, { type: "ERROR", error: "stale_song" });
       return;
     }
 
@@ -1104,6 +1111,7 @@ export default class HitsterRoom implements Party.Server {
     const songIdx = preferredIdx !== -1 ? preferredIdx : 0;
     const [nextSong] = this.state.songs.splice(songIdx, 1);
     this.state.currentSong = nextSong;
+    this.state.dealSeq += 1;
     this.state.placements = {};
     this.state.phase = "guessing";
   }
@@ -1653,7 +1661,11 @@ export default class HitsterRoom implements Party.Server {
     }
     // Keep the same players but reset game state to lobby
     const players = this.state.players;
+    const { dealSeq } = this.state;
     this.state = this.emptyState();
+    // Never reuse a deal number in this room: a phone offline since the last game could re-send a
+    // PLACE whose dealSeq a new game reaches again.
+    this.state.dealSeq = dealSeq;
     this.lastDiagnostic = null; // the finished game's song list must not reach a host tab opened now
     this.state.hostId = hostId;
     // Reconnect all previously joined players (clear their timelines)

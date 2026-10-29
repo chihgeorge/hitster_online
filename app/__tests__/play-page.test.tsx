@@ -23,7 +23,7 @@ const PLAYER = "11111111-1111-4111-8111-111111111111";
 
 const lobbyState: GameState = {
   phase: "lobby", players: {}, targetCardCount: 10, currentRound: 0, playlistId: "", songs: [],
-  currentSong: null, placements: {}, activePlayerId: null, hostId: "", hostClaimed: false, winner: null,
+  currentSong: null, dealSeq: 0, placements: {}, activePlayerId: null, hostId: "", hostClaimed: false, winner: null,
 };
 
 function lyricsState(over: Partial<PublicLyricsGameState> = {}): PublicLyricsGameState {
@@ -178,7 +178,9 @@ describe("PlayPage: timeline placement double-submit guard", () => {
     ...lobbyState,
     phase: "guessing",
     activePlayerId: PLAYER,
-    currentSong: { id: "s1", videoId: "s1", title: "Song", artist: "Artist", year: 2000 },
+    // Blanked id/title/artist/videoId as sanitizedState sends a phone during guessing.
+    currentSong: { id: "", videoId: "", title: "", artist: "", year: 0 },
+    dealSeq: 1,
     players: { [PLAYER]: { name: "QA", timeline: [{ id: "c1", videoId: "c1", title: "Old", artist: "A", year: 1990 }], connected: true } },
   };
 
@@ -229,6 +231,20 @@ describe("PlayPage: timeline placement double-submit guard", () => {
     // one (not yet bound), so the PLACE must follow the REJOIN.
     expect(types).toEqual(["REJOIN", "PLACE"]);
     expect(screen.getByText("送出中…")).toBeTruthy();
+  });
+
+  // Value: protects=a reconnect after an acked placement doesn't re-place; fails_when=the onOpen re-send drops its
+  // pendingPlace check (a reconnect after the reveal would re-send and draw a false 太晚了！); why_new=only the
+  // pending case was tested; seam=none; no_claim=server handling of a repeat PLACE
+  it("does not re-send PLACE on reconnect once the placement was acked", () => {
+    render(<PlayPage />);
+    serverSends({ type: "STATE", state: guessingState });
+    selectFirstDropZone();
+    act(() => { screen.getByTestId("place-btn").click(); });
+    serverSends({ type: "PLACEMENT_ACK", playerId: PLAYER });
+    sendSpy.mockClear();
+    act(() => { socketOpts.onOpen?.(); });
+    expect(sendSpy.mock.calls.map(([m]) => JSON.parse(m as string).type)).toEqual(["REJOIN"]);
   });
 
   it("a PLACE that beat its REJOIN is refused, then the re-sent one lands", () => {
@@ -305,6 +321,55 @@ describe("PlayPage: timeline placement double-submit guard", () => {
     expect(screen.queryByText("太晚了！")).toBeNull();
     selectFirstDropZone();
     expect(screen.getByTestId("place-btn")).toBeTruthy();
+  });
+
+  // Value: protects=a skip the phone missed offline can't turn its old tap into the new song's guess; fails_when=the
+  // reset stops watching dealSeq, or PLACE stops carrying it; why_new=the skip test only covers a phone that
+  // got ROUND_SKIPPED; seam=none; no_claim=server refusal (party/index.test.ts stale_song)
+  it("a skip missed offline reopens the picker, and the re-sent PLACE names the skipped deal", () => {
+    render(<PlayPage />);
+    serverSends({ type: "STATE", state: guessingState });
+    selectFirstDropZone();
+    act(() => { screen.getByTestId("place-btn").click(); });
+    const places = () => sendSpy.mock.calls.map(([m]) => JSON.parse(m as string)).filter((m) => m.type === "PLACE");
+    act(() => { socketOpts.onOpen?.(); });
+    expect(places().map((m) => m.dealSeq)).toEqual([1, 1]);
+    // No ROUND_SKIPPED reached this phone: only the next deal's STATE, same round and phase, and the
+    // song blanked exactly as before, so dealSeq is the only thing that changed.
+    serverSends({ type: "STATE", state: { ...guessingState, dealSeq: 2 } });
+    expect(screen.queryByText("送出中…")).toBeNull();
+    expect(screen.getAllByText("+").length).toBeGreaterThan(0);
+  });
+
+  // Value: protects=a player whose other tab took the binding can still place from this one; fails_when=the ERROR
+  // handler drops the not_bound rebind (every tap is refused, silently); why_new=not_bound was only tested on
+  // reconnect; seam=none; no_claim=server rebinding on REJOIN (party/index.test.ts)
+  it("not_bound takes the binding back once and re-sends the tap; a second refusal unlocks the picker", () => {
+    render(<PlayPage />);
+    serverSends({ type: "STATE", state: guessingState });
+    selectFirstDropZone();
+    act(() => { screen.getByTestId("place-btn").click(); });
+    sendSpy.mockClear();
+    serverSends({ type: "ERROR", error: "not_bound" });
+    expect(sendSpy.mock.calls.map(([m]) => JSON.parse(m as string).type)).toEqual(["REJOIN", "PLACE"]);
+    expect(screen.getByText("送出中…")).toBeTruthy();
+    serverSends({ type: "ERROR", error: "not_bound" });
+    expect(screen.queryByText("送出中…")).toBeNull();
+    expect(sendSpy.mock.calls).toHaveLength(2);
+  });
+
+  // Value: protects=no 太晚了！ for a placement that counted; fails_when=tooLate ignores STATE.placements (a re-sent
+  // PLACE after a lost ack draws TOO_LATE in the reveal); why_new=TOO_LATE was only tested with no placement;
+  // seam=none; no_claim=none beyond protects
+  it("a TOO_LATE for a re-sent PLACE whose first copy counted shows no 太晚了！", () => {
+    render(<PlayPage />);
+    serverSends({ type: "STATE", state: guessingState });
+    selectFirstDropZone();
+    act(() => { screen.getByTestId("place-btn").click(); });
+    // The ack was lost; the reveal STATE still lists the placement, then the re-send gets TOO_LATE.
+    serverSends({ type: "STATE", state: { ...guessingState, phase: "reveal", placements: { [PLAYER]: 0 } } });
+    serverSends({ type: "TOO_LATE" });
+    expect(screen.queryByText("太晚了！")).toBeNull();
   });
 
   it("re-enables placement once the server ack arrives, and can place again next round", () => {

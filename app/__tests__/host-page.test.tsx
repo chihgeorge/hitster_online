@@ -33,7 +33,7 @@ function clickStartGame() {
 
 const lobbyStateWithPlayer: GameState = {
   phase: "lobby", players: { p1: { name: "Alice", timeline: [], connected: true } },
-  targetCardCount: 10, currentRound: 0, playlistId: "", songs: [], currentSong: null,
+  targetCardCount: 10, currentRound: 0, playlistId: "", songs: [], currentSong: null, dealSeq: 0,
   placements: {}, activePlayerId: null, hostId: "host-uuid", hostClaimed: true, winner: null,
 };
 

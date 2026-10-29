@@ -45,6 +45,11 @@ export default function PlayPage() {
   const [tooLate, setTooLate] = useState(false);
   const [showCodeWarning, setShowCodeWarning] = useState(false);
   const playerIdRef = useRef<string>("");
+  // The deal (STATE.dealSeq) the pending PLACE is for, sent with it and with any re-send, so the
+  // server can refuse it once a skip has dealt a different song.
+  const placeDealRef = useRef<number | undefined>(undefined);
+  // One REJOIN + re-send per tap after not_bound (another tab of this player took the binding).
+  const rebindTriedRef = useRef(false);
 
   useEffect(() => {
     playerIdRef.current = getOrCreatePersistedId("hitster_player_id");
@@ -60,7 +65,9 @@ export default function PlayPage() {
       setSelectedPosition(null);
     }
     // currentRound too: a phone that slept through the reveal reconnects guessing → guessing.
-  }, [state?.phase, state?.currentRound]);
+    // dealSeq too: a skip deals a new song in the same round, and an offline phone misses
+    // ROUND_SKIPPED. (Not currentSong.id: STATE blanks it during guessing.)
+  }, [state?.phase, state?.currentRound, state?.dealSeq]);
 
   // Reset lyrics answer state on each new round
   useEffect(() => {
@@ -92,9 +99,11 @@ export default function PlayPage() {
       }
       // partysocket flushes queued sends before onopen, so a PLACE tapped while offline reached the
       // server ahead of the REJOIN and was refused (not_bound). Send it again now that we're bound;
-      // PLACE overwrites, so a repeat is harmless.
+      // PLACE overwrites, so a repeat is harmless; dealSeq makes the server refuse it after a skip.
       if (pendingPlace && selectedPosition !== null) {
-        send({ type: "PLACE", playerId: playerIdRef.current, position: selectedPosition });
+        // This re-send already follows a REJOIN: the flushed copy's not_bound needs no second one.
+        rebindTriedRef.current = true;
+        send({ type: "PLACE", playerId: playerIdRef.current, position: selectedPosition, dealSeq: placeDealRef.current });
       }
     },
     onMessage(event: MessageEvent) {
@@ -144,6 +153,14 @@ export default function PlayPage() {
           setPendingPlace(false);
           break;
         case "ERROR":
+          // not_bound: another tab of this player took the binding. Take it back once and re-send
+          // the tap; the tab the player is actually using wins.
+          if (msg.error === "not_bound" && pendingPlace && selectedPosition !== null && !rebindTriedRef.current) {
+            rebindTriedRef.current = true;
+            send({ type: "REJOIN", playerId: playerIdRef.current, name: playerName });
+            send({ type: "PLACE", playerId: playerIdRef.current, position: selectedPosition, dealSeq: placeDealRef.current });
+            break;
+          }
           setPendingPlace(false);
           break;
       }
@@ -157,7 +174,9 @@ export default function PlayPage() {
   function handlePlace() {
     if (selectedPosition === null || pendingPlace) return;
     setPendingPlace(true);
-    send({ type: "PLACE", playerId: playerIdRef.current, position: selectedPosition });
+    placeDealRef.current = state?.dealSeq;
+    rebindTriedRef.current = false;
+    send({ type: "PLACE", playerId: playerIdRef.current, position: selectedPosition, dealSeq: placeDealRef.current });
   }
 
   function handleSubmitLyricsAnswer() {
@@ -537,7 +556,9 @@ export default function PlayPage() {
         onPlace={handlePlace}
         hasPlaced={hasPlaced || placedOnServer}
         pending={pendingPlace}
-        tooLate={tooLate}
+        // A re-sent PLACE whose first copy counted (ack lost) gets TOO_LATE in the reveal: the
+        // server still lists the placement, so it wasn't too late.
+        tooLate={tooLate && state?.placements[playerIdRef.current] === undefined}
       />
     </main>
   );
