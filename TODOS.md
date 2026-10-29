@@ -91,13 +91,25 @@ _Deferred from /qa on feat/lyrics-api 2026-09-17_
 
 ## Playlists & Library
 
+### Saved playlists lost in the PartyKit shutdown come back as rows that can't be opened or deleted
+
+**What:** Hosts who saved playlists before 2026-10-23 still have their ids in browser localStorage (`hitster_playlists`). `importLocalPlaylistsToLibrary` re-adds them to the new, empty library on every page load. Opening one shows `saved_playlist_not_found`; deleting it gets a 403, because `party/playlist.ts`'s DELETE compares the caller with a stored owner that no longer exists.
+
+**Why:** The hosted PartyKit platform deleted all room data when it shut down, so these rows can never load. Returning hosts see a list of dead playlists and think the new server is broken.
+
+**Context:** Start in `lib/playlist-library-migration.ts` (the import) and `party/playlist.ts` DELETE. Likely fix: when GET on a library row returns 404, drop it from the library and from localStorage. Found by /plan-eng-review of the PartyServer migration, 2026-10-28 (D4).
+
+**Effort:** S
+**Priority:** P2
+**Depends on:** None
+
 ## Infrastructure
 
-### Room state is in memory only: a PartyKit reload or eviction wipes the game and leaves host/player pages stale
+### Room state is in memory only: a Durable Object restart or eviction wipes the game and leaves host/player pages stale
 
-**What:** Room state is in memory only: a PartyKit reload or eviction wipes the game and leaves host/player pages stale.
+**What:** Room state is in memory only: a Durable Object restart or eviction wipes the game and leaves host/player pages stale.
 
-**Why:** A PartyKit restart silently wipes the running game.
+**Why:** A Durable Object restart silently wipes the running game.
 
 **Context:** Persist minimal game state to `room.storage` or detect a fresh server and reset clients. Found by /qa on 2026-09-21.
 
@@ -105,26 +117,13 @@ _Deferred from /qa on feat/lyrics-api 2026-09-17_
 **Priority:** P3
 **Depends on:** None
 
-### `npm audit` reports 4 remaining advisories (1 high, 3 moderate), all inside `partykit`'s local dev server
-
-**What:** `npm audit` still reports 4 advisories, all inside `partykit`'s local dev server: esbuild 0.21.5, and undici 5.29.0 via miniflare 3.
-
-**Why:** Keep the advisory count honest. These packages only run during `npx partykit dev` on a developer's machine; they are not deployed.
-
-**Context:** v0.14.14.0 fixed the other 13 by updating packages within their existing version ranges (vite, vitest 4.1.11, concurrently/shell-quote, js-yaml, brace-expansion, browserslist, @babel/core). `partykit@0.0.115` is the latest release and pins these two. npm's suggested fix (`partykit@0.0.0`) is a downgrade, not a fix. Forcing undici 6.28+ into miniflare 3 through `overrides` could break the local simulator, so revisit this when partykit ships a release on newer miniflare. Note: npm 10.9.7 crashes on `npm audit fix` in this repo (`Cannot read properties of null (reading 'edgesOut')`), so v0.14.14.0 used `npx npm@11 update …` instead.
-_Surfaced by ad-hoc audit, 2026-09-23; narrowed 2026-09-29_
-
-**Effort:** S
-**Priority:** P3
-**Depends on:** A partykit release
-
 ### Paid-API budget follow-ups (deferred from the v0.14.20.0 /ship)
 
 **What:** Eight small follow-ups to the daily paid-API budget in `party/paid.ts`, found in the last review passes and deferred so the fix could ship:
 1. Cap each song's strings (title, artist, lyric fields) in PROPOSE_EDITS / PROPOSE_LYRIC_EDITS (e.g. `sanitizeText(…, 200)`), so one budget unit can't carry a huge prompt.
 2. `maxLength={1000}` on the AI-instruction inputs in `components/PlaylistEditor.tsx` and `components/SongItemEditor.tsx`, matching `MAX_INSTRUCTION`.
 3. A too-long instruction gets "instruction required" (playlist party) or the generic retry line (room): give it its own message.
-4. Accept a numeric `PAID_DAILY_CAP` (from `partykit.json` vars), not only a string.
+4. Accept a numeric `PAID_DAILY_CAP` (from `wrangler.jsonc` vars), not only a string.
 5. A superseded LOAD_PLAYLIST, or a Lyrics start reset during the budget call, still spends a unit: check before spending where possible.
 6. After the shared cache was briefly down, answers written to the room's own storage are never read again: on a shared miss, also check room storage.
 7. Move `MAX_SONGS` / `MAX_INSTRUCTION` from `party/playlist.ts` to `lib/` so the room party doesn't import the playlist party.
@@ -142,7 +141,7 @@ _Surfaced by ad-hoc audit, 2026-09-23; narrowed 2026-09-29_
 
 **What:** The paid-API budget is a single global counter. Anyone can spend it (about 300 cheap LOAD_PLAYLIST messages or playlist-party RESOLVE_FROM_URL calls), after which no room can load a new YouTube playlist or start Lyrics until midnight UTC.
 
-**Why:** Accepted trade-off of a global cap: a per-room cap doesn't help because rooms are free to create. The `paid_budget_exhausted` warning in the PartyKit logs shows when it happens.
+**Why:** Accepted trade-off of a global cap: a per-room cap doesn't help because rooms are free to create. The `paid_budget_exhausted` warning in the worker logs (`npx wrangler tail`) shows when it happens.
 
 **Context:** /ship security review 2026-10-03 (D3). Real fixes need an identity to rate-limit on (sign-in, a per-IP limit at the edge, or a host token). If it happens, raise `PAID_DAILY_CAP` for the day with `npx partykit deploy --var PAID_DAILY_CAP=…`.
 

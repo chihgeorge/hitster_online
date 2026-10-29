@@ -15,7 +15,7 @@
 // party/index.ts's handleStartGame fallback used to skip this filter while handleLoadPlaylist
 // applied it — an inconsistency, not a deliberate design point. One pipeline, one behavior.
 
-import type { Storage as PartyStorage, Room as PartyRoom } from "partykit/server";
+import type { Storage as PartyStorage, Room as PartyRoom } from "../party/types";
 import type { Card, EditableSong, SongDiagnostic } from "./game";
 import {
   fetchPlaylistItems,

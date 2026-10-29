@@ -21,7 +21,7 @@ function makeConn(id = "conn-1") {
       return conn.state;
     }),
   };
-  return conn as unknown as import("partykit/server").Connection;
+  return conn as unknown as import("./types").Connection;
 }
 
 function makeRoom() {
@@ -34,7 +34,7 @@ function makeRoom() {
       put: vi.fn(() => Promise.resolve()),
       delete: vi.fn(() => Promise.resolve()),
     },
-  } as unknown as import("partykit/server").Room;
+  } as unknown as import("./types").Room;
 }
 
 // Only mock network functions; real parse helpers run untouched so

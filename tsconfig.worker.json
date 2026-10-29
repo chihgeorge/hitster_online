@@ -1,0 +1,17 @@
+{
+  // party/server.ts needs Workers types, which clash with the DOM lib the Next app uses,
+  // so it is checked here instead of in tsconfig.json: `npx tsc -p tsconfig.worker.json`.
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["esnext"],
+    "module": "esnext",
+    "moduleResolution": "bundler",
+    "types": ["@cloudflare/workers-types", "node"],
+    "strict": true,
+    "noEmit": true,
+    "skipLibCheck": true,
+    "isolatedModules": true,
+    "resolveJsonModule": true
+  },
+  "files": ["party/server.ts"]
+}

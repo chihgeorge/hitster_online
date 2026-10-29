@@ -13,7 +13,7 @@ Needs: a TV with a browser (or a laptop on HDMI), 2+ phones, a Lyrics playlist, 
 3. **Play one Guess round, judging from the couch.** Load any playlist in 🎧 Guess mode, start, play a round, Show Results.
    Pass: the reveal video is sharp from the couch and its corners are rounded. Fail: blurry (240p-360p look) or square corners. Note the TV model and browser. → TODOS "Check the Guess reveal video's sharpness on a real TV"
 4. **Run a Lyrics game with a second phone joined.** Load a Chinese pop playlist (or `hitster://cpop-test`) in Lyrics mode, join from a second phone, tap Start Lyrics, check the lyric preview, then tap "▶ 開始遊戲 · Start Game".
-   Pass: rounds load with real lyric lines, and the TV plays the song. Fail: "AI 正在準備歌詞…" hangs, or the blanks look wrong. Then run `npx partykit tail` and look for `[lyrics-resolver] lrclib hits: N/8`. → TODOS "E2E: verify lrclib → Claude pipeline with a real player in the room"
+   Pass: rounds load with real lyric lines, and the TV plays the song. Fail: "AI 正在準備歌詞…" hangs, or the blanks look wrong. Then run `npx wrangler tail` and look for `[lyrics-resolver] lrclib hits: N/8`. → TODOS "E2E: verify lrclib → Claude pipeline with a real player in the room"
 
 ## During the game
 

@@ -1,4 +1,4 @@
-import type * as Party from "partykit/server";
+import type * as Party from "./types";
 import {
   evaluateRound,
   checkWinner,
@@ -124,7 +124,7 @@ function roundFromOverride(t: { videoId: string; title: string; artist: string }
   };
 }
 
-export default class HitsterRoom implements Party.Server {
+export default class HitsterRoom {
   state: GameState;
   lyricsState: LyricsGameState | null = null;
   private lyricsConfig: LyricsGameConfig = timedRound.clampConfig({});
@@ -1670,4 +1670,3 @@ export default class HitsterRoom implements Party.Server {
   }
 }
 
-HitsterRoom satisfies Party.Worker;

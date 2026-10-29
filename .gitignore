@@ -32,7 +32,7 @@ yarn-error.log*
 
 # env files (can opt-in for committing if needed)
 .env*
-# PartyKit local secrets — NEVER commit
+# wrangler dev local secrets — NEVER commit
 .dev.vars
 
 # vercel
@@ -52,3 +52,6 @@ next-env.d.ts
 .claude/skills/gstack/
 .gstack/
 public/design/
+
+# wrangler dev local state
+.wrangler/

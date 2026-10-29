@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import type { Storage as PartyStorage } from "partykit/server";
+import type { Storage as PartyStorage } from "../party/types";
 import {
   fetchAndFilterTracks,
   resolveAIWithCache,

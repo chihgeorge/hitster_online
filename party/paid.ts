@@ -1,5 +1,4 @@
-import type * as Party from "partykit/server";
-import type { Storage as PartyStorage } from "partykit/server";
+import type * as Party from "./types";
 import { resolveEnv, storageBatchGet, STORAGE_BATCH } from "../lib/playlist-resolver";
 import { json, err } from "./http";
 
@@ -8,11 +7,10 @@ import { json, err } from "./http";
 // (title/artist/year metadata, lyric rounds, popularity summaries), shared by every room and saved
 // playlist so a song is only ever asked about once.
 //
-// Every party is reachable over public HTTP, so this one only answers requests carrying a token
-// derived from the server's own API key: a browser can't spend the budget down or write fake
-// answers into the cache. Public untokened traffic is turned away at the edge (onBeforeRequest /
-// onBeforeConnect) before it reaches the Durable Object. Rooms' own calls (context.parties) go
-// straight to the Durable Object, skipping the edge, so onRequest checks the token again.
+// Public traffic to this party is turned away in the worker (party/server.ts) before it reaches
+// the Durable Object. Rooms' own calls (context.parties) go straight to the Durable Object, so
+// onRequest also requires a token derived from the server's own API key: a browser can't spend
+// the budget down or write fake answers into the cache even if that gate is ever bypassed.
 
 /** Paid pipelines (a playlist resolve, a Lyrics start or an AI edit request) allowed per UTC day. Override with PAID_DAILY_CAP. */
 export const DEFAULT_DAILY_CAP = 300;
@@ -46,20 +44,12 @@ function dailyCap(env: Party.Room["env"]): number {
   return Number.isFinite(n) && n >= 0 ? n : DEFAULT_DAILY_CAP; // "0" really means 0: paid calls off
 }
 
-export default class PaidParty implements Party.Server {
+export default class PaidParty {
   constructor(readonly room: Party.Room) {}
 
-  static async onBeforeRequest(req: Party.Request, lobby: Party.Lobby) {
-    const token = await internalToken(lobby.env);
-    return token && req.headers.get("x-hitster-internal") === token ? req : err("Not found", 404);
-  }
-
-  static onBeforeConnect() {
-    return err("Not found", 404); // nothing here speaks WebSocket
-  }
-
-  async onRequest(req: Party.Request): Promise<Response> {
-    if ((await PaidParty.onBeforeRequest(req, { env: this.room.env } as Party.Lobby)) !== req) return err("Not found", 404);
+  async onRequest(req: Request): Promise<Response> {
+    const token = await internalToken(this.room.env);
+    if (!token || req.headers.get("x-hitster-internal") !== token) return err("Not found", 404);
     let body: Record<string, unknown>;
     try { body = (await req.json()) as Record<string, unknown>; } catch { return err("Invalid JSON"); }
     const path = new URL(req.url).pathname;
@@ -134,7 +124,7 @@ async function sharedGet(room: Party.Room, keys: string[]): Promise<Map<string, 
  * under a real videoId for every room, and a host's own title edits must not be replaced by
  * shared ones.
  */
-export function sharedAICache(room: Party.Room): PartyStorage {
+export function sharedAICache(room: Party.Room): Party.Storage {
   // Once a call fails, the rest of this pipeline uses room storage instead of waiting on each
   // remaining call's timeout in turn.
   let down = false;
@@ -149,5 +139,5 @@ export function sharedAICache(room: Party.Room): PartyStorage {
       down = true;
       await room.storage.put(entries);
     },
-  } as unknown as PartyStorage;
+  } as unknown as Party.Storage;
 }

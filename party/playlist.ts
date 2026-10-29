@@ -1,4 +1,4 @@
-import type * as Party from "partykit/server";
+import type * as Party from "./types";
 import { isValidYear, isValidVideoId, sanitizeText } from "../lib/utils";
 import type { EditableSong, SavedPlaylist } from "../lib/game";
 import { extractPlaylistId } from "../lib/game";
@@ -48,7 +48,7 @@ function sanitizeSongs(songs: EditableSong[]): EditableSong[] {
   }));
 }
 
-export default class PlaylistParty implements Party.Server {
+export default class PlaylistParty {
   constructor(readonly room: Party.Room) {}
 
   /**
@@ -74,7 +74,7 @@ export default class PlaylistParty implements Party.Server {
     }
   }
 
-  async onRequest(req: Party.Request): Promise<Response> {
+  async onRequest(req: Request): Promise<Response> {
     const method = req.method.toUpperCase();
 
     // CORS preflight

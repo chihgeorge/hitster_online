@@ -14,7 +14,7 @@
 // The one exception is IMPORT, used once by the client-side migration (decision D2b) to
 // backfill entries for playlists that predate this DO and only ever lived in localStorage.
 
-import type * as Party from "partykit/server";
+import type * as Party from "./types";
 import { sanitizeText } from "../lib/utils";
 import { CORS_HEADERS, json, err } from "./http";
 
@@ -42,10 +42,10 @@ function validEntry(raw: unknown): raw is LibraryEntry {
   );
 }
 
-export default class LibraryParty implements Party.Server {
+export default class LibraryParty {
   constructor(readonly room: Party.Room) {}
 
-  async onRequest(req: Party.Request): Promise<Response> {
+  async onRequest(req: Request): Promise<Response> {
     const method = req.method.toUpperCase();
 
     if (method === "OPTIONS") {

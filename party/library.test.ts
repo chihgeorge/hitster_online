@@ -13,17 +13,17 @@ function makeRoom(id = "test-host-id") {
       put: vi.fn((key: string, val: unknown) => { store.set(key, val); return Promise.resolve(); }),
     },
     _store: store,
-  } as unknown as import("partykit/server").Room & { _store: Map<string, unknown> };
+  } as unknown as import("./types").Room & { _store: Map<string, unknown> };
 }
 
-function makeRequest(method: string, body?: unknown, id = "test-host-id"): import("partykit/server").Request {
+function makeRequest(method: string, body?: unknown, id = "test-host-id"): Request {
   const headers = new Headers({ "Content-Type": "application/json" });
   return {
     method,
     url: `http://localhost/parties/library/${id}`,
     headers,
     json: () => Promise.resolve(body),
-  } as unknown as import("partykit/server").Request;
+  } as unknown as Request;
 }
 
 async function parseResponse(res: Response) {
@@ -171,7 +171,7 @@ describe("LibraryParty: misc", () => {
 
   it("rejects invalid JSON", async () => {
     const party = new LibraryParty(makeRoom());
-    const req = { method: "PUT", url: "http://localhost/parties/library/x", headers: new Headers(), json: () => Promise.reject(new Error("bad")) } as unknown as import("partykit/server").Request;
+    const req = { method: "PUT", url: "http://localhost/parties/library/x", headers: new Headers(), json: () => Promise.reject(new Error("bad")) } as unknown as Request;
     const { status } = await parseResponse(await party.onRequest(req));
     expect(status).toBe(400);
   });
