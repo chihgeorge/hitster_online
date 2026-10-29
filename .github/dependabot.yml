@@ -1,0 +1,21 @@
+version: 2
+updates:
+  - package-ecosystem: "npm"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    # One PR for all minor/patch bumps; majors still get their own PR.
+    groups:
+      minor-and-patch:
+        update-types: ["minor", "patch"]
+    ignore:
+      # typescript-eslint (via eslint-config-next) supports typescript <6.1.0; widen once it does.
+      - dependency-name: "typescript"
+        versions: [">=6.1"]
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    groups:
+      actions:
+        patterns: ["*"]
