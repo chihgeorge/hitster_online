@@ -3615,13 +3615,13 @@ describe("playlist bookkeeping (review re-verify 2026-09-24)", () => {
   });
 });
 
-describe("Lyrics Mode: apostrophe answers grade correctly (sanitizeText escaping)", () => {
+describe("Lyrics Mode: apostrophe answers grade correctly", () => {
   it("scores a player's exact apostrophe answer as correct", async () => {
     const { room, hostConn, p1Conn } = await setupLyricsGame();
     room.lyricsState!.currentRound!.blankSentence = "Don't stop believing";
     await send(room, hostConn, { type: "START_LYRICS_ROUND", hostId: "host-uuid" });
     await send(room, p1Conn, { type: "SUBMIT_LYRICS_ANSWER", playerId: P1, text: "Don't stop believing" });
-    expect(room.lyricsState!.answers[P1].text).toBe("Don&#39;t stop believing"); // stored escaped
+    expect(room.lyricsState!.answers[P1].text).toBe("Don't stop believing"); // stored plain
     await send(room, hostConn, { type: "SHOW_LYRICS_RESULTS", hostId: "host-uuid" });
     expect(room.lyricsState!.answers[P1].correct).toBe(true);
     expect(room.lyricsState!.players[P1].score).toBeGreaterThan(0);
@@ -3645,11 +3645,11 @@ describe("Guess Mode: deck sources (coverage audit)", () => {
     expect(room.guessState?.rounds.map((r) => r.videoId).sort()).toEqual(["v1", "v2"]);
   });
 
-  it("ignores malformed host overrides and escapes a pre-escaped title exactly once", async () => {
+  it("ignores malformed host overrides and decodes a pre-escaped title", async () => {
     const songs = [null, 7, { title: "no id" }, { videoId: "KqjgLbKZ1h0", title: "Don&amp;#39;t Stop", artist: 5 }];
     const { room } = await setupGuessGame({ timerSeconds: 60, totalRounds: 30, fuzzyEnabled: false }, songs as object[]);
     const r = room.guessState!.rounds.find((x) => x.videoId === "KqjgLbKZ1h0")!;
-    expect(r.title).toBe("Don&#39;t Stop");
+    expect(r.title).toBe("Don't Stop");
     expect(r.artist).not.toBe(""); // non-string artist override falls back to the playlist's artist
   });
 });
@@ -3904,5 +3904,88 @@ describe("shared AI cache: only for YouTube-sourced titles", () => {
     await send(room, conn, { type: "JOIN", playerId: P1, name: "Alice" });
     await send(room, conn, { type: "START_LYRICS_GAME", hostId: "host-uuid", playlistUrl: "PLtest", config: { timerSeconds: 60, totalRounds: 1, fuzzyEnabled: false } });
     await vi.waitFor(() => expect(paths).toContain("/cache/put"));
+  });
+});
+
+describe("players who leave (ponytail-audit #2)", () => {
+  const P3 = "00000000-0000-0000-0000-000000000003";
+
+  async function threePlayerGame() {
+    const room = new HitsterRoom(makeRoom());
+    const host = makeConn("host");
+    const phones = [makeConn("c1"), makeConn("c2"), makeConn("c3")];
+    [P1, P2, P3].forEach((pid, i) => {
+      room.onConnect(phones[i]);
+      void send(room, phones[i], { type: "JOIN", playerId: pid, name: `p${i + 1}` });
+    });
+    await send(room, host, { type: "START_GAME", hostId: "host-uuid", playlistUrl: "hitster://test" });
+    return { room, host, phones };
+  }
+
+  // Value: protects=a friend who went home no longer gets every third turn; fails_when=onClose stops marking the player or startNextRound stops skipping them; why_new=connected was never set false; seam=none
+  it("skips a player who left when the turn rotates, and seats them again on REJOIN", async () => {
+    const { room, host, phones } = await threePlayerGame();
+    expect(room.state.activePlayerId).toBe(P1);
+    room.onClose(phones[1]);
+    expect(room.state.players[P2].connected).toBe(false);
+    for (let i = 0; i < 4; i++) {
+      await send(room, host, { type: "REVEAL", hostId: "host-uuid" });
+      await send(room, host, { type: "NEXT_ROUND", hostId: "host-uuid" });
+      expect(room.state.activePlayerId).not.toBe(P2);
+    }
+    const back = makeConn("c2-new");
+    room.onConnect(back);
+    await send(room, back, { type: "REJOIN", playerId: P2, name: "p2" });
+    expect(room.state.players[P2].connected).toBe(true);
+  });
+
+  // Value: protects=a phone that reconnected (same partysocket id) staying in the game; fails_when=the old socket's late close marks it gone; why_new=new close handling; seam=none
+  it("ignores the late close of a reconnected phone's old socket", async () => {
+    const { room, phones } = await threePlayerGame();
+    room.onConnect(makeConn("c2")); // the reconnected socket, same id
+    room.onClose(phones[1]);
+    expect(room.state.players[P2].connected).toBe(true);
+  });
+});
+
+describe("a replaced playlist's lyrics preview (ponytail-audit #3)", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.stubEnv("ANTHROPIC_API_KEY", "test-key");
+  });
+
+  // Value: protects=the host's preview table showing the playlist they loaded last; fails_when=generateLyricsPreview stops checking loadSeq; why_new=a slow older preview overwrote the newer one; seam=none
+  it("never reaches the host once a newer load started, but its paid rounds are still cached", async () => {
+    vi.mocked(fetchPlaylistItems).mockResolvedValue([
+      { videoId: "v1", title: "Song A", description: "", channelTitle: "Artist" },
+      { videoId: "v2", title: "Song B", description: "", channelTitle: "Artist" },
+    ]);
+    vi.mocked(fetchEmbeddableVideoIds).mockResolvedValue(new Set(["v1", "v2"]));
+    vi.mocked(resolveTracksWithAI).mockResolvedValue(new Map());
+    let finish!: () => void;
+    const gate = new Promise<void>((r) => { finish = r; });
+    vi.mocked(resolveLyricsForTracks).mockImplementation(async (_tracks, _key, onBatchDone) => {
+      await gate;
+      const fresh = new Map([["v1", { title: "Song A", artist: "Artist", language: "en" as const, lyricContext: "X ___", blankSentence: "hello", acceptableVariants: [] }]]);
+      onBatchDone?.(fresh);
+      return fresh;
+    });
+    const mockRoom = makeRoom();
+    const room = new HitsterRoom(mockRoom as any);
+    const conn = makeConn();
+    await send(room, conn, { type: "LOAD_PLAYLIST", hostId: "host-uuid", playlistUrl: "PLtest", gameMode: "lyrics" });
+    await vi.waitFor(() => expect(resolveLyricsForTracks).toHaveBeenCalled());
+    await send(room, conn, { type: "LOAD_SAVED_PLAYLIST", hostId: "host-uuid", playlistId: "saved-1", songs: [
+      { videoId: "dQw4w9WgX01", title: "Other 1", artist: "X", year: 1990 },
+      { videoId: "dQw4w9WgX02", title: "Other 2", artist: "X", year: 1991 },
+    ] });
+    const sentBefore = (conn.send as ReturnType<typeof vi.fn>).mock.calls.length;
+    finish();
+    await vi.waitFor(() => {
+      const putCalls = (mockRoom.storage.put as ReturnType<typeof vi.fn>).mock.calls;
+      expect(putCalls.some((c: any[]) => (c[0] as Record<string, unknown>)["lyrics:v1"] !== undefined)).toBe(true);
+    });
+    const after = (conn.send as ReturnType<typeof vi.fn>).mock.calls.slice(sentBefore).map((c) => JSON.parse(c[0] as string));
+    expect(after.filter((m: { type: string }) => m.type === "LYRICS_PREVIEW")).toEqual([]);
   });
 });

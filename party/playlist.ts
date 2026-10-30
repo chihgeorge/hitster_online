@@ -86,7 +86,8 @@ export default class PlaylistParty {
     if (method === "GET") {
       const stored = await this.room.storage.get<SavedPlaylist>("playlist");
       if (!stored) return err("Not found", 404);
-      return json(stored);
+      // Older versions stored escaped text ("Don&#39;t"); hand it out clean.
+      return json({ ...stored, name: sanitizeText(stored.name, MAX_NAME_LEN), songs: sanitizeSongs(stored.songs) });
     }
 
     let body: Record<string, unknown>;
