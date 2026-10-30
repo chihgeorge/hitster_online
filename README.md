@@ -59,7 +59,13 @@ Checks that need a real TV and phones (in-app browsers, video sharpness, live ly
 
 Deployed to Vercel (Next.js) + a Cloudflare Worker (`npx wrangler deploy`). The hosted PartyKit platform shut down on 2026-10-23, so `party/server.ts` runs the parties (`main` room server, `playlist`, `library`, `paid`) as PartyServer Durable Objects, declared in `wrangler.jsonc`. Set the server keys with `npx wrangler secret put YOUTUBE_API_KEY` and `npx wrangler secret put ANTHROPIC_API_KEY`, then point Vercel's `NEXT_PUBLIC_PARTYKIT_HOST` at the worker's host and redeploy.
 
+Dependabot's minor and patch updates merge themselves once CI's `check` job passes (`.github/workflows/dependabot-auto-merge.yml`), and each merge to `main` deploys Vercel; the worker still needs `npx wrangler deploy` by hand. Major updates, updates whose maintainer changed, and `partyserver` updates wait for a human.
+
 Paid YouTube and Anthropic work (loading a YouTube playlist, starting a Lyrics game, creating a saved playlist from a link, AI edits) shares one daily limit across every room, held by the `paid` party: 300 per UTC day by default. Change it with `npx wrangler secret put PAID_DAILY_CAP` (a secret, not `deploy --var`, so the next deploy doesn't reset it); `0` turns paid work off. Past the limit the host sees "今天的使用額度已用完 · Today's limit is used up".
+
+## Security
+
+Found a vulnerability? Report it privately, not in a public issue: see [SECURITY.md](SECURITY.md). The public-repo audit and the GitHub settings changed with it are in [docs/going-public.md](docs/going-public.md) (Traditional Chinese).
 
 ---
 

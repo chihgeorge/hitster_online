@@ -2,6 +2,7 @@
   "name": "hitster-online",
   "version": "0.15.0",
   "private": true,
+  "license": "MIT",
   "scripts": {
     "dev": "concurrently \"next dev\" \"npm run dev:party\"",
     "dev:next": "next dev",
