@@ -3971,7 +3971,33 @@ describe("players who leave (ponytail-audit #2)", () => {
       await send(room, c, { type: "JOIN", playerId: id(i), name: `X${i}` });
       room.onClose(c);
     }
+    expect(Object.keys(room.state.players).length).toBeLessThanOrEqual(16);
+    const last = makeConn("last");
+    await send(room, last, { type: "JOIN", playerId: id(99), name: "Last" });
+    expect(room.state.players[id(99)]?.connected).toBe(true); // leavers never fill a lobby for good
+  });
+
+  // Value: protects=the room staying bounded mid-game, where a leaver's seat keeps their cards; fails_when=the hard cap is dropped or lobby pruning runs mid-game; why_new=the lobby test prunes; seam=none
+  it("caps total seats at 16 mid-game and keeps the seats of players who left", async () => {
+    const { room } = await threePlayerGame();
+    const id = (i: number) => `00000000-0000-0000-0000-${String(i).padStart(12, "0")}`;
+    for (let i = 10; i < 40; i++) {
+      const c = makeConn(`x${i}`);
+      room.onConnect(c);
+      await send(room, c, { type: "JOIN", playerId: id(i), name: `X${i}` });
+      room.onClose(c);
+    }
     expect(Object.keys(room.state.players)).toHaveLength(16);
+    expect(room.state.players[P1]).toBeDefined();
+  });
+
+  // Value: protects=a host whose phones all dropped can still advance rounds; fails_when=the plain-rotation fallback is dropped and activePlayerId goes null; why_new=existing tests always leave someone connected; seam=none; no_claim=UI handling of a turn for an absent player
+  it("keeps rotating when every player has left", async () => {
+    const { room, host, phones } = await threePlayerGame();
+    for (const c of phones) room.onClose(c);
+    await send(room, host, { type: "REVEAL", hostId: "host-uuid" });
+    await send(room, host, { type: "NEXT_ROUND", hostId: "host-uuid" });
+    expect(room.state.activePlayerId).toBe(P2);
   });
 });
 
@@ -4016,5 +4042,62 @@ describe("a replaced playlist's lyrics preview (ponytail-audit #3)", () => {
     });
     const after = (conn.send as ReturnType<typeof vi.fn>).mock.calls.slice(sentBefore).map((c) => JSON.parse(c[0] as string));
     expect(after.filter((m: { type: string }) => m.type === "LYRICS_PREVIEW")).toEqual([]);
+  });
+
+  // Value: protects=a Lyrics game on a newly loaded playlist not drawing from the old playlist's preview; fails_when=startPlaylistLoad stops resetting lyricsPreviewMap; why_new=no test read the pool after a reload; seam=none; no_claim=deck building itself
+  it("forgets the old playlist's preview pool when a new playlist loads", async () => {
+    vi.mocked(fetchPlaylistItems).mockResolvedValue([
+      { videoId: "v1", title: "Song A", description: "", channelTitle: "Artist" },
+      { videoId: "v2", title: "Song B", description: "", channelTitle: "Artist" },
+    ]);
+    vi.mocked(fetchEmbeddableVideoIds).mockResolvedValue(new Set(["v1", "v2"]));
+    vi.mocked(resolveTracksWithAI).mockResolvedValue(new Map());
+    vi.mocked(resolveLyricsForTracks).mockImplementation(async (_tracks, _key, onBatchDone) => {
+      const fresh = new Map([["v1", { title: "Song A", artist: "Artist", language: "en" as const, lyricContext: "X ___", blankSentence: "hello", acceptableVariants: [] }]]);
+      onBatchDone?.(fresh);
+      return fresh;
+    });
+    const room = new HitsterRoom(makeRoom() as any);
+    const conn = makeConn();
+    await send(room, conn, { type: "LOAD_PLAYLIST", hostId: "host-uuid", playlistUrl: "PLtest", gameMode: "lyrics" });
+    await vi.waitFor(() => expect((room as any).lyricsPreviewMap.size).toBeGreaterThan(0));
+    await send(room, conn, { type: "LOAD_SAVED_PLAYLIST", hostId: "host-uuid", playlistId: "saved-1", songs: [
+      { videoId: "dQw4w9WgX01", title: "Other 1", artist: "X", year: 1990 },
+      { videoId: "dQw4w9WgX02", title: "Other 2", artist: "X", year: 1991 },
+    ] });
+    expect((room as any).lyricsPreviewMap.size).toBe(0);
+  });
+
+  // Value: protects=a cached-only preview of a replaced playlist never reaching the host; fails_when=the stale check after the cache read is dropped; why_new=the other test covers only the AI batch path; seam=none; no_claim=shared AI cache worker (room storage stands in)
+  it("drops a cached-only preview whose cache read finished after a newer load", async () => {
+    vi.mocked(fetchPlaylistItems).mockResolvedValue([
+      { videoId: "v1", title: "Song A", description: "", channelTitle: "Artist" },
+      { videoId: "v2", title: "Song B", description: "", channelTitle: "Artist" },
+    ]);
+    vi.mocked(fetchEmbeddableVideoIds).mockResolvedValue(new Set(["v1", "v2"]));
+    vi.mocked(resolveTracksWithAI).mockResolvedValue(new Map());
+    const round = { title: "Song B", artist: "Artist", language: "en" as const, lyricContext: "X ___", blankSentence: "world", acceptableVariants: [] };
+    let finish!: () => void;
+    const gate = new Promise<void>((r) => { finish = r; });
+    const mockRoom = makeRoom();
+    (mockRoom.storage.get as ReturnType<typeof vi.fn>).mockImplementation(async (keys: unknown) => {
+      if (!Array.isArray(keys)) return undefined;
+      if (keys.includes("lyrics:v1")) await gate;
+      return new Map(keys.filter((k: string) => k.startsWith("lyrics:")).map((k: string) => [k, round]));
+    });
+    const room = new HitsterRoom(mockRoom as any);
+    const conn = makeConn();
+    await send(room, conn, { type: "LOAD_PLAYLIST", hostId: "host-uuid", playlistUrl: "PLtest", gameMode: "lyrics" });
+    await vi.waitFor(() => expect(mockRoom.storage.get).toHaveBeenCalledWith(expect.arrayContaining(["lyrics:v1"])));
+    await send(room, conn, { type: "LOAD_SAVED_PLAYLIST", hostId: "host-uuid", playlistId: "saved-1", songs: [
+      { videoId: "dQw4w9WgX01", title: "Other 1", artist: "X", year: 1990 },
+      { videoId: "dQw4w9WgX02", title: "Other 2", artist: "X", year: 1991 },
+    ] });
+    const sentBefore = (conn.send as ReturnType<typeof vi.fn>).mock.calls.length;
+    finish();
+    await new Promise((r) => setTimeout(r, 20));
+    const after = (conn.send as ReturnType<typeof vi.fn>).mock.calls.slice(sentBefore).map((c) => JSON.parse(c[0] as string));
+    expect(after.filter((m: { type: string }) => m.type === "LYRICS_PREVIEW")).toEqual([]);
+    expect(resolveLyricsForTracks).not.toHaveBeenCalled();
   });
 });

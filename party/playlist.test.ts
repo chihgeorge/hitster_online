@@ -312,15 +312,18 @@ describe("PlaylistParty: library sync on create/delete (D2a)", () => {
 });
 
 describe("PlaylistParty: GET — fetch playlist", () => {
+  // Value (extended row): protects=GET of a stored song missing artist returns "" instead of a 500; fails_when=the String(?? "") guard in sanitizeSongs is dropped; why_new=only full rows were tested; seam=none; no_claim=none beyond protects
   it("hands out text older versions stored escaped as plain text", async () => {
     const room = makeRoom();
     room._store.set("playlist", { id: "test-playlist-id", name: "Rock &amp; Roll", ownerHostId: "h", songs: [
       { videoId: "dQw4w9WgXcQ", title: "Don&#39;t Stop", artist: "A &amp; B", year: 1980 },
+      { videoId: "dQw4w9WgXcR", title: "No Artist", year: 1981 }, // a stored song missing a field must not 500 the GET
     ] });
     const { status, body } = await parseResponse(await new PlaylistParty(room).onRequest(makeRequest("GET")));
     expect(status).toBe(200);
     expect(body.name).toBe("Rock & Roll");
     expect(body.songs[0]).toMatchObject({ title: "Don't Stop", artist: "A & B" });
+    expect(body.songs[1]).toMatchObject({ title: "No Artist", artist: "" });
   });
 
   it("returns 404 when playlist does not exist", async () => {
