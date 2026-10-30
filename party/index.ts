@@ -21,7 +21,7 @@ import {
   type GameMode,
   type LyricOverride,
 } from "../lib/game";
-import { isValidYear, isValidVideoId, sanitizeText, decodeEntities, shuffle } from "../lib/utils";
+import { isValidYear, isValidVideoId, sanitizeText, shuffle } from "../lib/utils";
 import { proposeEdits, proposeLyricEdits, type AITrackMeta } from "../lib/ai-metadata";
 import { spendPaidBudget, sharedAICache } from "./paid";
 import { MAX_SONGS, MAX_INSTRUCTION } from "./playlist";
@@ -51,6 +51,8 @@ const DEFAULT_TARGET_CARD_COUNT = 10;
 const SCREEN_ID_KEY = "screenId";
 const MAX_TARGET_CARD_COUNT = 20;
 const MAX_PLAYERS_SOFT = 8;
+// Players who left keep their seat record, so the soft cap counts only connected ones; this bounds the rest.
+const MAX_PLAYERS_HARD = MAX_PLAYERS_SOFT * 2;
 
 // Real C-pop seed for hitster://cpop-test (used by both classic and Lyrics Mode).
 const CPOP_SEED = [
@@ -421,10 +423,18 @@ export default class HitsterRoom {
   }
 
   onClose(conn: Party.Connection) {
-    // No connection→playerId map in v1; players reconnect via REJOIN with their stored playerId.
     this.privilegedConns.delete(conn);
     this.screenConns.delete(conn);
     this.allConns.delete(conn);
+    // A player who left stops getting turns and seats (startNextRound, handleJoin) until REJOIN.
+    // A reconnected phone keeps its connection id, so an old socket's late close is ignored.
+    if ([...this.allConns].some((c) => c.id === conn.id)) return;
+    const left = Object.keys(this.playerConnId)
+      .map((pid) => (this.playerConnId[pid] === conn.id ? this.state.players[pid] : undefined))
+      .filter((p) => p?.connected);
+    if (left.length === 0) return;
+    for (const p of left) p!.connected = false;
+    this.broadcastState();
   }
 
   private handleJoin(conn: Party.Connection, playerId: string, rawName: string) {
@@ -434,7 +444,17 @@ export default class HitsterRoom {
       this.sendTo(conn, { type: "ERROR", error: "invalid_name" });
       return;
     }
-    if (Object.keys(this.state.players).length >= MAX_PLAYERS_SOFT) {
+    // In the lobby a player who left holds no cards (nor Lyrics/Guess seats), so free their seat instead
+    // of letting leavers fill the room.
+    if (this.state.phase === "lobby" && !this.lyricsState && !this.guessState && Object.keys(this.state.players).length >= MAX_PLAYERS_HARD) {
+      for (const [pid, p] of Object.entries(this.state.players)) {
+        if (p.connected) continue;
+        delete this.state.players[pid];
+        delete this.playerConnId[pid];
+      }
+    }
+    const players = Object.values(this.state.players);
+    if (players.filter((p) => p.connected).length >= MAX_PLAYERS_SOFT || players.length >= MAX_PLAYERS_HARD) {
       this.sendTo(conn, { type: "ERROR", error: "room_full" });
       return;
     }
@@ -608,7 +628,11 @@ export default class HitsterRoom {
 
   /** New playlist generation: any in-flight load's `mySeq !== loadSeq` checks drop its writes. */
   private startPlaylistLoad(): number {
+    // The old playlist's preview stops here (generateLyricsPreview's stale check), so clear the host's
+    // rows and spinner, and its candidate pool.
+    if (this.lastLyricsPreview) this.sendPrivileged({ type: "LYRICS_PREVIEW", rounds: [], loading: false });
     this.lastLyricsPreview = null;
+    this.lyricsPreviewMap = new Map();
     this.abortLoad = false; // an ABORT_LOAD belongs to the load it was sent for, not the next one
     return ++this.loadSeq;
   }
@@ -735,7 +759,7 @@ export default class HitsterRoom {
       // load, spending real Anthropic calls generating lyric questions even for a host who only
       // ever plays timeline mode.
       if (gameMode === "lyrics") {
-        void this.generateLyricsPreview(allSongs, aiResults, anthropicKey);
+        void this.generateLyricsPreview(allSongs, aiResults, anthropicKey, mySeq);
       }
     } catch (err) {
       this.sendTo(conn, { type: "PLAYLIST_LOAD_ERROR", error: parseResolveErrorCode(err) });
@@ -765,8 +789,11 @@ export default class HitsterRoom {
   private async generateLyricsPreview(
     allSongs: EditableSong[],
     aiResults: Map<string, AITrackMeta>,
-    anthropicKey: string | undefined
+    anthropicKey: string | undefined,
+    seq: number
   ) {
+    // A newer load replaced this playlist: its preview must not reach the host, and no new AI run starts.
+    const stale = () => seq !== this.loadSeq;
     // Signal loading so the host table shows a spinner instead of dashes.
     this.sendPrivileged({ type: "LYRICS_PREVIEW", rounds: [], loading: true });
 
@@ -789,6 +816,7 @@ export default class HitsterRoom {
     const noRound = await getNoResult(cache, NO_RESULT.lyrics,
       enrichedTracks.filter((t) => !cachedLyrics.has(t.videoId)).map((t) => t.videoId));
     const uncachedTracks = enrichedTracks.filter((t) => !cachedLyrics.has(t.videoId) && !noRound.has(t.videoId));
+    if (stale()) return;
 
     // If we have cached results, broadcast them immediately so the table is not empty.
     if (cachedLyrics.size > 0) {
@@ -801,7 +829,8 @@ export default class HitsterRoom {
       const accumulated = new Map<string, LyricsResult>(cachedLyrics);
       const unusable = new Set<string>();
       await resolveLyricsForTracks(uncachedTracks, anthropicKey, (partial) => {
-        partial.forEach((v, k) => accumulated.set(k, v));
+        partial.forEach((v, k) => accumulated.set(k, v)); // still cached below: it's paid for
+        if (stale()) return;
         const progressRounds = this.buildPreviewRounds(enrichedTracks, accumulated);
         this.sendPrivileged({ type: "LYRICS_PREVIEW", rounds: progressRounds, loading: true });
       }, undefined, undefined, unusable);
@@ -811,6 +840,7 @@ export default class HitsterRoom {
       const freshEntries = [...accumulated].filter(([id]) => !cachedLyrics.has(id));
       storageBatchPut(cache, "lyrics:", freshEntries);
 
+      if (stale()) return;
       this.lyricsPreviewMap = accumulated;
       this.sendPrivileged({ type: "LYRICS_PREVIEW", rounds: this.buildPreviewRounds(enrichedTracks, accumulated), loading: false });
     } else {
@@ -1055,12 +1085,14 @@ export default class HitsterRoom {
       return;
     }
 
-    // Rotate active player (round-robin over joined players)
+    // Rotate active player (round-robin over joined players), skipping players who left; with
+    // nobody connected, plain rotation.
     const playerIds = Object.keys(this.state.players);
     const currentIdx = this.state.activePlayerId
       ? playerIds.indexOf(this.state.activePlayerId)
       : -1;
-    this.state.activePlayerId = playerIds[(currentIdx + 1) % playerIds.length] ?? null;
+    const order = [...playerIds.slice(currentIdx + 1), ...playerIds.slice(0, currentIdx + 1)];
+    this.state.activePlayerId = order.find((id) => this.state.players[id].connected) ?? order[0] ?? null;
 
     this.dealSong();
     this.state.currentRound += 1;
@@ -1551,15 +1583,12 @@ export default class HitsterRoom {
         title: typeof s.title === "string" ? s.title : undefined,
         artist: typeof s.artist === "string" ? s.artist : undefined,
       }]));
-    // decode first: allSongs from a saved playlist is already escaped — escape exactly once.
-    // slice before decoding bounds decodeEntities' work on hostile host input.
-    const clean = (s: string, max: number) => sanitizeText(decodeEntities(s.slice(0, max * 6)), max);
     const deck: GuessRound[] = shuffle(songs.map((s) => {
       const ov = overrides.get(s.videoId);
-      const artist = clean(ov?.artist ?? s.artist ?? "", 100);
+      const artist = sanitizeText(ov?.artist ?? s.artist ?? "", 100);
       return {
         videoId: s.videoId,
-        title: clean(ov?.title || s.title, 200),
+        title: sanitizeText(ov?.title || s.title, 200),
         // An artist with no letters/digits (e.g. the band "!!!") can never be matched — treat the
         // round as title-only rather than dangle an unreachable artist field and bonus.
         artist: normGuess(artist) ? artist : "",

@@ -8,7 +8,7 @@ export function isValidYear(year: number | null | undefined): boolean {
   return year >= 1900 && year <= new Date().getFullYear() + 1;
 }
 
-const HTML_ESCAPE: Record<string, string> = {
+const HTML_ESCAPE: Record<string, string> = { // only for decoding legacy text, see decodeEntities
   "&": "&amp;",
   "<": "&lt;",
   ">": "&gt;",
@@ -16,19 +16,19 @@ const HTML_ESCAPE: Record<string, string> = {
   "'": "&#39;",
 };
 
+/**
+ * Trims and caps host/player text. No HTML escaping: React escapes on render, and escaped text
+ * showed on screen as "Don&#39;t". Decodes first, so text stored escaped by older versions comes out clean.
+ */
 export function sanitizeText(s: string, maxLength = 100): string {
-  return s
-    .replace(/[&<>"']/g, (c) => HTML_ESCAPE[c] ?? c)
-    .trim()
-    .slice(0, maxLength)
-    // Escaping happens before the cut, so the cut can land inside an entity ("&am"): drop it.
-    .replace(/&[#a-z0-9]*$/i, "");
+  // Cut before decoding too: decodeEntities loops once per escape layer, so an unbounded hostile string costs O(n²).
+  return decodeEntities(s.slice(0, maxLength * 6)).trim().slice(0, maxLength);
 }
 
 const HTML_UNESCAPE = Object.fromEntries(Object.entries(HTML_ESCAPE).map(([c, e]) => [e, c]));
 
 /**
- * Inverse of sanitizeText's escaping, applied until stable (saved playlists can arrive escaped
+ * Undoes the HTML escaping older versions stored, applied until stable (it could be escaped
  * twice). Graders must compare decoded text: normLatin would turn "&#39;" into "39".
  */
 export function decodeEntities(s: string): string {

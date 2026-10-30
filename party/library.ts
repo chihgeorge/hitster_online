@@ -53,7 +53,8 @@ export default class LibraryParty {
     // GET /parties/library/:hostId — list this host's playlists
     if (method === "GET") {
       const entries = (await this.room.storage.get<Record<string, LibraryEntry>>("entries")) ?? {};
-      return json({ entries: Object.values(entries) });
+      // Older versions stored escaped names ("Rock &amp; Roll"); hand them out clean.
+      return json({ entries: Object.values(entries).map((e) => ({ ...e, name: sanitizeText(String(e.name ?? ""), MAX_NAME_LEN) })) });
     }
 
     let body: Record<string, unknown>;

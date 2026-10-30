@@ -42,8 +42,8 @@ function libraryEntry(p: SavedPlaylist) {
 function sanitizeSongs(songs: EditableSong[]): EditableSong[] {
   return songs.map((s) => ({
     videoId: s.videoId,
-    title: sanitizeText(s.title, 200),
-    artist: sanitizeText(s.artist, 100),
+    title: sanitizeText(String(s.title ?? ""), 200),
+    artist: sanitizeText(String(s.artist ?? ""), 100),
     year: s.year,
   }));
 }
@@ -86,7 +86,8 @@ export default class PlaylistParty {
     if (method === "GET") {
       const stored = await this.room.storage.get<SavedPlaylist>("playlist");
       if (!stored) return err("Not found", 404);
-      return json(stored);
+      // Older versions stored escaped text ("Don&#39;t"); hand it out clean.
+      return json({ ...stored, name: sanitizeText(String(stored.name ?? ""), MAX_NAME_LEN), songs: sanitizeSongs(stored.songs ?? []) });
     }
 
     let body: Record<string, unknown>;

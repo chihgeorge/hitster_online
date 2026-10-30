@@ -7,7 +7,6 @@
 import { useEffect, useRef, useState } from "react";
 import Vinyl from "@/components/Vinyl";
 import { isAudioPhase, type VideoFrame } from "@/components/LyricsPlayer";
-import { decodeEntities } from "@/lib/utils";
 import { rankPlayers, type GuessAnswer, type PublicGuessGameState } from "@/lib/game";
 import { useCountdown, isLeader, Standings, WonOnTimeNote, TvScoreRow, TvFinal } from "@/components/TimedRound";
 
@@ -33,9 +32,6 @@ export function guessAudioProps(state: PublicGuessGameState | null, audio: Audio
   return { videoId: audio.videoId, playing: state.phase !== "playing", frame: state.phase === "results" && state.currentRound ? REVEAL_VIDEO : null };
 }
 
-
-// Server text is HTML-escaped (sanitizeText); React escapes again, so decode for display.
-const show = (s: string | null | undefined) => decodeEntities(s ?? "");
 
 const ranked = (state: PublicGuessGameState) => rankPlayers(state.players);
 
@@ -176,8 +172,8 @@ export function GuessPlay({ state, playerId, playerName, tooLate, onSubmit }: Pl
       <p style={{ fontSize: 14, fontWeight: 700, color: "var(--ink)" }}>{roundLabel(state)} · 結果</p>
       <div style={{ background: "white", borderRadius: 16, padding: "18px 20px", width: "100%", maxWidth: 400, textAlign: "center", border: "2px solid rgba(255,107,53,.15)" }}>
         <p style={{ fontSize: 11, color: "var(--text3)", marginBottom: 6, textTransform: "uppercase", letterSpacing: ".08em" }}>正確答案</p>
-        <p data-testid="guess-answer-title" style={{ fontSize: 20, fontWeight: 900, color: "var(--orange)", fontFamily: "var(--font-zh)" }}>{show(r.title)}</p>
-        {r.hasArtist && <p style={{ fontSize: 15, fontWeight: 700, color: "var(--text2)", marginTop: 2 }}>{show(r.artist)}</p>}
+        <p data-testid="guess-answer-title" style={{ fontSize: 20, fontWeight: 900, color: "var(--orange)", fontFamily: "var(--font-zh)" }}>{r.title}</p>
+        {r.hasArtist && <p style={{ fontSize: 15, fontWeight: 700, color: "var(--text2)", marginTop: 2 }}>{r.artist}</p>}
       </div>
       {myAnswer ? <MyResult answer={myAnswer} hasArtist={r.hasArtist} /> : (
         <div style={{ background: "rgba(176,175,188,.06)", border: "2px solid rgba(176,175,188,.2)", borderRadius: 16, padding: "18px 20px", width: "100%", maxWidth: 400, textAlign: "center" }}>
@@ -223,7 +219,7 @@ function MyResult({ answer, hasArtist }: { answer: GuessAnswer; hasArtist: boole
   const row = (label: string, text: string, ok: boolean, pts: number) => (
     <div style={{ display: "flex", alignItems: "center", gap: 10, justifyContent: "space-between" }}>
       <span style={{ fontSize: 12, color: "var(--text3)", minWidth: 40, textAlign: "left" }}>{label}</span>
-      <span style={{ flex: 1, fontSize: 16, fontWeight: 700, color: "var(--ink)", textAlign: "left", fontFamily: "var(--font-zh)" }}>{text ? show(text) : "—"}</span>
+      <span style={{ flex: 1, fontSize: 16, fontWeight: 700, color: "var(--ink)", textAlign: "left", fontFamily: "var(--font-zh)" }}>{text || "—"}</span>
       <Mark ok={ok} />
       <span style={{ fontFamily: "var(--font-mono)", fontWeight: 700, color: ok ? "var(--mint)" : "var(--text3)", minWidth: 44, textAlign: "right" }}>+{pts}</span>
     </div>
@@ -285,8 +281,8 @@ export function GuessScreen({ state }: { state: PublicGuessGameState }) {
             with the answer under it; the left side keeps its full height for up to 8 player rows. */}
         <div data-testid="guess-video-slot" aria-hidden style={{ position: "fixed", ...REVEAL_VIDEO, borderRadius: 16, background: "var(--ink)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 40 }}>🎬</div>
         <div data-testid="guess-answer-card" style={{ position: "fixed", top: REVEAL_VIDEO.top + REVEAL_VIDEO.height + 16, right: REVEAL_VIDEO.right, width: REVEAL_VIDEO.width, bottom: 32, boxSizing: "border-box", background: "var(--surface2)", borderRadius: 16, padding: "14px 24px", textAlign: "center", display: "flex", flexDirection: "column", justifyContent: "center", overflow: "hidden" }}>
-          <p style={{ fontSize: 30, fontWeight: 900, color: "var(--orange)", flexShrink: 0, overflowWrap: "anywhere", display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }}>{show(r.title)}</p>
-          {r.hasArtist && <p style={{ fontSize: 18, fontWeight: 700, color: "var(--text2)", marginTop: 2, flexShrink: 0, overflowWrap: "anywhere", display: "-webkit-box", WebkitLineClamp: 1, WebkitBoxOrient: "vertical", overflow: "hidden" }}>{show(r.artist)}</p>}
+          <p style={{ fontSize: 30, fontWeight: 900, color: "var(--orange)", flexShrink: 0, overflowWrap: "anywhere", display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }}>{r.title}</p>
+          {r.hasArtist && <p style={{ fontSize: 18, fontWeight: 700, color: "var(--text2)", marginTop: 2, flexShrink: 0, overflowWrap: "anywhere", display: "-webkit-box", WebkitLineClamp: 1, WebkitBoxOrient: "vertical", overflow: "hidden" }}>{r.artist}</p>}
         </div>
         <p style={label}>{roundLabel(state)} · 結果</p>
         {/* 8 rows (the room's cap) fit this column's height; a TV can't scroll. */}
@@ -381,7 +377,7 @@ export function GuessHostControls({ state, panel, onStartRound, onShowResults, o
         <button data-testid="guess-show-results-btn" onClick={once(onShowResults)} disabled={busy} style={{ ...primary, background: "var(--ink)", boxShadow: "none", fontSize: 15 }}>🔍 揭曉答案 · Show Results</button>
       </>)}
       {state.phase === "results" && r && (<>
-        <p style={label}>{roundLabel(state)} · 答案：{show(r.title)}{r.hasArtist ? ` — ${show(r.artist)}` : ""}</p>
+        <p style={label}>{roundLabel(state)} · 答案：{r.title}{r.hasArtist ? ` — ${r.artist ?? ""}` : ""}</p>
         <button data-testid="guess-next-btn" onClick={once(onNext)} disabled={busy} style={{ ...primary, fontSize: 15 }}>
           {state.currentRoundIndex + 1 >= state.totalRounds ? "🏆 查看排名 · See Rankings" : "▶ 下一回合 · Next Round"}
         </button>

@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.15.1.0] — 2026-10-29
+
+### Fixed
+- **Song titles and names show apostrophes and ampersands as typed:** "Don't Stop" and "Rock & Roll" used to show up as "Don&#39;t Stop" and "Rock &amp; Roll" on the host, TV and phones. Playlists saved by older versions come back clean too
+- **A player who leaves stops getting turns:** in Timeline mode a friend who went home kept getting every few turns, and their seat still counted toward the 8-player limit. They are now skipped until their phone comes back, and the room frees their seat for someone new
+- **Leaving and rejoining can't fill a room:** a room keeps at most 16 seats in all. In the lobby the seats of players who left are given to new players, so nobody can lock a room by joining and leaving over and over
+- **The lyrics preview shows the playlist you loaded last:** if you loaded a new playlist while the old one's lyrics preview was still running, the old rows could replace the new ones, or the preview could keep spinning. Loading a playlist now clears the old preview, and a Lyrics game no longer picks from the old playlist's lyrics
+
 ## [0.15.0.1] — 2026-10-29
 
 ### Added
