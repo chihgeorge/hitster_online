@@ -265,6 +265,7 @@ describe("PLACE handler", () => {
     r.state.players[P1] = { name: "Alice", timeline: [], connected: true };
     r.state.phase = "guessing";
     r.state.activePlayerId = P1;
+    ((r as any).playerConnId)[P1] = "conn-1"; // as a JOIN on conn-1 would
     r.state.currentSong = {
       id: "v1", videoId: "v1", title: "Song", artist: "Artist", year: 1985,
     };
@@ -298,6 +299,7 @@ describe("PLACE handler", () => {
     r.state.players[P1] = { name: "Alice", timeline: [], connected: true };
     r.state.phase = "guessing";
     r.state.activePlayerId = P1;
+    ((r as any).playerConnId)[P1] = "conn-1"; // as a JOIN on conn-1 would
     r.state.currentSong = {
       id: "v1", videoId: "v1", title: "Song", artist: "Artist", year: 1985,
     };
@@ -326,6 +328,7 @@ describe("PLACE handler", () => {
     r.state.players[P1] = { name: "Alice", timeline: [{ id: "c1", videoId: "c1", title: "Old", artist: "A", year: 1990 }], connected: true };
     r.state.phase = "guessing";
     r.state.activePlayerId = P1;
+    ((r as any).playerConnId)[P1] = "conn-1"; // as a JOIN on conn-1 would
     r.state.currentSong = { id: "v1", videoId: "v1", title: "Song", artist: "Artist", year: 1985 };
 
     const conn = makeConn("conn-1");
@@ -347,6 +350,55 @@ describe("PLACE handler", () => {
     );
     const acks = sentMessages.filter((m: { type: string }) => m.type === "PLACEMENT_ACK");
     expect(acks).toHaveLength(2);
+  });
+
+  it("ignores a PLACE for the active player sent from another player's connection", async () => {
+    const r = roomInGuessing();
+    r.state.players[P2] = { name: "Bob", timeline: [], connected: true };
+    await send(r, makeConn("conn-1"), { type: "JOIN", playerId: P1, name: "Alice" });
+    const bob = makeConn("conn-2");
+    await send(r, bob, { type: "JOIN", playerId: P2, name: "Bob" });
+    await send(r, bob, { type: "PLACE", playerId: P1, position: 0 });
+    // A forged placement would lock the real player's picker (the phone trusts STATE.placements).
+    expect(r.state.placements[P1]).toBeUndefined();
+    // An ERROR, not silence: a phone whose PLACE beat its REJOIN (or a second tab) unlocks its picker.
+    expect(lastSentTo(bob)?.error).toBe("not_bound");
+  });
+
+  // Value: protects=a PLACE that beat its REJOIN still counts once the phone re-sends it; fails_when=handleRejoin stops
+  // rebinding playerConnId (every reconnected phone gets not_bound forever); why_new=no test places after a REJOIN on
+  // a new connection; seam=none; no_claim=client re-send ordering (play-page tests)
+  it("refuses a PLACE from a reconnected phone until its REJOIN, then accepts it", async () => {
+    const r = roomInGuessing();
+    const phone = makeConn("conn-new");
+    await send(r, phone, { type: "PLACE", playerId: P1, position: 0 });
+    expect(lastSentTo(phone)?.error).toBe("not_bound");
+    expect(r.state.placements[P1]).toBeUndefined();
+    await send(r, phone, { type: "REJOIN", playerId: P1, name: "Alice" });
+    await send(r, phone, { type: "PLACE", playerId: P1, position: 0 });
+    expect(r.state.placements[P1]).toBe(0);
+    expect(lastSentTo(phone)?.type).toBe("PLACEMENT_ACK");
+  });
+
+  // Value: protects=a PLACE tapped for a skipped song never becomes the next song's guess, while one built from the
+  // phone's real (sanitized) STATE still lands; fails_when=handlePlace stops comparing dealSeq, dealSong stops bumping
+  // it, or the check keys on something STATE redacts (song id: every tap refused); why_new=fixtures elsewhere skip
+  // sanitizedState; seam=none; no_claim=client reset on skip (play-page tests)
+  it("takes a PLACE built from the phone's own STATE, and refuses one tapped before a skip", async () => {
+    const r = roomInGuessing();
+    r.state.songs = [{ id: "v2", videoId: "v2", title: "Next", artist: "B", year: 1999 }];
+    const phone = makeConn("conn-1");
+    await send(r, phone, { type: "REJOIN", playerId: P1, name: "Alice" }); // the phone gets STATE as phones do
+    const before = lastSentTo(phone).state;
+    expect(before.currentSong.id).toBe(""); // redacted during guessing: nothing to key on
+    (r as any).skipTimelineSong(); // the TV couldn't play it: new deal, same round
+    await send(r, phone, { type: "PLACE", playerId: P1, position: 0, dealSeq: before.dealSeq });
+    expect(lastSentTo(phone)?.error).toBe("stale_song");
+    expect(r.state.placements[P1]).toBeUndefined();
+    await send(r, phone, { type: "REJOIN", playerId: P1, name: "Alice" });
+    await send(r, phone, { type: "PLACE", playerId: P1, position: 0, dealSeq: lastSentTo(phone).state.dealSeq });
+    expect(r.state.placements[P1]).toBe(0);
+    expect(lastSentTo(phone)?.type).toBe("PLACEMENT_ACK");
   });
 
   it("rejects PLACE from a non-active player (spectator)", async () => {
@@ -836,6 +888,14 @@ describe("RESET_GAME handler", () => {
     expect(room.state.players[P1].timeline).toHaveLength(0);
   });
 
+  it("keeps counting deals, so a new game never reuses an old game's dealSeq", async () => {
+    const { room, conn } = await endedRoom();
+    const lastDeal = room.state.dealSeq;
+    expect(lastDeal).toBeGreaterThan(0);
+    await send(room, conn, { type: "RESET_GAME", hostId: "host-uuid" });
+    expect(room.state.dealSeq).toBe(lastDeal);
+  });
+
   it("rejects RESET_GAME from non-host", async () => {
     const { room } = await endedRoom();
     const intruder = makeConn("intruder");
@@ -864,6 +924,7 @@ describe("PLACE edge cases", () => {
     r.state.players[P2] = { name: "Bob", timeline: [], connected: true };
     r.state.phase = "guessing";
     r.state.activePlayerId = P1;
+    ((r as any).playerConnId)[P1] = "conn-1"; // as a JOIN on conn-1 would
     r.state.currentSong = {
       id: "v1", videoId: "v1", title: "Song", artist: "Artist", year: 1985,
     };

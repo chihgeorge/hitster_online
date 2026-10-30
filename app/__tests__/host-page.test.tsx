@@ -33,7 +33,7 @@ function clickStartGame() {
 
 const lobbyStateWithPlayer: GameState = {
   phase: "lobby", players: { p1: { name: "Alice", timeline: [], connected: true } },
-  targetCardCount: 10, currentRound: 0, playlistId: "", songs: [], currentSong: null,
+  targetCardCount: 10, currentRound: 0, playlistId: "", songs: [], currentSong: null, dealSeq: 0,
   placements: {}, activePlayerId: null, hostId: "host-uuid", hostClaimed: true, winner: null,
 };
 
@@ -550,5 +550,40 @@ describe("HostPage: daily paid-API limit", () => {
     await waitFor(() => expect(screen.getByText(/^✨ Ask AI$/)).toBeTruthy());
     serverSends({ type: "LYRIC_EDITS_PROPOSAL_FAILED", error: "daily_limit" });
     expect(screen.getByText(/Today's limit is used up, try again tomorrow/)).toBeTruthy();
+  });
+});
+
+describe("HostPage: start-now after aborting a slow load", () => {
+  it("starts with the songs from the PLAYLIST_READY that ends the load, not the previous list", () => {
+    vi.useFakeTimers();
+    try {
+      render(<HostPage />);
+      serverSends({ type: "STATE", state: lobbyStateEmpty });
+      const load = (url: string) => {
+        fireEvent.change(screen.getByPlaceholderText(/youtube.com\/playlist/), { target: { value: url } });
+        fireEvent.click(screen.getByText("載入 Load"));
+      };
+      load("https://www.youtube.com/playlist?list=OLD");
+      serverSends({ type: "PLAYLIST_READY", songs: [{ videoId: "old1", title: "Old", artist: "A", year: 1990 }] });
+
+      load("https://www.youtube.com/playlist?list=NEW");
+      serverSends({ type: "DIAGNOSTIC", songs: [
+        { title: "N1", artist: "B", year: 2000, yearSource: "ai" },
+        { title: "N2", artist: "B", year: 2001, yearSource: "ai" },
+      ] });
+      act(() => { vi.advanceTimersByTime(5 * 60 * 1000 + 15_000); });
+      fireEvent.click(screen.getByText("立即開始 (2)"));
+
+      const newSongs = [
+        { videoId: "new1", title: "N1", artist: "B", year: 2000 },
+        { videoId: "new2", title: "N2", artist: "B", year: 2001 },
+      ];
+      serverSends({ type: "PLAYLIST_READY", songs: newSongs });
+
+      const start = sendSpy.mock.calls.map(([m]) => JSON.parse(m as string)).find((m) => m.type === "START_GAME");
+      expect(start?.songs).toEqual(newSongs);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

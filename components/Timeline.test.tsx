@@ -12,9 +12,15 @@ const baseProps = {
   onSelectPosition: () => {},
   onPlace: () => {},
   tooLate: false,
+  pending: false,
 };
 
 describe("Timeline: guess marker", () => {
+  it("shows the '?' marker while the placement is pending, before the ack", () => {
+    render(<Timeline {...baseProps} timeline={[card("a", 1990)]} phase="guessing" selectedPosition={1} hasPlaced={false} pending />);
+    expect(screen.getByTestId("guess-marker")).toBeTruthy();
+  });
+
   it("shows a '?' at the placed position once the player has placed, instead of the picker", () => {
     render(
       <Timeline
@@ -80,5 +86,68 @@ describe("Timeline: guess marker", () => {
       />
     );
     expect(screen.getByTestId("guess-marker")).toBeTruthy();
+  });
+});
+
+describe("Timeline: CTA bar feedback", () => {
+  const props = { ...baseProps, timeline: [card("a", 1990)], phase: "guessing" as const, selectedPosition: 1 };
+
+  // The server only sends TOO_LATE after the phase has left guessing, and the reveal STATE arrives first.
+  it("tells the player they were too late, in the reveal state the server actually produces", () => {
+    render(<Timeline {...props} phase="reveal" hasPlaced={false} tooLate />);
+    expect(screen.getByText("太晚了！")).toBeTruthy();
+    expect(screen.queryByTestId("place-btn")).toBeNull();
+  });
+
+  it("shows no bar when it is not the player's turn", () => {
+    render(<Timeline {...props} isMyTurn={false} hasPlaced />);
+    expect(screen.queryByText("已放置 ✓ 等待主持人揭曉")).toBeNull();
+  });
+
+  it("shows no too-late bar to a player whose turn it isn't", () => {
+    render(<Timeline {...props} phase="reveal" isMyTurn={false} hasPlaced={false} tooLate />);
+    expect(screen.queryByText("太晚了！")).toBeNull();
+  });
+
+  // Value: protects=no second placement once placed or too late; fails_when=the CTA ternary is reordered;
+  // why_new=the bar now stays up after placing, so only the ternary hides place-btn; seam=none
+  it("hides the place button once placed or too late, and placed wins when both are set", () => {
+    const { rerender } = render(<Timeline {...props} hasPlaced />);
+    expect(screen.getByText("已放置 ✓ 等待主持人揭曉")).toBeTruthy();
+    expect(screen.queryByTestId("place-btn")).toBeNull();
+    rerender(<Timeline {...props} phase="reveal" hasPlaced={false} tooLate />);
+    expect(screen.getByText("太晚了！")).toBeTruthy();
+    expect(screen.queryByTestId("place-btn")).toBeNull();
+    rerender(<Timeline {...props} phase="reveal" hasPlaced tooLate />);
+    expect(screen.getByText("已放置 ✓ 等待主持人揭曉")).toBeTruthy();
+    expect(screen.queryByText("太晚了！")).toBeNull();
+  });
+
+  // Value: protects=the ✓ only claims a placement the server acked; fails_when=pending renders the placed text;
+  // why_new=the bar now stays up after the tap, before PLACEMENT_ACK; seam=none
+  // Value (extension): protects=the picker is locked while a placement is in flight; fails_when=canPlace drops
+  // its !pending check, so drop zones reappear and the player can move the guess mid-send;
+  // why_new=no test asserted drop zones are gone while pending; seam=none
+  it("shows a neutral sending state until the server acks, never the placed ✓", () => {
+    render(<Timeline {...props} hasPlaced={false} pending />);
+    expect(screen.getByText("送出中…")).toBeTruthy();
+    expect(screen.queryByText("已放置 ✓ 等待主持人揭曉")).toBeNull();
+    expect(screen.queryByTestId("place-btn")).toBeNull();
+    expect(screen.queryAllByRole("button")).toHaveLength(0); // no drop zones: the picker is locked
+  });
+
+  // Value: protects=no red flash from last turn's TOO_LATE; fails_when=tooLate shows during guessing;
+  // why_new=Timeline is pure and can render once with last turn's flag before the play page clears it; seam=none
+  it("ignores a stale tooLate during guessing (the server never sends TOO_LATE then)", () => {
+    render(<Timeline {...props} hasPlaced={false} tooLate />);
+    expect(screen.queryByText("太晚了！")).toBeNull();
+  });
+
+  // Value: protects=CTA bar (placed/too-late/place button) hides once phase leaves guessing;
+  // fails_when=the bar gate drops its phase === "guessing" check; why_new=other CTA cases are all in guessing; seam=none
+  it("drops the placed bar once reveal starts", () => {
+    render(<Timeline {...props} phase="reveal" hasPlaced tooLate={false} />);
+    expect(screen.queryByText("已放置 ✓ 等待主持人揭曉")).toBeNull();
+    expect(screen.queryByTestId("place-btn")).toBeNull();
   });
 });

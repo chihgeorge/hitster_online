@@ -11,7 +11,10 @@ interface Props {
   selectedPosition: number | null;
   onSelectPosition: (position: number) => void;
   onPlace: () => void;
+  /** The server acked this player's placement. */
   hasPlaced: boolean;
+  /** Placement sent, not acked yet: the picker is locked but nothing claims success. */
+  pending: boolean;
   tooLate: boolean;
 }
 
@@ -25,14 +28,15 @@ export default function Timeline({
   onSelectPosition,
   onPlace,
   hasPlaced,
+  pending,
   tooLate,
 }: Props) {
-  const canPlace = phase === "guessing" && isMyTurn && !hasPlaced && !tooLate;
-  // Once placed, show a static "?" where the guess landed instead of the interactive picker —
+  const canPlace = phase === "guessing" && isMyTurn && !hasPlaced && !pending && !tooLate;
+  // Once placed (or sent and waiting for the server ack), show a static "?" where the guess landed instead of the interactive picker —
   // lets the player (and anyone else looking at this timeline) see where the card went before
   // the reveal confirms whether it was right. Cleared automatically once reveal/next round starts,
   // since selectedPosition resets to null then (see app/room/[code]/play/page.tsx).
-  const guessPosition = hasPlaced && phase === "guessing" ? selectedPosition : null;
+  const guessPosition = (hasPlaced || pending) && phase === "guessing" ? selectedPosition : null;
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 0, paddingBottom: 200 }}>
@@ -145,23 +149,33 @@ export default function Timeline({
         </div>
       </div>
 
-      {/* CTA bar */}
-      {canPlace && (
+      {/* CTA bar — stays up after placing so the placed state shows. The server sends TOO_LATE only once
+          phase has left guessing (after the reveal STATE), so tooLate keeps the bar up there; during
+          guessing a set tooLate is last turn's (the play page clears it in a layout effect; this covers the
+          render before that commit). */}
+      {isMyTurn && (phase === "guessing" ? !tooLate : tooLate) && (
         <div style={{
           position: "fixed", bottom: 0, left: 0, right: 0, padding: "16px 16px 24px",
           background: "linear-gradient(to top, var(--bg) 70%, transparent)",
         }}>
           {hasPlaced ? (
-            <div style={{
+            <div role="status" style={{
               background: "var(--mint)", borderRadius: 16, padding: "15px", textAlign: "center",
             }}>
-              <p style={{ color: "white", fontWeight: 900, fontSize: 16 }}>已放置 ✓ 等待主持人揭曉</p>
+              <p style={{ color: "var(--ink)", fontWeight: 900, fontSize: 16 }}>已放置 ✓ 等待主持人揭曉</p>
+            </div>
+          ) : pending ? (
+            <div role="status" style={{
+              background: "white", borderRadius: 16, padding: "15px", textAlign: "center",
+              border: "2px solid rgba(255,107,53,.2)",
+            }}>
+              <p style={{ color: "var(--ink)", fontWeight: 700, fontSize: 16 }}>送出中…</p>
             </div>
           ) : tooLate ? (
-            <div style={{
+            <div role="status" style={{
               background: "var(--red)", borderRadius: 16, padding: "15px", textAlign: "center",
             }}>
-              <p style={{ color: "white", fontWeight: 900, fontSize: 16 }}>太晚了！</p>
+              <p style={{ color: "var(--ink)", fontWeight: 900, fontSize: 16 }}>太晚了！</p>
             </div>
           ) : selectedPosition !== null ? (
             <button data-testid="place-btn" onClick={onPlace} style={{
