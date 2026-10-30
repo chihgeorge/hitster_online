@@ -444,6 +444,15 @@ export default class HitsterRoom {
       this.sendTo(conn, { type: "ERROR", error: "invalid_name" });
       return;
     }
+    // In the lobby a player who left holds no cards (nor Lyrics/Guess seats), so free their seat instead
+    // of letting leavers fill the room.
+    if (this.state.phase === "lobby" && !this.lyricsState && !this.guessState && Object.keys(this.state.players).length >= MAX_PLAYERS_HARD) {
+      for (const [pid, p] of Object.entries(this.state.players)) {
+        if (p.connected) continue;
+        delete this.state.players[pid];
+        delete this.playerConnId[pid];
+      }
+    }
     const players = Object.values(this.state.players);
     if (players.filter((p) => p.connected).length >= MAX_PLAYERS_SOFT || players.length >= MAX_PLAYERS_HARD) {
       this.sendTo(conn, { type: "ERROR", error: "room_full" });
