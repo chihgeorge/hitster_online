@@ -21,7 +21,7 @@
  */
 
 import { test, expect, type Page } from "@playwright/test";
-import { createRoomAsHost } from "./helpers";
+import { closeContexts, createRoomAsHost } from "./helpers";
 
 // ── helpers ──────────────────────────────────────────────────────────────────
 
@@ -146,9 +146,7 @@ test.describe("C-pop multiplayer with metadata verification", () => {
         await expect(hostPage.getByText(/Winner!/i)).toBeVisible({ timeout: 10_000 });
         await expect(hostPage.getByRole("heading", { name: "Alice" })).toBeVisible({ timeout: 10_000 });
       } finally {
-        await hostCtx.close();
-        await p1Ctx.close();
-        await p2Ctx.close();
+        await closeContexts([hostCtx, p1Ctx, p2Ctx]);
       }
     },
   );

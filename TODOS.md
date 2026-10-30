@@ -89,6 +89,44 @@ _Deferred from /qa on feat/lyrics-api 2026-09-17_
 **Priority:** P3
 **Depends on:** None
 
+## Timeline Mode
+
+### A REJOIN can take over another player's seat
+
+**What:** Require a per-player secret on REJOIN, handed out on JOIN.
+
+**Why:** Player ids are the keys of `state.players` in every STATE, so any connection can send `REJOIN {playerId: someone else}`, take that player's binding (`playerConnId`) and then place on their turn. v0.14.21.0 stopped a connection placing for a player it isn't bound to, but not this rebinding.
+
+**Context:** `handleRejoin` in `party/index.ts` rebinds without proof. Issue a random secret on JOIN, keep it with the persisted player id on the phone, and refuse a REJOIN without it. Lyrics and Guess answers rely on the same binding. _From /ship adversarial review on fix/timeline-cta-feedback, 2026-10-28; existed before that branch._
+
+**Priority:** P2
+
+**Depends on:** None
+
+### The place button flashes back after a second tab took the seat
+
+**What:** Delete the `rebindTriedRef.current = true` line in `onOpen` of `app/room/[code]/play/page.tsx` so the ERROR handler's single REJOIN + re-send runs, and add a play-page test: after `ERROR not_bound`, 送出中… still shows and `place-btn` is gone.
+
+**Why:** When another tab took this player's binding while the phone was offline, the flushed PLACE's `not_bound` clears 送出中… and the picker reappears until the re-sent PLACE is acked, so the player can pick again in that gap. A plain reconnect doesn't hit this, because partysocket reuses `_pk` and the server keeps the same connection id.
+
+**Context:** Same file, lines just above: the comment saying an offline tap "was refused (not_bound)" on reconnect only holds when another tab has the binding; fix it with the code. The test name at `party/index.test.ts` ("reconnected phone") really models a reload or second tab. _From /review of #81 before landing, 2026-10-29._
+
+**Priority:** P3
+
+**Depends on:** None
+
+### Screen readers may not announce the Timeline bar's 送出中… / ✓ / 太晚了！
+
+**What:** Keep one `role="status"` node mounted in the Timeline CTA bar and change only its text.
+
+**Why:** Each state mounts a new `role="status"` element with its text already inside, and screen readers often don't announce a live region that appears together with its content.
+
+**Context:** `components/Timeline.tsx` CTA bar (the three status boxes). Mount the wrapper while `isMyTurn`, then swap the contents. _From /ship review on fix/timeline-cta-feedback, 2026-10-28._
+
+**Priority:** P3
+
+**Depends on:** None
+
 ## Playlists & Library
 
 ### Saved playlists lost in the PartyKit shutdown come back as rows that can't be opened or deleted

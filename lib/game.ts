@@ -122,6 +122,9 @@ export interface GameState {
   playlistId: string; // server-side: always "" in STATE (sanitizedState), no page reads it
   songs: Card[]; // server-side deck: always [] in STATE (sanitizedState), no page reads it
   currentSong: Card | null;
+  // Bumped on every deal, a skip included (currentRound isn't). Not secret, unlike currentSong.id,
+  // which STATE blanks during guessing: a PLACE names the deal it was tapped for.
+  dealSeq: number;
   // playerId → 0-based insertion position on that player's own timeline.
   // 0 = before first card, 1 = between card[0] and card[1], etc.
   placements: Record<string, number>;
@@ -199,7 +202,9 @@ export interface LyricEditDiff {
 export type ClientMessage =
   | { type: "JOIN"; name: string; playerId: string }
   | { type: "REJOIN"; playerId: string; name: string }
-  | { type: "PLACE"; playerId: string; position: number }
+  // dealSeq: the deal the tap was for (GameState.dealSeq), so a PLACE re-sent after a skip can't
+  // land on the new song. Optional only so a phone still on an older bundle keeps working.
+  | { type: "PLACE"; playerId: string; position: number; dealSeq?: number }
   // gameMode gates lyrics preview generation server-side (handleLoadPlaylist): omitted or
   // "timeline" skips it entirely, since generating AI lyric questions for a mode the host
   // isn't playing was pure waste (spent real Anthropic calls for both modes on every load).

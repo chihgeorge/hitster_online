@@ -11,7 +11,8 @@ export default defineConfig({
   reporter: "html",
   use: {
     baseURL: "http://localhost:3456",
-    trace: "on-first-retry",
+    // Local runs have no retries, so "on-first-retry" never traced a local flake. Keep a trace for any failure.
+    trace: "retain-on-failure",
   },
   projects: [
     { name: "chromium", use: { ...devices["Desktop Chrome"] } },

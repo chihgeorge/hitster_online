@@ -177,7 +177,8 @@ export default function HostPage() {
         if (msg.skippedEmbeddingCount) setSkippedEmbeddingCount(msg.skippedEmbeddingCount);
       }
       if (msg.type === "PLAYLIST_READY") {
-        setReadySongs(Array.isArray(msg.songs) ? msg.songs : []);
+        const songs = Array.isArray(msg.songs) ? msg.songs : [];
+        setReadySongs(songs);
         setLoadStatus("ready");
         setShowSavePanel(false);
         const incomingSavedId = pendingSavedIdRef.current;
@@ -193,7 +194,7 @@ export default function HostPage() {
             hostId: hostIdRef.current,
             playlistUrl: loadedUrlRef.current,
             targetCardCount: targetCount,
-            songs: readySongsRef.current,
+            songs, // not readySongsRef: its sync effect hasn't run yet, so it still holds the previous list
           }));
         }
       }

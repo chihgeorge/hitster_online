@@ -16,7 +16,7 @@
  */
 
 import { test, expect, type Page, type APIRequestContext } from "@playwright/test";
-import { createRoomAsHost } from "./helpers";
+import { closeContexts, createRoomAsHost } from "./helpers";
 
 const PARTYKIT_HOST = process.env.NEXT_PUBLIC_PARTYKIT_HOST ?? "localhost:1999";
 const PARTY_URL = (id: string) => `http://${PARTYKIT_HOST}/parties/playlist/${id}`;
@@ -139,9 +139,7 @@ test.describe("Two-player full game", () => {
         await expect(hostPage.getByText(/Winner!/i)).toBeVisible({ timeout: 10_000 });
         await expect(hostPage.getByRole("heading", { name: "Alice" })).toBeVisible({ timeout: 10_000 });
       } finally {
-        await hostCtx.close();
-        await p1Ctx.close();
-        await p2Ctx.close();
+        await closeContexts([hostCtx, p1Ctx, p2Ctx]);
       }
     },
   );
@@ -217,9 +215,7 @@ test.describe("Two-player game using saved playlist", () => {
         await expectSpectating(p1Page, "Bob");
         await expect(hostPage.locator("[data-testid='reveal-btn']")).toBeVisible({ timeout: 10_000 });
       } finally {
-        await hostCtx.close();
-        await p1Ctx.close();
-        await p2Ctx.close();
+        await closeContexts([hostCtx, p1Ctx, p2Ctx]);
       }
     },
   );
