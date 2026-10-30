@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.15.0.1] — 2026-10-29
+
+### Added
+- **Security problems can be reported privately:** `SECURITY.md` points to the repo's Security tab → Report a vulnerability, which is now turned on
+- **Dependency updates merge themselves once CI passes:** Dependabot's minor and patch updates wait 5 days after a release, then merge after the `check` job passes. Major updates, updates whose maintainer changed, and `partyserver` updates still wait for a human. `docs/going-public.md` records the public-repo audit and the GitHub settings changed with it
+
+### Fixed
+- **No known vulnerable packages:** `npm audit` reported a high-severity issue in `source-map-js`. It is fixed, and some dev tools got patch/minor updates along with it
+
 ## [0.15.0.0] — 2026-10-28
 
 ### Changed
