@@ -312,6 +312,17 @@ describe("PlaylistParty: library sync on create/delete (D2a)", () => {
 });
 
 describe("PlaylistParty: GET — fetch playlist", () => {
+  it("hands out text older versions stored escaped as plain text", async () => {
+    const room = makeRoom();
+    room._store.set("playlist", { id: "test-playlist-id", name: "Rock &amp; Roll", ownerHostId: "h", songs: [
+      { videoId: "dQw4w9WgXcQ", title: "Don&#39;t Stop", artist: "A &amp; B", year: 1980 },
+    ] });
+    const { status, body } = await parseResponse(await new PlaylistParty(room).onRequest(makeRequest("GET")));
+    expect(status).toBe(200);
+    expect(body.name).toBe("Rock & Roll");
+    expect(body.songs[0]).toMatchObject({ title: "Don't Stop", artist: "A & B" });
+  });
+
   it("returns 404 when playlist does not exist", async () => {
     const room = makeRoom();
     const party = new PlaylistParty(room);

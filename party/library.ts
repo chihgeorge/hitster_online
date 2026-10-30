@@ -54,7 +54,7 @@ export default class LibraryParty {
     if (method === "GET") {
       const entries = (await this.room.storage.get<Record<string, LibraryEntry>>("entries")) ?? {};
       // Older versions stored escaped names ("Rock &amp; Roll"); hand them out clean.
-      return json({ entries: Object.values(entries).map((e) => ({ ...e, name: sanitizeText(e.name, MAX_NAME_LEN) })) });
+      return json({ entries: Object.values(entries).map((e) => ({ ...e, name: sanitizeText(String(e.name ?? ""), MAX_NAME_LEN) })) });
     }
 
     let body: Record<string, unknown>;

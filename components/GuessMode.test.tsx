@@ -99,10 +99,10 @@ describe("GuessPlay", () => {
     expect(screen.getByText(/時間到/)).toBeTruthy();
   });
 
-  it("results show the decoded answer and a per-field breakdown, omitting artist on title-only rounds", () => {
+  it("results show the answer and a per-field breakdown, omitting artist on title-only rounds", () => {
     const s = state({
       phase: "results",
-      currentRound: { hasArtist: false, title: "Don&#39;t Stop", artist: "" },
+      currentRound: { hasArtist: false, title: "Don't Stop", artist: "" },
       answers: { [ME]: answer({ title: "dont stop", titleCorrect: true, titlePoints: 240, points: 240 }) },
     });
     render(<GuessPlay state={s} playerId={ME} playerName="Alice" tooLate={false} onSubmit={vi.fn()} />);

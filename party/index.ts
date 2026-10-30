@@ -51,6 +51,8 @@ const DEFAULT_TARGET_CARD_COUNT = 10;
 const SCREEN_ID_KEY = "screenId";
 const MAX_TARGET_CARD_COUNT = 20;
 const MAX_PLAYERS_SOFT = 8;
+// Players who left keep their seat record, so the soft cap counts only connected ones; this bounds the rest.
+const MAX_PLAYERS_HARD = MAX_PLAYERS_SOFT * 2;
 
 // Real C-pop seed for hitster://cpop-test (used by both classic and Lyrics Mode).
 const CPOP_SEED = [
@@ -427,10 +429,11 @@ export default class HitsterRoom {
     // A player who left stops getting turns and seats (startNextRound, handleJoin) until REJOIN.
     // A reconnected phone keeps its connection id, so an old socket's late close is ignored.
     if ([...this.allConns].some((c) => c.id === conn.id)) return;
-    const playerId = Object.keys(this.playerConnId).find((pid) => this.playerConnId[pid] === conn.id);
-    const player = playerId ? this.state.players[playerId] : undefined;
-    if (!player?.connected) return;
-    player.connected = false;
+    const left = Object.keys(this.playerConnId)
+      .map((pid) => (this.playerConnId[pid] === conn.id ? this.state.players[pid] : undefined))
+      .filter((p) => p?.connected);
+    if (left.length === 0) return;
+    for (const p of left) p!.connected = false;
     this.broadcastState();
   }
 
@@ -441,7 +444,8 @@ export default class HitsterRoom {
       this.sendTo(conn, { type: "ERROR", error: "invalid_name" });
       return;
     }
-    if (Object.values(this.state.players).filter((p) => p.connected).length >= MAX_PLAYERS_SOFT) {
+    const players = Object.values(this.state.players);
+    if (players.filter((p) => p.connected).length >= MAX_PLAYERS_SOFT || players.length >= MAX_PLAYERS_HARD) {
       this.sendTo(conn, { type: "ERROR", error: "room_full" });
       return;
     }
@@ -615,7 +619,11 @@ export default class HitsterRoom {
 
   /** New playlist generation: any in-flight load's `mySeq !== loadSeq` checks drop its writes. */
   private startPlaylistLoad(): number {
+    // The old playlist's preview stops here (generateLyricsPreview's stale check), so clear the host's
+    // rows and spinner, and its candidate pool.
+    if (this.lastLyricsPreview) this.sendPrivileged({ type: "LYRICS_PREVIEW", rounds: [], loading: false });
     this.lastLyricsPreview = null;
+    this.lyricsPreviewMap = new Map();
     this.abortLoad = false; // an ABORT_LOAD belongs to the load it was sent for, not the next one
     return ++this.loadSeq;
   }

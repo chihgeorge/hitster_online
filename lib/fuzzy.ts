@@ -30,8 +30,8 @@ export function isCorrect(
   fuzzyEnabled: boolean
 ): boolean {
   const isCJK = isCJKText(target);
-  // Answers are stored through sanitizeText (' → &#39;), targets usually aren't: decode both, or
-  // normLatin turns "don&#39;t" into "don39t" and an exact apostrophe answer grades wrong.
+  // Older versions stored answers escaped (' → &#39;): decode both, or normLatin turns
+  // "don&#39;t" into "don39t" and an exact apostrophe answer grades wrong.
   const norm = (s: string) => (isCJK ? normCJK : normLatin)(decodeEntities(s));
 
   const normTarget = norm(target);

@@ -3914,10 +3914,10 @@ describe("players who leave (ponytail-audit #2)", () => {
     const room = new HitsterRoom(makeRoom());
     const host = makeConn("host");
     const phones = [makeConn("c1"), makeConn("c2"), makeConn("c3")];
-    [P1, P2, P3].forEach((pid, i) => {
+    for (const [i, pid] of [P1, P2, P3].entries()) {
       room.onConnect(phones[i]);
-      void send(room, phones[i], { type: "JOIN", playerId: pid, name: `p${i + 1}` });
-    });
+      await send(room, phones[i], { type: "JOIN", playerId: pid, name: `p${i + 1}` });
+    }
     await send(room, host, { type: "START_GAME", hostId: "host-uuid", playlistUrl: "hitster://test" });
     return { room, host, phones };
   }
@@ -3945,6 +3945,33 @@ describe("players who leave (ponytail-audit #2)", () => {
     room.onConnect(makeConn("c2")); // the reconnected socket, same id
     room.onClose(phones[1]);
     expect(room.state.players[P2].connected).toBe(true);
+  });
+
+  // Value: protects=a ghost seat getting turns forever; fails_when=onClose marks only the first player bound to the socket; why_new=onClose is new; seam=none
+  it("marks every player bound to a closed socket as gone", async () => {
+    const { room, phones } = await threePlayerGame();
+    await send(room, phones[0], { type: "REJOIN", playerId: P3, name: "p3" }); // phone 1 now also holds P3
+    room.onClose(phones[0]);
+    expect(room.state.players[P1].connected).toBe(false);
+    expect(room.state.players[P3].connected).toBe(false);
+  });
+
+  // Value: protects=a late friend getting a seat a leaver freed, and the room staying bounded; fails_when=the cap counts all players, or stops counting them at all; why_new=the cap changed; seam=none
+  it("frees a seat when a player leaves, but caps the seats players who left still hold", async () => {
+    const room = new HitsterRoom(makeRoom());
+    const id = (i: number) => `00000000-0000-0000-0000-${String(i).padStart(12, "0")}`;
+    for (let i = 0; i < 8; i++) await send(room, makeConn(`c${i}`), { type: "JOIN", playerId: id(i), name: `P${i}` });
+    room.onClose(makeConn("c0"));
+    await send(room, makeConn("late"), { type: "JOIN", playerId: id(8), name: "Late" });
+    expect(room.state.players[id(8)]?.connected).toBe(true);
+    for (let i = 1; i < 8; i++) room.onClose(makeConn(`c${i}`));
+    for (let i = 9; i < 40; i++) {
+      const c = makeConn(`x${i}`);
+      room.onConnect(c);
+      await send(room, c, { type: "JOIN", playerId: id(i), name: `X${i}` });
+      room.onClose(c);
+    }
+    expect(Object.keys(room.state.players)).toHaveLength(16);
   });
 });
 
@@ -3980,6 +4007,8 @@ describe("a replaced playlist's lyrics preview (ponytail-audit #3)", () => {
       { videoId: "dQw4w9WgX02", title: "Other 2", artist: "X", year: 1991 },
     ] });
     const sentBefore = (conn.send as ReturnType<typeof vi.fn>).mock.calls.length;
+    const sent = (conn.send as ReturnType<typeof vi.fn>).mock.calls.map((c) => JSON.parse(c[0] as string));
+    expect(sent.filter((m: { type: string }) => m.type === "LYRICS_PREVIEW").at(-1)).toEqual({ type: "LYRICS_PREVIEW", rounds: [], loading: false });
     finish();
     await vi.waitFor(() => {
       const putCalls = (mockRoom.storage.put as ReturnType<typeof vi.fn>).mock.calls;

@@ -45,6 +45,13 @@ describe("LibraryParty: GET — list entries", () => {
     const { body } = await parseResponse(await party.onRequest(makeRequest("GET")));
     expect(body.entries).toEqual([{ id: "p1", name: "My Mix", songCount: 10 }]);
   });
+
+  it("hands out names older versions stored escaped as plain text", async () => {
+    const room = makeRoom();
+    room._store.set("entries", { p1: { id: "p1", name: "Rock &amp; Roll", songCount: 1 } });
+    const { body } = await parseResponse(await new LibraryParty(room).onRequest(makeRequest("GET")));
+    expect(body.entries[0].name).toBe("Rock & Roll");
+  });
 });
 
 describe("LibraryParty: PUT UPSERT", () => {
