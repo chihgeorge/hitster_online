@@ -11,7 +11,6 @@ import { GuessHostControls, QuitGameButton } from "@/components/GuessMode";
 import { SkipNotice } from "@/components/TimedRound";
 import { getOrCreatePersistedId } from "@/lib/device-id";
 import { watchScreens } from "@/lib/screen-presence";
-import { importLocalPlaylistsToLibrary } from "@/lib/playlist-library-migration";
 import { rankPlayers } from "@/lib/game";
 import type { GameState, ServerMessage, ClientMessage, SongDiagnostic, EditableSong, PublicLyricsGameState, PublicLyricsRound, LyricsGameConfig, PublicGuessGameState, SongEditDiff, EditableLyricRound, LyricEditDiff } from "@/lib/game";
 
@@ -112,9 +111,7 @@ export default function HostPage() {
 
   useEffect(() => {
     hostIdRef.current = getOrCreatePersistedId("hitster_host_id");
-    // D2b: migrate any pre-existing localStorage-only entries into the library index first,
-    // so they still show up here (not just on app/playlists/page.tsx) after this switch.
-    void importLocalPlaylistsToLibrary(hostIdRef.current, PARTYKIT_HOST).then(() => refreshSavedPlaylists());
+    void refreshSavedPlaylists();
   }, []);
 
   async function refreshSavedPlaylists() {
@@ -1154,7 +1151,7 @@ function errorInfo(code: string): { message: string; detail?: string; hint?: str
   if (code === "api_key_missing") return {
     message: "API key not configured",
     detail: "The server is missing YOUTUBE_API_KEY.",
-    hint: "Check that the environment variables are set in the PartyKit deployment.",
+    hint: "Check that YOUTUBE_API_KEY is set on the game server (npx wrangler secret put).",
   };
   if (code === "playlist_forbidden") return {
     message: "Playlist access denied (403)",

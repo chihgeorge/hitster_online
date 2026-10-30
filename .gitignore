@@ -32,17 +32,13 @@ yarn-error.log*
 
 # env files (can opt-in for committing if needed)
 .env*
-# PartyKit local secrets — NEVER commit
+# wrangler dev local secrets — NEVER commit
 .dev.vars
 
 # vercel
 .vercel
 
-# partykit local dev state (Durable Object sqlite files — churns every `partykit dev` run,
-# was polluting /ship's evidence fingerprint since it wasn't ignored)
-.partykit/
-
-# playwright output — writes itself as untracked content mid test-run, same fingerprint issue
+# playwright output — writes itself as untracked content mid test-run, polluting /ship's evidence fingerprint
 /playwright-report/
 /test-results/
 
@@ -52,3 +48,6 @@ next-env.d.ts
 .claude/skills/gstack/
 .gstack/
 public/design/
+
+# wrangler dev local state
+.wrangler/

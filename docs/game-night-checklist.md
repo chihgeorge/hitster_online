@@ -13,9 +13,9 @@ Needs: a TV with a browser (or a laptop on HDMI), 2+ phones, a Lyrics playlist, 
 3. **Play one Guess round, judging from the couch.** Load any playlist in 🎧 Guess mode, start, play a round, Show Results.
    Pass: the reveal video is sharp from the couch and its corners are rounded. Fail: blurry (240p-360p look) or square corners. Note the TV model and browser. → TODOS "Check the Guess reveal video's sharpness on a real TV"
 4. **Run a Lyrics game with a second phone joined.** Load a Chinese pop playlist (or `hitster://cpop-test`) in Lyrics mode, join from a second phone, tap Start Lyrics, check the lyric preview, then tap "▶ 開始遊戲 · Start Game".
-   Pass: rounds load with real lyric lines, and the TV plays the song. Fail: "AI 正在準備歌詞…" hangs, or the blanks look wrong. Then run `npx partykit tail` and look for `[lyrics-resolver] lrclib hits: N/8`. → TODOS "E2E: verify lrclib → Claude pipeline with a real player in the room"
+   Pass: rounds load with real lyric lines, and the TV plays the song. Fail: "AI 正在準備歌詞…" hangs, or the blanks look wrong. Then run `npx wrangler tail` and look for `[lyrics-resolver] lrclib hits: N/8`. → TODOS "E2E: verify lrclib → Claude pipeline with a real player in the room"
 
 ## During the game
 
 5. **Note every Guess answer that felt wrongly graded.** Write the answer typed, the real title or artist, and whether it was marked right or wrong. Two or three examples are enough. → TODOS "Guess grading tuning after playtest"
-6. **If the game freezes or everyone drops,** reload the host page first. If the room is gone, that's the known in-memory room-state limit. Note the time so it can be matched against PartyKit logs. → TODOS "Room state is in memory only"
+6. **If the game freezes or everyone drops,** reload the host page first. If the room is gone, that's the known in-memory room-state limit. Note the time so it can be matched against the worker logs (`npx wrangler tail`). → TODOS "Room state is in memory only"

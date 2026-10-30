@@ -6,7 +6,7 @@ export default defineConfig({
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 2 : 0,
   // Multi-device specs open up to 4 browser contexts each against one `next dev` and one
-  // `partykit dev`; 5 default workers starved them into random timeouts. 2 is stable and faster.
+  // `wrangler dev`; 5 default workers starved them into random timeouts. 2 is stable and faster.
   workers: process.env.CI ? 1 : 2,
   reporter: "html",
   use: {

@@ -15,12 +15,12 @@ Live: [hitsteronline.vercel.app](https://hitsteronline.vercel.app)
 - **Guess Mode** — a third game mode (🎧 猜歌模式): the TV plays a song and everyone names the title and/or artist on their phones before the timer runs out. Title and artist score separately, getting both earns a bonus, and faster answers score more. No AI step, so a game starts instantly once a playlist is loaded
 - **Guess-position marker** — after placing a card, a "?" block shows exactly where it landed on your own timeline and on the big screen's player list, for everyone to see before the reveal confirms it
 - **Winner celebration** — the big screen breaks into confetti, a trophy, and victory music once the game ends
-- **Real-time** via PartyKit WebSocket: all players see live state, scores, and turn order
+- **Real-time** via PartyServer WebSocket: all players see live state, scores, and turn order
 
 ## Tech stack
 
 - Next.js 16 (App Router, TypeScript)
-- PartyKit (WebSocket game server)
+- PartyServer on Cloudflare Durable Objects (WebSocket game server)
 - Cloudflare Workers + Durable Objects (playlist cache, shared AI cache, daily paid-API budget)
 - Claude Haiku (year/title/artist resolution)
 - Playwright (e2e, Chromium + Mobile Safari)
@@ -35,13 +35,13 @@ npm install
 # Start Next.js dev server (always use port 3456)
 PORT=3456 npm run dev:next
 
-# Start PartyKit server (separate terminal)
+# Start the game server, wrangler dev on :1999 (separate terminal)
 npm run dev:party
 ```
 
 `.env.local` is required for the Next.js server. Copy `env.example` and fill in real values (never commit `.env.local`).
 
-`.dev.vars` is required for the PartyKit server. Never commit it.
+`.dev.vars` holds the game server's `YOUTUBE_API_KEY` and `ANTHROPIC_API_KEY` for `wrangler dev`. Never commit it.
 
 ## Testing
 
@@ -49,7 +49,7 @@ npm run dev:party
 # Unit + component tests (Vitest: lib/, party/, app/**/*.test.tsx, and components/**/*.test.tsx)
 npm test
 
-# e2e tests (Playwright — auto-starts the Next.js server on :3456, but not PartyKit: run `npm run dev:party` first)
+# e2e tests (Playwright — auto-starts the Next.js server on :3456, but not the game server: run `npm run dev:party` first)
 npm run test:e2e
 ```
 
@@ -57,9 +57,9 @@ Checks that need a real TV and phones (in-app browsers, video sharpness, live ly
 
 ## Deployment
 
-Deployed to Vercel (Next.js) + PartyKit cloud. The PartyKit parties (`main` room server, `playlist`, `library`, `paid`) are registered in `partykit.json`.
+Deployed to Vercel (Next.js) + a Cloudflare Worker (`npx wrangler deploy`). The hosted PartyKit platform shut down on 2026-10-23, so `party/server.ts` runs the parties (`main` room server, `playlist`, `library`, `paid`) as PartyServer Durable Objects, declared in `wrangler.jsonc`. Set the server keys with `npx wrangler secret put YOUTUBE_API_KEY` and `npx wrangler secret put ANTHROPIC_API_KEY`, then point Vercel's `NEXT_PUBLIC_PARTYKIT_HOST` at the worker's host and redeploy.
 
-Paid YouTube and Anthropic work (loading a YouTube playlist, starting a Lyrics game, creating a saved playlist from a link, AI edits) shares one daily limit across every room, held by the `paid` party: 300 per UTC day by default. Change it with the `PAID_DAILY_CAP` PartyKit var, e.g. `npx partykit deploy --var PAID_DAILY_CAP=500`; `0` turns paid work off. Past the limit the host sees "今天的使用額度已用完 · Today's limit is used up".
+Paid YouTube and Anthropic work (loading a YouTube playlist, starting a Lyrics game, creating a saved playlist from a link, AI edits) shares one daily limit across every room, held by the `paid` party: 300 per UTC day by default. Change it with `npx wrangler secret put PAID_DAILY_CAP` (a secret, not `deploy --var`, so the next deploy doesn't reset it); `0` turns paid work off. Past the limit the host sees "今天的使用額度已用完 · Today's limit is used up".
 
 ---
 

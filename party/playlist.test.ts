@@ -38,17 +38,17 @@ function makeRoom(id = "test-playlist-id", libraryFetch = makeLibraryFetchMock()
     },
     // expose internal store for assertions
     _store: store,
-  } as unknown as import("partykit/server").Room & { _store: Map<string, unknown> };
+  } as unknown as import("./types").Room & { _store: Map<string, unknown> };
 }
 
-function makeRequest(method: string, body?: unknown, id = "test-playlist-id"): import("partykit/server").Request {
+function makeRequest(method: string, body?: unknown, id = "test-playlist-id"): Request {
   const headers = new Headers({ "Content-Type": "application/json" });
   return {
     method,
     url: `http://localhost/parties/playlist/${id}`,
     headers,
     json: () => Promise.resolve(body),
-  } as unknown as import("partykit/server").Request;
+  } as unknown as Request;
 }
 
 function song(videoId: string, year = 2000): EditableSong {

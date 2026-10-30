@@ -1,12 +1,23 @@
 # Changelog
 
+## [0.15.0.0] — 2026-10-28
+
+### Changed
+- **The game server runs on our own Cloudflare account:** the hosted PartyKit service shut down on 2026-10-23 and deleted every project, so rooms, saved playlists and YouTube playlist loading stopped working. The same server now runs as a Cloudflare Worker (PartyServer), with the same `/party/<room>` and `/parties/<name>/<id>` addresses, and the YouTube and AI keys are Cloudflare secrets. Playlists saved before the shutdown are gone with the old service and have to be saved again
+- **Local development uses `npm run dev:party` (wrangler dev) instead of the PartyKit CLI**, with keys in the gitignored `.dev.vars`. `PAID_DAILY_CAP` is now set with `npx wrangler secret put`
+
+### Fixed
+- **A phone that reconnects keeps getting game updates:** after a Wi-Fi drop or screen lock, the old connection closing late could cut the reconnected phone off from every room update, so it froze on an old screen. It now stays in the room
+- **Old saved playlists no longer come back as rows you can't open or delete:** the library used to re-add playlists from the browser's own list on every visit. Those playlists were deleted with the old service, so the import is gone and the library only shows playlists that exist
+- **A server error on a playlist or library request returns a plain error** instead of a stack trace, and an unknown address returns a clean 404
+
 ## [0.14.21.0] — 2026-10-28
 
 ### Fixed
 - **The player whose turn it is can see whether their card went in:** after tapping 確認放置 the Timeline bar says 送出中… until the server confirms, then 已放置 ✓ 等待主持人揭曉. A tap that arrives after the host reveals shows 太晚了！ instead of quietly doing nothing. The ✓ only appears once the server has the placement, and a lost confirmation or a reload mid-turn still shows it, so the bar can't get stuck on 送出中…
 - **A phone that drops its connection mid-tap keeps its turn:** a tap sent while offline is sent again after the phone reconnects, and it still counts. If the TV skipped the song in the meantime, that old tap is refused instead of becoming the guess for a song the player never heard, and the picker opens again for the new song
 - **Opening the game in a second tab doesn't lock you out:** placing from the tab you're using now works even if an older tab of the same player reconnected later
-- **Only your own phone can place your card:** another player's connection can no longer place on your turn
+- **Placing needs a connection bound to your seat:** a connection that isn't bound to the player whose turn it is can no longer place for them. A connection can still claim a seat by rejoining with that player's id, which is tracked in TODOS.md
 - **No false 太晚了！:** a tap that counted no longer shows "too late" when its confirmation was lost and the phone reconnected after the reveal
 - **Starting the game the moment a playlist finishes loading uses that playlist**, not the one loaded before it
 

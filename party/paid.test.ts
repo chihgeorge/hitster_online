@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
-import partykitConfig from "../partykit.json";
+import { readFileSync } from "node:fs";
 import PaidParty, { spendPaidBudget, sharedAICache, DEFAULT_DAILY_CAP } from "./paid";
+import { PARTY_BINDINGS } from "./room";
 
 type Env = Record<string, string>;
 
@@ -21,21 +22,21 @@ function makeStorage() {
 /** The global paid party plus a caller room whose context.parties.paid routes to it, like PartyKit does. */
 function setup(env: Env = { ANTHROPIC_API_KEY: "sk-test" }) {
   const paidStorage = makeStorage();
-  const paid = new PaidParty({ id: "global", env, storage: paidStorage } as unknown as import("partykit/server").Room);
+  const paid = new PaidParty({ id: "global", env, storage: paidStorage } as unknown as import("./types").Room);
   const paidFetch = vi.fn((path: string, init: RequestInit) =>
-    paid.onRequest(new Request(`http://localhost/parties/paid/global${path}`, init) as unknown as import("partykit/server").Request));
+    paid.onRequest(new Request(`http://localhost/parties/paid/global${path}`, init) as unknown as Request));
   const callerStorage = makeStorage();
   const caller = {
     id: "room-1",
     env,
     storage: callerStorage,
     context: { parties: { paid: { get: () => ({ fetch: paidFetch }) } } },
-  } as unknown as import("partykit/server").Room;
+  } as unknown as import("./types").Room;
   return { paid, paidStorage, paidFetch, caller, callerStorage };
 }
 
 const publicRequest = (path: string, body: unknown, headers: Record<string, string> = {}) =>
-  new Request(`http://localhost/parties/paid/global${path}`, { method: "POST", headers: { "Content-Type": "application/json", ...headers }, body: JSON.stringify(body) }) as unknown as import("partykit/server").Request;
+  new Request(`http://localhost/parties/paid/global${path}`, { method: "POST", headers: { "Content-Type": "application/json", ...headers }, body: JSON.stringify(body) }) as unknown as Request;
 
 afterEach(() => { vi.useRealTimers(); vi.restoreAllMocks(); vi.unstubAllEnvs(); });
 
@@ -100,9 +101,16 @@ describe("paid party: daily budget", () => {
     expect(paidFetch).not.toHaveBeenCalled();
   });
 
-  // Value: protects=the room code can actually reach the paid party in a real deploy; fails_when=partykit.json drops or renames the "paid" party (every call then fails open: no cap); why_new=unit tests hand-build context.parties; seam=none
-  it("is registered in partykit.json under the name the room code calls", () => {
-    expect((partykitConfig as { parties: Record<string, string> }).parties.paid).toBe("party/paid.ts");
+  // Value: protects=the room code can actually reach the paid party in a real deploy; fails_when=wrangler.jsonc drops or renames a binding party/room.ts calls (paid calls then fail open: no cap); why_new=unit tests hand-build context.parties; seam=none
+  it("every binding party/room.ts calls is declared in wrangler.jsonc", () => {
+    const config = JSON.parse(readFileSync("wrangler.jsonc", "utf8").replace(/^\s*\/\/.*$/gm, "")) as {
+      durable_objects: { bindings: { name: string; class_name: string }[] };
+      migrations: { new_sqlite_classes: string[] }[];
+    };
+    for (const binding of Object.values(PARTY_BINDINGS)) {
+      expect(config.durable_objects.bindings).toContainEqual({ name: binding, class_name: binding });
+      expect(config.migrations.flatMap((m) => m.new_sqlite_classes)).toContain(binding);
+    }
   });
 
   // Value: protects=a public caller can't spend the budget down (denial of service) or read/write the shared cache; fails_when=the paid party answers a request without the server-derived token; why_new=every PartyKit party is reachable over public HTTP; seam=none
@@ -116,13 +124,6 @@ describe("paid party: daily budget", () => {
     }
     expect(paidStorage.put).not.toHaveBeenCalled();
   });
-
-  // Value: protects=untokened public traffic never reaches the single global Durable Object (so it can't be flooded into failing open); fails_when=onBeforeRequest lets an untokened request through, or onBeforeConnect accepts a socket; why_new=edge gate is new; seam=none
-  it("turns untokened traffic away at the edge, before the Durable Object", async () => {
-    const lobby = { env: { ANTHROPIC_API_KEY: "sk-test" } } as unknown as import("partykit/server").Lobby;
-    expect(((await PaidParty.onBeforeRequest(publicRequest("/budget", {}), lobby)) as Response).status).toBe(404);
-    expect((PaidParty.onBeforeConnect() as Response).status).toBe(404);
-  });
 });
 
 describe("paid party: shared AI cache", () => {
@@ -130,7 +131,7 @@ describe("paid party: shared AI cache", () => {
   it("a write from one room is a cache hit for another", async () => {
     const { caller, paidFetch } = setup();
     await sharedAICache(caller).put({ "aiMeta:v1": { title: "T", artist: "A", year: 1999 } });
-    const other = { ...caller, id: "room-2", storage: makeStorage(), context: { parties: { paid: { get: () => ({ fetch: paidFetch }) } } } } as unknown as import("partykit/server").Room;
+    const other = { ...caller, id: "room-2", storage: makeStorage(), context: { parties: { paid: { get: () => ({ fetch: paidFetch }) } } } } as unknown as import("./types").Room;
     const got = (await sharedAICache(other).get(["aiMeta:v1", "aiMeta:v2"])) as unknown as Map<string, unknown>;
     expect([...got]).toEqual([["aiMeta:v1", { title: "T", artist: "A", year: 1999 }]]);
   });

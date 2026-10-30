@@ -72,5 +72,5 @@ In QA mode, flag any code that doesn't match DESIGN.md.
 ## Testing
 
 - Unit: `npm test` (vitest; `party/*.test.ts`, `lib/*.test.ts`, `components/*.test.tsx`, `app/__tests__/`).
-- E2E: `npm run test:e2e` (Playwright, `e2e/`). Playwright starts Next on :3456 itself but NOT PartyKit — run `npx partykit dev` (port 1999) first.
+- E2E: `npm run test:e2e` (Playwright, `e2e/`). Playwright starts Next on :3456 itself but NOT the game server — run `npm run dev:party` (`wrangler dev`, port 1999) first.
 - /ship runs both.

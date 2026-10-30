@@ -1,7 +1,7 @@
 name: CI
 
-# No API keys needed: unit tests mock YouTube/Anthropic and the build falls back to localhost PartyKit.
-# E2E (npm run test:e2e) is not run here; it needs the PartyKit dev server.
+# No API keys needed: unit tests mock YouTube/Anthropic and the build falls back to the localhost game server.
+# Full E2E (npm run test:e2e) is not run here; only the paid-party gate is checked against `wrangler dev`.
 on:
   pull_request:
   push:
@@ -26,6 +26,16 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npx tsc --noEmit
+      - run: npx tsc -p tsconfig.worker.json
       - run: npx eslint
       - run: npm test
       - run: npm run build
+      # party/paid.ts must never answer public traffic (party/server.ts gate).
+      - name: Paid party is not public
+        run: |
+          npx wrangler dev --port 1999 > wrangler.log 2>&1 &
+          for i in $(seq 1 60); do curl -s -o /dev/null localhost:1999 && break; sleep 1; done
+          http=$(curl -s -o /dev/null -w '%{http_code}' -X POST -d '{}' localhost:1999/parties/paid/global/budget)
+          ws=$(curl -s -o /dev/null -w '%{http_code}' --max-time 5 -H 'Connection: Upgrade' -H 'Upgrade: websocket' \
+            -H 'Sec-WebSocket-Version: 13' -H 'Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==' localhost:1999/parties/paid/global)
+          echo "http=$http ws=$ws"; [ "$http" = 404 ] && [ "$ws" = 404 ] || { cat wrangler.log; exit 1; }
